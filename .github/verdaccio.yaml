@@ -1,0 +1,17 @@
+# Throwaway registry for the cold-install job. Anyone may publish; nothing
+# is proxied except what npm needs to resolve the package's dependencies.
+storage: ./verdaccio-storage
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+packages:
+  "@earshot/*":
+    access: $all
+    publish: $all
+  "earshot":
+    access: $all
+    publish: $all
+  "**":
+    access: $all
+    proxy: npmjs
+log: { type: stdout, format: pretty, level: warn }

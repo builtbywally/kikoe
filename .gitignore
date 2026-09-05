@@ -16,3 +16,4 @@ node_modules/
 
 # Logs
 *.log
+verdaccio-storage/

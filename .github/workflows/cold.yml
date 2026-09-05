@@ -29,14 +29,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Pack the CLI the way npm would ship it
-        run: pnpm --filter earshot pack --pack-destination ../../out
-      - name: Install from the tarball into an empty directory
+      # A throwaway registry, so the workspace packages resolve exactly the
+      # way they will for a stranger: by name, from a registry, not from a
+      # tarball path. This is the difference between "it packs" and "it
+      # installs".
+      - name: Publish to a local registry
+        shell: bash
+        run: |
+          npx --yes verdaccio@6 --config .github/verdaccio.yaml --listen 4873 > "$RUNNER_TEMP/verdaccio.log" 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:4873/-/ping && break; sleep 1; done
+          npm config set //localhost:4873/:_authToken cold-install-token
+          pnpm -r publish --registry http://localhost:4873 --no-git-checks --access public
+      - name: Install from that registry into an empty directory
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/cold" && cd "$RUNNER_TEMP/cold"
           npm init -y >/dev/null
-          npm install "$GITHUB_WORKSPACE"/out/earshot-*.tgz
+          npm install earshot --registry http://localhost:4873
+          npx earshot --version
       - name: Hooks, demo, doctor
         shell: bash
         env:
