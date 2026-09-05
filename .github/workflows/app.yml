@@ -64,7 +64,7 @@ jobs:
           case "$RUNNER_OS" in
             Windows) ./win-unpacked/kikoe.exe --smoke ;;
             macOS)   ./mac*/kikoe.app/Contents/MacOS/kikoe --smoke ;;
-            Linux)   xvfb-run -a ./linux-unpacked/kikoe --smoke ;;
+            Linux)   xvfb-run -a ./linux-unpacked/kikoe --no-sandbox --smoke ;;
           esac
           grep -q "listening on" "$KIKOE_HOME/logs/daemon.log"
       - name: A picture of the Room, as built
@@ -77,7 +77,7 @@ jobs:
           case "$RUNNER_OS" in
             Windows) ./win-unpacked/kikoe.exe --screenshot "$RUNNER_TEMP/room.png" ;;
             macOS)   ./mac*/kikoe.app/Contents/MacOS/kikoe --screenshot "$RUNNER_TEMP/room.png" ;;
-            Linux)   xvfb-run -a ./linux-unpacked/kikoe --screenshot "$RUNNER_TEMP/room.png" ;;
+            Linux)   xvfb-run -a ./linux-unpacked/kikoe --no-sandbox --screenshot "$RUNNER_TEMP/room.png" ;;
           esac
           test -s "$RUNNER_TEMP/room.png"
       - uses: actions/upload-artifact@v4
