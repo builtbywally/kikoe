@@ -46,6 +46,12 @@ export const DEFAULT_ALIASES = [
   "kekoe",
   "cookie",
   "a cookie",
+  // the nickname, and what Whisper makes of it
+  "kik",
+  "kiks",
+  "kicks",
+  "keek",
+  "kick it",
 ];
 
 const YES = [
