@@ -86,3 +86,21 @@ it, and borrowing it here would break that rule in the one place it matters.
 Nothing regenerates automatically. Re-render the PNGs by hand. The files are
 small, they change rarely, and a build step that silently redraws a logo is
 worse than this paragraph.
+
+## 6. The orb (Kikoe, 2026-09-05)
+
+The mark now lives inside a sphere: a lit orb in ember and paper on ink,
+with the twelve-ray burst centred in it in paper. **The orb is the logo.**
+It is the voice you talk to, as a thing in the room, and it is the same
+object the app animates: dim when idle, a paper ring when listening, ripples
+when speaking, an ember ring when it has asked you something.
+
+| File | Use |
+|---|---|
+| `orb.svg` | The logo. Any size from 24px up. |
+| `app-icon-orb-1024.png` / `-512` | The app icon: the orb on an ink field. |
+| `mark.svg`, `mark-small.svg` | The bare burst, for monochrome and for inside the orb at pill size (six rays below 24px). |
+
+The sphere's gradient is the CSS the app uses, so the icon and the live orb
+never drift apart. Ember stays the one accent; the sphere is ember because
+it *is* the accent, not an exception to the rule.

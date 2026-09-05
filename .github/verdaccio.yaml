@@ -5,10 +5,10 @@ uplinks:
   npmjs:
     url: https://registry.npmjs.org/
 packages:
-  "@earshot/*":
+  "@kikoe/*":
     access: $all
     publish: $all
-  "earshot":
+  "kikoe":
     access: $all
     publish: $all
   "**":

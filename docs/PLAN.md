@@ -9,6 +9,11 @@ tested, and run by someone who is not the author.
 
 Written 2026-09-05. Effort estimates assume one person, most of their time.
 
+**Update, same day:** the desktop app moved from Phase 3 to the shell Phase 1
+ships in. See [APP-PLAN.md](APP-PLAN.md) for the plan, [APP.md](APP.md)
+for everything the app does, and [ROOM-PLAN.md](ROOM-PLAN.md) for the
+voice-first control room and the board.
+
 ## Why a port and not a rewrite
 
 Three things carry the value of the current project, and all three transfer
@@ -50,8 +55,8 @@ What does not transfer is the runtime it all runs in, and that is the point.
 
 ## Decisions to make before the first commit
 
-- [ ] **Name.** Not built on the Claude trademark. Free to change now, expensive
-      after the first user.
+- [x] **Name.** Kikoe. Not built on the Claude trademark; free on npm and
+      GitHub; domains unchecked.
 - [ ] **Shape.** MIT core as a library; the desktop app and Companion as the paid
       product. The repo layout below assumes this.
 - [ ] **Freeze the Python repo.** Bug fixes for the author's own daily use only.
@@ -107,8 +112,10 @@ fails the build above 80 ms. (Today's Python hook: ~130 ms.)
 
 ## Phase 0 — skeleton and the one risky prototype · **done 2026-09-05**
 
-- [x] Working name `earshot` (free on npm and GitHub; rename is a find-and-
-      replace on `@earshot/` and one package name). Repo, MIT, pnpm workspace,
+- [x] Working name was `earshot` (free on npm and GitHub). **Renamed to
+      `kikoe` (聞こえ, "audibility": the voice can be heard) on 2026-09-05**,
+      the owner's choice. The rename was a find-and-replace on the scope,
+      the package names, the app id, the data folder and the hook paths. Repo, MIT, pnpm workspace,
       vitest, biome. LF pinned in `.gitattributes` because the first Windows
       write came out CRLF and biome refused it.
 - [x] `test.yml` matrix: macOS, Windows, Linux × Node 20, 22.

@@ -17,7 +17,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ClaudeCodeAdapter, Narrator, type Utterance } from "@earshot/core";
+import { ClaudeCodeAdapter, Narrator, type Utterance } from "@kikoe/core";
 import { describe, expect, it } from "vitest";
 
 const EVALS = fileURLToPath(new URL("../../../evals/", import.meta.url));

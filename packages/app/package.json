@@ -1,0 +1,22 @@
+{
+  "name": "@kikoe/app",
+  "version": "0.1.0",
+  "description": "The desktop app: daemon, island, tray, settings.",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "@kikoe/core": "workspace:*",
+    "@kikoe/daemon": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "^26.0.0"
+  },
+  "author": "builtbywally"
+}

@@ -17,3 +17,6 @@ node_modules/
 # Logs
 *.log
 verdaccio-storage/
+
+# Build output: installers and unpacked apps, hundreds of megabytes.
+out/

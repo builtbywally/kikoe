@@ -27,3 +27,18 @@ export {
   lastAssistantText,
 } from "./adapters/claude-code.js";
 export type { ClaudeCodeAdapterOptions } from "./adapters/claude-code.js";
+export { Tracker, IDLE, WORKING, WAITING, FAILED } from "./tracker.js";
+export type { Session, SessionSnapshot } from "./tracker.js";
+export { Arbiter, CollectingSink, permissionId, utterance } from "./arbiter.js";
+export type {
+  SpeechSink,
+  SpeechPhase,
+  SpeechInfo,
+  PermissionBinding,
+  ArbiterOptions,
+} from "./arbiter.js";
+export { route, gate, normalize, DEFAULT_ALIASES } from "./router.js";
+export type { Decision, RouteOptions } from "./router.js";
+export { answer as headAnswer, social as headSocial } from "./head.js";
+export { diagramToSvg, parseDiagram } from "./diagram.js";
+export type { Diagram } from "./diagram.js";

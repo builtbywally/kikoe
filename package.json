@@ -1,18 +1,22 @@
 {
-  "name": "earshot-monorepo",
+  "name": "kikoe-monorepo",
   "private": true,
   "version": "0.0.0",
   "description": "A local voice layer for coding agents. It speaks, and it listens.",
   "license": "MIT",
   "packageManager": "pnpm@10.10.0",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc -b packages/core packages/daemon packages/cli",
-    "build": "tsc -b packages/core packages/daemon packages/cli"
+    "typecheck": "tsc -b packages/core packages/daemon packages/cli packages/app",
+    "build": "tsc -b packages/core packages/daemon packages/cli packages/app",
+    "app": "pnpm build && pnpm --filter @kikoe/app start",
+    "app:dist": "pnpm build && pnpm --filter @kikoe/app dist"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

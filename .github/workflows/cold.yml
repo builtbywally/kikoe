@@ -45,21 +45,21 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/cold" && cd "$RUNNER_TEMP/cold"
           npm init -y >/dev/null
-          npm install earshot --registry http://localhost:4873
-          npx earshot --version
+          npm install kikoe --registry http://localhost:4873
+          npx kikoe --version
       - name: Hooks, demo, doctor
         shell: bash
         env:
-          EARSHOT_HOME: ${{ runner.temp }}/earshot-home
+          KIKOE_HOME: ${{ runner.temp }}/kikoe-home
           CLAUDE_SETTINGS: ${{ runner.temp }}/claude-settings.json
         run: |
           cd "$RUNNER_TEMP/cold"
-          npx earshot install claude --settings "$CLAUDE_SETTINGS"
-          npx earshot demo --no-audio
-          npx earshot doctor
-          npx earshot uninstall claude --settings "$CLAUDE_SETTINGS"
+          npx kikoe install claude --settings "$CLAUDE_SETTINGS"
+          npx kikoe demo --no-audio
+          npx kikoe doctor
+          npx kikoe uninstall claude --settings "$CLAUDE_SETTINGS"
       - name: Hook startup stays under budget
         shell: bash
         run: |
           cd "$RUNNER_TEMP/cold"
-          npx earshot bench hook --budget-ms 80
+          npx kikoe bench hook --budget-ms 80

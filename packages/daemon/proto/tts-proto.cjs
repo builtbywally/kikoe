@@ -13,7 +13,7 @@ const os = require("node:os");
 const sherpa = require("sherpa-onnx-node");
 const { RtAudio, RtAudioFormat } = require("audify");
 
-const MODELS = path.join(os.homedir(), ".earshot", "models");
+const MODELS = path.join(os.homedir(), ".kikoe", "models");
 const which = process.argv[2] || "kokoro";
 const threads = Number(process.env.THREADS || 2);
 const modelCfg =
@@ -70,7 +70,7 @@ async function main() {
     FLOAT32,
     rate,
     frame,
-    "earshot-proto",
+    "kikoe-proto",
     null,
     null,
   );

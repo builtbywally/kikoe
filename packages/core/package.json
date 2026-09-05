@@ -1,5 +1,5 @@
 {
-  "name": "@earshot/core",
+  "name": "@kikoe/core",
   "version": "0.1.0",
   "description": "The narrator, the arbiter, and the register. Pure logic, no I/O, no native code.",
   "license": "MIT",

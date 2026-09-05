@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>kikoe</title>
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <div class="titlebar"><span class="tb-orb"><svg viewBox="0 0 64 64" width="14" height="14" aria-hidden="true"><g fill="none" stroke="#f5f1ec" stroke-width="6.5" stroke-linecap="round"><path d="M32 23L32 5"/><path d="M39.79 27.5L50.19 21.5"/><path d="M39.79 36.5L50.19 42.5"/><path d="M32 41L32 59"/><path d="M24.21 36.5L13.81 42.5"/><path d="M24.21 27.5L13.81 21.5"/></g></svg></span><span class="tb-title">Kikoe</span><span class="tb-status">settings</span></div>
+  <nav id="nav">
+    <div class="brand"><span class="mark">◎</span> kikoe <span id="version" class="dim"></span></div>
+    <button data-page="sessions">Sessions</button>
+    <button data-page="voice">Voice</button>
+    <button data-page="narration">Narration</button>
+    <button data-page="hooks">Claude Code</button>
+    <button data-page="general">General</button>
+    <button data-page="doctor">Doctor</button>
+  </nav>
+
+  <main>
+    <!-- first run -->
+    <section id="page-welcome" class="page" hidden>
+      <h1>Hear your agents from across the room.</h1>
+      <p>Two minutes. Pick a voice, connect Claude Code, hear it work. Every step is in settings afterwards.</p>
+      <div class="actions"><button class="primary" data-go="voice">Pick a voice</button> <button data-go="hooks" class="quiet">Skip to Claude Code</button></div>
+    </section>
+
+    <!-- sessions -->
+    <section id="page-sessions" class="page" hidden>
+      <h2>Sessions</h2>
+      <div id="pending" class="pending" hidden>
+        <b>Needs you:</b> <span id="pending-text"></span>
+        <div class="actions"><button class="primary" id="perm-allow">Allow</button> <button id="perm-deny">Deny</button></div>
+      </div>
+      <div id="sessions-list" class="rows"></div>
+      <h3>What it said <button id="stop-talking" class="quiet small">stop talking</button></h3>
+      <div id="history" class="history"></div>
+    </section>
+
+    <!-- voice -->
+    <section id="page-voice" class="page" hidden>
+      <h2>Voice</h2>
+      <p class="dim">Each row plays a real narrator line. Choose by ear.</p>
+      <div class="rows" id="voice-rows">
+        <label class="row"><input type="radio" name="tts" value="piper" /><div><b>Piper</b><span>Bundled, local, instant. The default.</span></div><button class="play" data-tts="piper">▶</button></label>
+        <label class="row"><input type="radio" name="tts" value="kokoro" /><div><b>Kokoro</b><span id="kokoro-note">Local, better voice. Download 320 MB into your models folder.</span>
+          <div class="sub"><button id="kokoro-fetch" class="quiet">Download</button> <button id="kokoro-remove" class="quiet" hidden>Remove</button> <progress id="kokoro-progress" max="100" value="0" hidden></progress> <span id="kokoro-status" class="note"></span></div></div><button class="play" data-tts="kokoro">▶</button></label>
+        <label class="row"><input type="radio" name="tts" value="eleven" /><div><b>ElevenLabs</b><span>Your own key. The best voice, about 200 ms to first sound.</span>
+          <div class="sub">
+            <input type="password" id="eleven-key" placeholder="API key (stored in the OS keychain)" autocomplete="off" />
+            <select id="eleven-voice"><option value="">— pick a voice —</option></select>
+            <button id="eleven-refresh" class="quiet">Load voices</button>
+          </div></div><button class="play" data-tts="eleven">▶</button></label>
+        <label class="row"><input type="radio" name="tts" value="system" /><div><b>System voice</b><span>Always there. Sounds like it.</span></div><button class="play" data-tts="system">▶</button></label>
+      </div>
+      <label class="check"><input type="checkbox" id="strict" /> Strict: this voice and no other. A line in the wrong voice is worse than no line.</label>
+      <div class="actions"><button class="primary" id="voice-save">Use this voice</button> <span id="voice-note" class="note"></span></div>
+
+      <h3>A voice per repo</h3>
+      <p class="dim">Five agents, one mouth. Give each repo its own voice so you know who's talking without being told.</p>
+      <table id="voices-table"><thead><tr><th>Repo</th><th>Voice</th><th></th></tr></thead><tbody></tbody></table>
+      <div class="actions"><input type="text" id="voice-repo" placeholder="repo name (as its folder is called)" /> <select id="voice-pick"></select> <button id="voice-add">Add</button></div>
+
+      <div class="actions onboarding-only"><button data-go="hooks">Next: connect Claude Code →</button></div>
+    </section>
+
+    <!-- narration -->
+    <section id="page-narration" class="page" hidden>
+      <h2>How chatty</h2>
+      <div class="rows">
+        <label class="row"><input type="radio" name="narrate" value="silent" /><div><b>Silent</b><span>Permissions and errors only.</span></div></label>
+        <label class="row"><input type="radio" name="narrate" value="attention" /><div><b>Attention</b><span>+ turn completions.</span></div></label>
+        <label class="row"><input type="radio" name="narrate" value="normal" /><div><b>Normal</b><span>+ milestones: tests, commits, builds, installs.</span></div></label>
+        <label class="row"><input type="radio" name="narrate" value="verbose" /><div><b>Verbose</b><span>+ running commentary on edits.</span></div></label>
+      </div>
+      <h3>Sound cues</h3>
+      <div class="rows">
+        <label class="row"><input type="radio" name="earcons" value="off" /><div><b>Off</b><span>Words only.</span></div></label>
+        <label class="row"><input type="radio" name="earcons" value="cues" /><div><b>Cues</b><span>A rising two-note before a question, a settled one before done, a low buzz before an error.</span></div></label>
+        <label class="row"><input type="radio" name="earcons" value="replace" /><div><b>Replace chatter</b><span>Cues, and progress lines become a soft tick instead of words. Makes Verbose bearable.</span></div></label>
+      </div>
+      <div class="actions"><button class="primary" id="narrate-save">Save</button> <span id="narrate-note" class="note"></span></div>
+    </section>
+
+    <!-- hooks -->
+    <section id="page-hooks" class="page" hidden>
+      <h2>Claude Code</h2>
+      <p>kikoe hears Claude Code through its hooks, and lets Claude speak its own line at the end of a turn through an output style. This adds them to <code id="claude-path"></code> <button id="pick-claude" class="quiet">change…</button></p>
+      <div id="legacy" class="pending" hidden>
+        <b>ClaudeTalks found.</b> <span id="legacy-text"></span>
+        <div class="actions"><button class="primary" id="migrate">Remove the old hooks</button> <span id="migrate-note" class="note"></span></div>
+      </div>
+      <div class="rows">
+        <label class="row"><input type="radio" name="profile" value="attention" /><div><b>Attention</b><span>Permissions, errors, turn ends. About two hook calls per turn.</span></div></label>
+        <label class="row"><input type="radio" name="profile" value="balanced" checked /><div><b>Balanced</b><span>+ test results, tasks, session lifecycle. One call per tool use. The default.</span></div></label>
+        <label class="row"><input type="radio" name="profile" value="full" /><div><b>Full</b><span>+ running commentary. Two calls per tool use.</span></div></label>
+      </div>
+      <details id="hook-preview"><summary>What it will add</summary><pre id="hook-preview-body"></pre></details>
+      <p id="hook-status" class="note"></p>
+      <div class="actions">
+        <button class="primary" id="hooks-install">Connect Claude Code</button>
+        <button id="hooks-uninstall" class="quiet">Disconnect</button>
+        <span id="hooks-note" class="note"></span>
+      </div>
+      <p class="dim">After connecting, pick the <b>Kikoe Voice</b> output style inside Claude Code with <code>/output-style</code>, and Claude will say one line at the end of each turn.</p>
+      <div class="actions onboarding-only"><button data-go="hear">Next: hear it work →</button></div>
+    </section>
+
+    <!-- hear it -->
+    <section id="page-hear" class="page" hidden>
+      <h2>Hear it work</h2>
+      <p>A scripted session through the real pipeline: a few edits, a test run, a permission question, and the turn ending. Fifteen seconds. Watch the pill at the top of the screen.</p>
+      <div class="actions"><button class="primary" id="demo">Play the demo</button> <span id="demo-note" class="note"></span></div>
+      <div class="actions onboarding-only"><button class="primary" id="finish">Done. Close this window.</button></div>
+    </section>
+
+    <!-- general -->
+    <section id="page-general" class="page" hidden>
+      <h2>General</h2>
+      <h3>Listening</h3>
+      <p class="dim">An open microphone, gated on the name. Nothing is recorded: a few seconds sit in memory and are dropped the moment they are transcribed. Everything runs on this machine.</p>
+      <label class="check"><input type="checkbox" id="mic" /> Listen for “hey kikoe”.</label>
+      <div class="actions"><select id="mic-device"><option value="">default microphone</option></select> <input type="text" id="wake" placeholder="wake name" style="width: 140px" /> <button id="mic-save" class="primary">Save</button> <span id="mic-note" class="note"></span></div>
+      <p class="dim">Say <b>hey kikoe, what's it doing</b> · <b>kikoe, stop</b> · <b>kikoe, clear the board</b> · <b>kikoe, go verbose</b>, and a bare <b>yes</b> or <b>no</b> when it has asked you something.</p>
+      <h3>Look</h3>
+      <div class="rows">
+        <label class="row"><input type="radio" name="theme" value="system" /><div><b>Follow the system</b><span>Dark or light, whichever Windows or macOS is using.</span></div></label>
+        <label class="row"><input type="radio" name="theme" value="dark" /><div><b>Dark</b><span>Ink, with paper text and one ember.</span></div></label>
+        <label class="row"><input type="radio" name="theme" value="light" /><div><b>Light</b><span>Paper, with ink text and the same ember.</span></div></label>
+      </div>
+      <h3>Startup</h3>
+      <label class="check"><input type="checkbox" id="login" /> Start at login, hidden in the tray.</label>
+      <div class="actions"><button id="open-home" class="quiet">Open data folder</button> <button id="open-logs" class="quiet">Open logs</button></div>
+    </section>
+
+    <!-- doctor -->
+    <section id="page-doctor" class="page" hidden>
+      <h2>Doctor</h2>
+      <p class="dim">What is running, what is answering, how fast, and what to do about anything that is not.</p>
+      <pre id="doctor"></pre>
+      <div class="actions"><button id="doctor-refresh">Refresh</button></div>
+    </section>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>

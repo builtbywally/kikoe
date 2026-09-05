@@ -6,7 +6,7 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      "@earshot/core": here("./packages/core/src/index.ts"),
+      "@kikoe/core": here("./packages/core/src/index.ts"),
     },
   },
   test: {

@@ -1,4 +1,4 @@
-import { events as ev, scrub, spokenIdentifier, summarizeTestOutput } from "@earshot/core";
+import { events as ev, scrub, spokenIdentifier, summarizeTestOutput } from "@kikoe/core";
 import { describe, expect, it } from "vitest";
 
 describe("events", () => {

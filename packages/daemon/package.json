@@ -1,5 +1,5 @@
 {
-  "name": "@earshot/daemon",
+  "name": "@kikoe/daemon",
   "version": "0.1.0",
   "description": "The long-lived process: hook endpoints, adapters, the TTS ladder, audio.",
   "license": "MIT",
@@ -8,7 +8,7 @@
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "dependencies": {
-    "@earshot/core": "workspace:*",
+    "@kikoe/core": "workspace:*",
     "audify": "^1.10.1",
     "sherpa-onnx-node": "^1.13.7"
   }

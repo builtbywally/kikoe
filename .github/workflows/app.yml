@@ -1,0 +1,74 @@
+name: app
+
+# The desktop app, built as a stranger would receive it, on every push:
+# an installer per OS, unsigned until the accounts in APP-PLAN.md exist,
+# and a smoke run of the unpacked build that boots the daemon, speaks one
+# line to the null device, and exits 0.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Bundle the Piper voice
+        shell: bash
+        run: |
+          mkdir -p packages/app/models && cd packages/app/models
+          curl -sL -o piper.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alan-medium.tar.bz2
+          tar -xjf piper.tar.bz2 && rm piper.tar.bz2
+      - run: pnpm build
+      - name: Native modules load inside Electron
+        shell: bash
+        run: |
+          cat > eltest.cjs <<'JS'
+          const { app } = require("electron");
+          app.whenReady().then(() => {
+            const out = {};
+            try { require("audify"); out.audify = "ok"; } catch (e) { out.audify = "FAIL " + e.message; }
+            try { require("sherpa-onnx-node"); out.sherpa = "ok"; } catch (e) { out.sherpa = "FAIL " + e.message; }
+            console.log(JSON.stringify(out));
+            app.exit(Object.values(out).every((v) => v === "ok") ? 0 : 1);
+          });
+          JS
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a ./node_modules/.bin/electron ./eltest.cjs; else ./node_modules/.bin/electron ./eltest.cjs; fi
+      - name: Build the installer
+        run: pnpm --filter @kikoe/app dist
+      - name: Smoke the unpacked build
+        shell: bash
+        env:
+          KIKOE_HOME: ${{ runner.temp }}/kikoe-home
+          KIKOE_PORT: "4579"
+        run: |
+          cd out/app
+          case "$RUNNER_OS" in
+            Windows) ./win-unpacked/kikoe.exe --smoke ;;
+            macOS)   ./mac*/kikoe.app/Contents/MacOS/kikoe --smoke ;;
+            Linux)   xvfb-run -a ./linux-unpacked/kikoe --smoke ;;
+          esac
+          grep -q "listening on" "$KIKOE_HOME/logs/daemon.log"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kikoe-${{ matrix.os }}
+          path: |
+            out/app/*.exe
+            out/app/*.dmg
+            out/app/*.AppImage
+          if-no-files-found: warn

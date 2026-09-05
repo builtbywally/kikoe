@@ -1,0 +1,949 @@
+/**
+ * The daemon: one long-lived process per machine.
+ *
+ *   hook payload  ─▶ adapter ─▶ tracker ─▶ narrator ─▶ arbiter ─▶ ladder ─▶ speaker
+ *                                   └──────────── hub ────────────▶ island, app
+ *
+ * Loopback-bound with a bearer token. It can speak and it can approve tool
+ * calls, so it is never exposed on a network interface.
+ */
+
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import {
+  Arbiter,
+  ClaudeCodeAdapter,
+  DEFAULT_ALIASES,
+  Narrator,
+  type SpeechInfo,
+  type SpeechPhase,
+  type SpeechSink,
+  Tracker,
+  type Utterance,
+  diagramToSvg,
+  events as ev,
+  headAnswer,
+  headSocial,
+  route,
+  utterance,
+} from "@kikoe/core";
+import { HOME, LOGS, type Settings, daemonToken, ensureHome, loadSettings, log } from "./config.js";
+import { Hub } from "./hub.js";
+import { Board } from "./pins.js";
+import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
+import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
+
+const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
+const HISTORY = 50;
+const LATENCY_WINDOW = 100;
+/** A self-spoken line silences the Stop hook's summary for this long. */
+export const SELF_SPOKEN_WINDOW_S = 30;
+
+function readTranscript(p: string): string | undefined {
+  try {
+    if (!existsSync(p) || statSync(p).size > MAX_TRANSCRIPT_BYTES) return undefined;
+    return readFileSync(p, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/** Walk up from cwd to the nearest .git for a repo name. */
+function repoOf(cwd: string): string {
+  let dir = cwd;
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(path.join(dir, ".git"))) return path.basename(dir);
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return path.basename(cwd);
+}
+
+/**
+ * A pending permission: the hook is blocked in `curl`, waiting on this
+ * response. A spoken yes releases it; no, silence and timeout all deny.
+ * Denial means an empty body, so Claude Code falls back to its own prompt.
+ */
+interface PendingPermission {
+  id: string;
+  session: string;
+  repo: string;
+  text: string;
+  res: http.ServerResponse;
+  timer: NodeJS.Timeout;
+}
+
+export interface SpokenRecord {
+  ts: number;
+  text: string;
+  backend: string;
+  ttfa_ms: number;
+  audio_s: number;
+  session: string;
+  label: string;
+  priority: number;
+  /** event receipt to first sound, when the line came from an event */
+  latency_ms: number | null;
+}
+
+export interface DaemonOptions {
+  settings?: Settings;
+  /** the Room renderer directory, served at /room for a browser on a tunnel */
+  roomDir?: string;
+  audio?: boolean;
+  elevenKey?: string;
+  onSpeech?: (phase: SpeechPhase, info: SpeechInfo) => void;
+}
+
+/**
+ * The mouth: picks a voice for the line, plays a cue if the settings ask for
+ * one, streams the line through the ladder, and waits for the speaker to go
+ * quiet so the arbiter's ordering stays honest.
+ */
+class LadderSink implements SpeechSink {
+  constructor(private d: Daemon) {}
+
+  private cueFor(u: Utterance | undefined): Earcon | null {
+    const mode = this.d.settings.earcons;
+    if (!u || mode === "off") return null;
+    if (u.dedupe.startsWith("perm:")) return "question";
+    if (u.dedupe.startsWith("err:") || u.priority >= ev.SEV_CRITICAL) return "error";
+    if (u.dedupe.startsWith("done:") || u.dedupe.startsWith("end:")) return "done";
+    return null;
+  }
+
+  async speak(text: string, signal: AbortSignal, u?: Utterance): Promise<void> {
+    const speaker = this.d.speaker;
+    const mode = this.d.settings.earcons;
+    // "replace": progress chatter becomes a tick instead of words.
+    if (u && mode === "replace" && u.priority <= ev.SEV_PROGRESS) {
+      speaker.push(earcon("tick", speaker.rate), speaker.rate);
+      speaker.flush();
+      await speaker.quiet();
+      return;
+    }
+    const cue = this.cueFor(u);
+    if (cue) {
+      speaker.push(earcon(cue, speaker.rate), speaker.rate);
+      speaker.flush();
+    }
+    const hint: VoiceHint = u ? this.d.voiceFor(u.label) : {};
+    const start = Date.now();
+    this.d.markSpeaking(text);
+    const res = await this.d.ladder.speak(text, speaker, signal, hint);
+    this.d.recordSpoken(text, res, u, start);
+    await speaker.quiet();
+  }
+}
+
+export class Daemon {
+  settings: Settings;
+  readonly token: string;
+  readonly hub = new Hub();
+  readonly tracker = new Tracker();
+  readonly narrator: Narrator;
+  readonly arbiter: Arbiter;
+  ladder: Ladder;
+  readonly speaker: Speaker;
+  readonly adapter: ClaudeCodeAdapter;
+  readonly history: SpokenRecord[] = [];
+  readonly board: Board;
+  private lastSpokeRepo = "";
+  private lastSpoken: { text: string; at: number } | null = null;
+  private lastRepeatable = "";
+  micPhase = "off";
+  micDevice = "";
+  readonly heardLog: Array<{
+    ts: number;
+    text: string;
+    kind: string;
+    intent: string;
+    said: string;
+    stt_ms: number | null;
+  }> = [];
+  private readonly roomDir: string;
+  private latencies: number[] = [];
+  private server: http.Server | null = null;
+  private pending: PendingPermission | null = null;
+  private lastPermissionId = "";
+  private startedAt = Date.now();
+  private timers: NodeJS.Timeout[] = [];
+  private agentSpokeAt = 0;
+  eventsSeen = 0;
+
+  constructor(opts: DaemonOptions = {}) {
+    ensureHome();
+    this.settings = opts.settings ?? loadSettings();
+    this.roomDir = opts.roomDir ?? "";
+    this.token = daemonToken();
+    ev.setRepoResolver(repoOf);
+    this.narrator = new Narrator({ mode: this.settings.narrate });
+    this.adapter = new ClaudeCodeAdapter({ readTranscript });
+    this.speaker = opts.audio === false ? new NullSpeaker() : safeSpeaker();
+    this.ladder = new Ladder({
+      settings: this.settings,
+      ...(opts.elevenKey ? { elevenKey: opts.elevenKey } : {}),
+    });
+    this.board = new Board((e) => this.hub.publish("pin", { ...e }));
+    this.arbiter = new Arbiter(new LadderSink(this), {
+      onSpeech: (phase, info) => {
+        this.hub.publish("speech", { phase, ...info });
+        opts.onSpeech?.(phase, info);
+      },
+      permissions: {
+        blocks: (id) => this.pending !== null && this.pending.id !== id,
+        bind: (id) => {
+          this.lastPermissionId = id;
+        },
+      },
+    });
+  }
+
+  /** The line about to play. The ear uses it to ignore its own echo. */
+  markSpeaking(text: string): void {
+    this.lastSpoken = { text, at: Date.now() };
+  }
+
+  // -- voices ----------------------------------------------------------------
+
+  /** The voice a repo speaks in, if the settings assign one. */
+  voiceFor(label: string): VoiceHint {
+    const v = this.settings.voices?.[label];
+    if (!v) return {};
+    const hint: VoiceHint = {};
+    if (v.backend) hint.backend = v.backend;
+    if (v.voice) hint.voice = v.voice;
+    return hint;
+  }
+
+  // -- events ----------------------------------------------------------------
+
+  /** One agent event through the whole pipe. Returns how many lines were queued. */
+  ingest(e: ev.AgentEvent): number {
+    this.eventsSeen++;
+    this.tracker.apply(e);
+    let lines = this.narrator.narrate(e);
+    // Claude spoke for itself this turn; the hook's summary would say it twice.
+    if (e.kind === ev.TURN_END && Date.now() / 1000 - this.agentSpokeAt < SELF_SPOKEN_WINDOW_S) {
+      lines = lines.filter((u) => !(u.dedupe.startsWith("done:") || u.dedupe.startsWith("end:")));
+    }
+    const queued = this.arbiter.submitAll(lines);
+    this.hub.publish("event", {
+      kind: e.kind,
+      source: e.source,
+      tool: e.tool,
+      severity: e.severity,
+      status: e.status,
+      repo: e.repo,
+      session: e.session,
+      text: (e.text ?? "").slice(0, 400),
+      ts: e.ts,
+      args: displayArgs(e),
+    });
+    this.hub.publish("sessions", {
+      sessions: this.tracker.snapshot(),
+      brief: this.tracker.brief(),
+    });
+    return queued;
+  }
+
+  hook(payload: Record<string, unknown>): ev.AgentEvent | null {
+    const e = this.adapter.ingestHook(payload);
+    if (e) this.ingest(e);
+    return e;
+  }
+
+  say(text: string, priority = ev.SEV_MILESTONE, source = "manual"): void {
+    if (source === "agent") this.agentSpokeAt = Date.now() / 1000;
+    this.arbiter.submit(
+      utterance(text, {
+        priority,
+        preempt: priority >= ev.SEV_ATTENTION,
+        label: source === "agent" ? "" : "",
+        dedupe: source === "agent" ? "agent:" : "",
+      }),
+    );
+  }
+
+  interrupt(): void {
+    this.arbiter.interrupt();
+    this.speaker.drop();
+  }
+
+  setMode(mode: string): void {
+    this.narrator.setMode(mode);
+    this.hub.publish("mode", { mode: this.narrator.mode });
+  }
+
+  /**
+   * A voice change swaps the ladder and nothing else: the server stays up,
+   * the tracker keeps its sessions, the arbiter keeps its counts.
+   */
+  reconfigure(settings: Settings, elevenKey?: string): void {
+    this.interrupt();
+    const old = this.ladder;
+    this.settings = settings;
+    this.ladder = new Ladder({ settings, ...(elevenKey ? { elevenKey } : {}) });
+    old.close();
+    this.narrator.setMode(settings.narrate);
+    this.hub.publish("tts", { ladder: this.ladder.names, strict: this.ladder.strict });
+  }
+
+  /**
+   * Answer the permission question that was last read out. Only that one:
+   * two agents asking seconds apart and one "yes" is the disaster class.
+   */
+  answerPermission(allow: boolean, id?: string): boolean {
+    const p = this.pending;
+    if (!p) return false;
+    if (id && id !== p.id) return false;
+    if (!id && this.lastPermissionId && this.lastPermissionId !== p.id) return false;
+    clearTimeout(p.timer);
+    this.pending = null;
+    const body = allow
+      ? JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PermissionRequest",
+            decision: "allow",
+            decisionReason: "approved by voice",
+          },
+        })
+      : "";
+    p.res.writeHead(200, { "content-type": "application/json" });
+    p.res.end(body);
+    this.hub.publish("permission", { id: p.id, session: p.session, allow });
+    log(`permission ${p.id} ${allow ? "allowed" : "denied"} (${p.repo})`);
+    return true;
+  }
+
+  /**
+   * A bare yes or no from the user goes to whatever is being asked: a
+   * permission first, since a real agent's prompt always outranks a pin.
+   */
+  answerWord(word: string): "permission" | "pin" | null {
+    const w = word.trim().toLowerCase();
+    if (this.pending) {
+      const yes = ["yes", "yeah", "yep", "ok", "okay", "do it", "go ahead", "allow"].includes(w);
+      const no = ["no", "nope", "deny", "don't", "cancel"].includes(w);
+      if (yes || no) {
+        this.answerPermission(yes);
+        return "permission";
+      }
+    }
+    if (this.board.asking() && this.board.answerCurrent(w)) return "pin";
+    return null;
+  }
+
+  // -- the ear -------------------------------------------------------------------
+
+  /**
+   * Something the user said, transcribed. Routed the three ways: control
+   * never reaches an agent, a question is answered from the board, an
+   * answer releases what is waiting. Everything not addressed is overheard
+   * and dropped, and the island is told so, because that judgement is what
+   * makes an open mic trustworthy.
+   */
+  hear(
+    text: string,
+    meta: { dur_s?: number; stt_ms?: number } = {},
+  ): { kind: string; intent: string; said?: string } {
+    const clean = text.trim();
+    // Half duplex: while the speaker plays, and for a moment after, the mic
+    // hears the speaker. A transcript that echoes our own line is dropped.
+    const recently =
+      this.lastSpoken !== null &&
+      (this.arbiter.pending() || Date.now() - this.lastSpoken.at < 4000);
+    if (recently && this.lastSpoken && similar(clean, this.lastSpoken.text)) {
+      this.hub.publish("mic", { phase: "overheard", text: clean, why: "self" });
+      return { kind: "self", intent: "" };
+    }
+    const awaiting = this.pending !== null || this.board.asking() !== undefined;
+    const offered = this.board.asking()?.ask ?? [];
+    const aliases = [...new Set([this.settings.wake_name, ...DEFAULT_ALIASES])];
+    const d = route(clean, { aliases, awaitingAnswer: awaiting, offered });
+    log(
+      `heard "${clean}" -> ${d.kind}${d.intent ? ":" + d.intent : ""}${d.arg ? " " + d.arg : ""} (${meta.dur_s ?? "?"}s, stt ${meta.stt_ms ?? "?"} ms)`,
+    );
+
+    const record = (kind: string, intent: string, said = "") => {
+      this.heardLog.push({
+        ts: Date.now() / 1000,
+        text: clean,
+        kind,
+        intent,
+        said,
+        stt_ms: meta.stt_ms ?? null,
+      });
+      if (this.heardLog.length > 30) this.heardLog.shift();
+      this.hub.publish("heard", { text: clean, kind, intent, said });
+    };
+    if (d.kind === "empty") return { kind: d.kind, intent: "" };
+    if (d.kind === "overheard") {
+      record("overheard", "");
+      this.hub.publish("mic", { phase: "overheard", text: clean });
+      return { kind: d.kind, intent: "" };
+    }
+    this.hub.publish("mic", { phase: "addressed", text: clean });
+
+    let said: string | undefined;
+    switch (d.kind) {
+      case "control":
+        said = this.control(d.intent, d.arg);
+        break;
+      case "answer": {
+        const to = this.answerWord(d.intent);
+        said = to ? undefined : "Nothing's waiting on an answer.";
+        break;
+      }
+      case "question":
+        said = headAnswer(d.text, Object.values(this.tracker.snapshot()));
+        break;
+      case "social":
+        said = headSocial(d.intent);
+        break;
+      case "work":
+        said = "I can't take instructions yet. Say it to the terminal.";
+        break;
+    }
+    record(d.kind, d.intent, said ?? "");
+    if (said) {
+      this.hub.publish("mic", { phase: "thinking", text: clean });
+      this.say(said, ev.SEV_ATTENTION, "head");
+    }
+    this.hub.publish("mic", { phase: "idle" });
+    return { kind: d.kind, intent: d.intent, ...(said ? { said } : {}) };
+  }
+
+  private control(intent: string, arg: string): string | undefined {
+    switch (intent) {
+      case "stop":
+        this.interrupt();
+        return undefined;
+      case "pause":
+        this.setMode("silent");
+        return "Quiet.";
+      case "resume":
+        this.setMode(this.settings.narrate);
+        return "Back.";
+      case "mode":
+        this.setMode(arg);
+        this.settings.narrate = arg;
+        return arg === "silent" ? undefined : `${arg}.`;
+      case "board":
+        if (arg === "clear") {
+          this.board.clear();
+          return "Cleared.";
+        }
+        this.hub.publish("view", { view: arg === "show" ? "control" : "room" });
+        return undefined;
+      case "repeat":
+        return this.lastRepeatable || "I haven't said anything yet.";
+      case "focus":
+        this.hub.publish("view", { view: "room", focus: arg });
+        return `${arg}.`;
+      case "shutdown":
+        this.hub.publish("control", { intent: "shutdown" });
+        return "Goodbye.";
+      default:
+        return undefined;
+    }
+  }
+
+  // -- what was said, and how fast ----------------------------------------------
+
+  recordSpoken(
+    text: string,
+    res: { backend: string; ttfaMs: number; audioS: number },
+    u: Utterance | undefined,
+    startedAtMs: number,
+  ): void {
+    const firstSound = startedAtMs + Math.max(0, res.ttfaMs);
+    const latency = u?.created ? Math.round(firstSound - u.created * 1000) : null;
+    const rec: SpokenRecord = {
+      ts: Date.now() / 1000,
+      text,
+      backend: res.backend,
+      ttfa_ms: Math.round(res.ttfaMs),
+      audio_s: Number(res.audioS.toFixed(2)),
+      session: u?.session ?? "",
+      label: u?.label ?? "",
+      priority: u?.priority ?? ev.SEV_MILESTONE,
+      latency_ms: latency !== null && latency >= 0 && latency < 60_000 ? latency : null,
+    };
+    this.history.push(rec);
+    if (this.history.length > HISTORY) this.history.shift();
+    if (rec.label) this.lastSpokeRepo = rec.label;
+    this.lastSpoken = { text, at: Date.now() };
+    if (rec.priority >= 2) this.lastRepeatable = text;
+    if (rec.latency_ms !== null) {
+      this.latencies.push(rec.latency_ms);
+      if (this.latencies.length > LATENCY_WINDOW) this.latencies.shift();
+    }
+    this.hub.publish("spoken", { ...rec });
+    try {
+      writeFileSync(
+        path.join(LOGS, "metrics.jsonl"),
+        `${JSON.stringify({ event: "spoken", ...rec, chars: text.length })}\n`,
+        { flag: "a" },
+      );
+    } catch {
+      /* metrics must never throw */
+    }
+  }
+
+  /** Event receipt to first sound, over the last hundred lines. Measured, not claimed. */
+  latency(): { n: number; p50: number | null; p90: number | null; ttfa_p50: number | null } {
+    const sorted = [...this.latencies].sort((a, b) => a - b);
+    const q = (p: number) =>
+      sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]! : null;
+    const ttfas = this.history.map((h) => h.ttfa_ms).sort((a, b) => a - b);
+    return {
+      n: sorted.length,
+      p50: q(0.5),
+      p90: q(0.9),
+      ttfa_p50: ttfas.length ? ttfas[Math.floor(ttfas.length / 2)]! : null,
+    };
+  }
+
+  state() {
+    return {
+      ok: true,
+      version: VERSION,
+      uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
+      mode: this.narrator.mode,
+      tts: {
+        ladder: this.ladder.names,
+        last: this.ladder.lastBackend,
+        strict: this.ladder.strict,
+        loaded: loadedEngines(),
+      },
+      speaker: this.speaker.info(),
+      arbiter: this.arbiter.state(),
+      sessions: this.tracker.snapshot(),
+      pending_permission: this.pending
+        ? { id: this.pending.id, repo: this.pending.repo, text: this.pending.text }
+        : null,
+      events_seen: this.eventsSeen,
+      hub_subscribers: this.hub.count,
+      history: [...this.history].reverse(),
+      latency: this.latency(),
+      pins: this.board.list(),
+      asking: this.board.asking()?.id ?? null,
+      mic: { phase: this.micPhase, device: this.micDevice, enabled: this.settings.mic },
+      heard: [...this.heardLog].reverse(),
+      home: HOME,
+    };
+  }
+
+  // -- http --------------------------------------------------------------------
+
+  private authed(req: http.IncomingMessage, url: URL): boolean {
+    const h = req.headers.authorization ?? "";
+    if (h === `Bearer ${this.token}`) return true;
+    if ((req.headers["x-kikoe-token"] ?? "") === this.token) return true;
+    if (url.searchParams.get("token") === this.token) return true;
+    return false;
+  }
+
+  private json(res: http.ServerResponse, code: number, body: unknown): void {
+    const s = JSON.stringify(body);
+    res.writeHead(code, {
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(s),
+    });
+    res.end(s);
+  }
+
+  private body(req: http.IncomingMessage): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      req.on("data", (c: Buffer) => {
+        size += c.length;
+        if (size > 8 * 1024 * 1024) {
+          req.destroy();
+          reject(new Error("body too large"));
+          return;
+        }
+        chunks.push(c);
+      });
+      req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      req.on("error", reject);
+    });
+  }
+
+  private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const route = `${req.method} ${url.pathname}`;
+    if (route === "GET /favicon.ico") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (route === "GET /health")
+      return this.json(res, 200, { ok: true, version: VERSION, pid: process.pid });
+    // The Room for a browser: the same renderer the app shows, with a shim
+    // in place of the preload. The token must be in the URL the user opened;
+    // the files themselves are public assets and carry no secret.
+    if (req.method === "GET" && url.pathname.startsWith("/fonts/") && this.roomDir) {
+      const name = url.pathname
+        .slice("/fonts/".length)
+        .split("/")
+        .filter((p) => p && p !== "..")
+        .join("/");
+      const file = path.join(this.roomDir, "..", "fonts", name);
+      if (!existsSync(file)) return this.json(res, 404, { error: "no such file" });
+      res.writeHead(200, {
+        "content-type": name.endsWith(".css") ? "text/css" : "font/woff2",
+        "cache-control": "max-age=86400",
+      });
+      res.end(readFileSync(file));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/room" && this.roomDir) {
+      // Without the trailing slash the page's relative assets resolve to the
+      // root and hit the token check. Send it to /room/ with the query intact.
+      res.writeHead(302, { location: `/room/${url.search}` });
+      res.end();
+      return;
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/room/") && this.roomDir) {
+      const rel = url.pathname.slice("/room/".length) || "index.html";
+      const safe = rel
+        .replace(/\\/g, "/")
+        .split("/")
+        .filter((p) => p && p !== "..")
+        .join("/");
+      const file = path.join(this.roomDir, safe === "" ? "index.html" : safe);
+      const fontsDir = path.join(this.roomDir, "..", "fonts");
+      const candidate = safe.startsWith("../fonts/")
+        ? path.join(fontsDir, safe.slice("../fonts/".length))
+        : file;
+      if (!existsSync(candidate) || statSync(candidate).isDirectory())
+        return this.json(res, 404, { error: "no such file" });
+      const ext = path.extname(candidate).toLowerCase();
+      const types: Record<string, string> = {
+        ".html": "text/html; charset=utf-8",
+        ".js": "text/javascript",
+        ".css": "text/css",
+        ".woff2": "font/woff2",
+        ".png": "image/png",
+        ".svg": "image/svg+xml",
+      };
+      res.writeHead(200, {
+        "content-type": types[ext] ?? "application/octet-stream",
+        "cache-control": "no-cache",
+      });
+      res.end(readFileSync(candidate));
+      return;
+    }
+    if (!this.authed(req, url)) return this.json(res, 401, { error: "unauthorized" });
+
+    const answerMatch = /^POST \/pins\/([A-Za-z0-9_-]+)\/answer$/.exec(route);
+    if (answerMatch) {
+      const b = JSON.parse((await this.body(req)) || "{}");
+      const ok = this.board.answer(answerMatch[1]!, String(b.answer ?? ""));
+      return this.json(res, ok ? 200 : 404, { ok });
+    }
+    const removeMatch = /^DELETE \/pins\/([A-Za-z0-9_-]+)$/.exec(route);
+    if (removeMatch) return this.json(res, 200, { ok: this.board.remove(removeMatch[1]!) });
+
+    switch (route) {
+      case "GET /state":
+        return this.json(res, 200, this.state());
+      case "GET /sessions":
+        return this.json(res, 200, {
+          sessions: this.tracker.snapshot(),
+          brief: this.tracker.brief(),
+        });
+      case "GET /stream":
+        this.hub.subscribe(res, { sessions: this.tracker.snapshot(), mode: this.narrator.mode });
+        return;
+      case "POST /hook/claude": {
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse((await this.body(req)) || "{}");
+        } catch {
+          return this.json(res, 400, { error: "bad json" });
+        }
+        const e = this.hook(payload);
+        // A permission request holds the hook open until a spoken answer,
+        // the timeout, or a newer question replaces it.
+        if (e && e.kind === ev.PERMISSION && payload.hook_event_name === "PermissionRequest") {
+          if (this.pending) this.answerPermission(false, this.pending.id);
+          const timeoutS = Math.max(3, Number(url.searchParams.get("timeout") ?? 20));
+          const p: PendingPermission = {
+            id: e.id,
+            session: e.session,
+            repo: e.repo,
+            text: this.tracker.sessions.get(e.session)?.pendingPermission ?? "",
+            res,
+            timer: setTimeout(() => this.answerPermission(false, e.id), timeoutS * 1000),
+          };
+          this.pending = p;
+          res.on("close", () => {
+            if (this.pending?.id === e.id) {
+              clearTimeout(p.timer);
+              this.pending = null;
+            }
+          });
+          return;
+        }
+        return this.json(res, 200, { ok: true, kind: e?.kind ?? null });
+      }
+      case "POST /event": {
+        try {
+          const e = ev.fromJSON(await this.body(req));
+          this.ingest(e);
+          return this.json(res, 200, { ok: true, id: e.id });
+        } catch (err) {
+          return this.json(res, 400, { error: (err as Error).message });
+        }
+      }
+      case "POST /speak": {
+        // JSON, or plain text: the agent's own line arrives as text/plain
+        // from curl with no quoting to get wrong.
+        const raw = await this.body(req);
+        const ctype = String(req.headers["content-type"] ?? "");
+        let text = "";
+        let priority = ev.SEV_MILESTONE;
+        if (ctype.includes("application/json")) {
+          const b = JSON.parse(raw || "{}");
+          text = String(b.text ?? "").trim();
+          priority = Number(b.priority ?? ev.SEV_MILESTONE);
+        } else {
+          text = raw.trim();
+        }
+        if (!text) return this.json(res, 400, { error: "no text" });
+        const source = String(req.headers["x-kikoe-source"] ?? "manual");
+        this.say(text.slice(0, 600), priority, source);
+        return this.json(res, 200, { ok: true });
+      }
+      case "POST /show": {
+        // The agent's whiteboard. Plain text with the details in headers, or
+        // JSON. A pin with X-Kikoe-Ask holds this request until answered.
+        const raw = await this.body(req);
+        const ctype = String(req.headers["content-type"] ?? "");
+        const h = (k: string) => String(req.headers[k] ?? "");
+        let init: Parameters<Board["add"]>[0];
+        if (ctype.includes("application/json")) {
+          const b = JSON.parse(raw || "{}");
+          init = {
+            kind: b.kind,
+            title: b.title,
+            body: String(b.body ?? ""),
+            repo: b.repo,
+            ttl_s: b.ttl_s,
+            ask: Array.isArray(b.ask) ? b.ask.map(String) : undefined,
+          };
+        } else {
+          init = {
+            kind: h("x-kikoe-kind") || "text",
+            title: h("x-kikoe-title"),
+            body: raw,
+            repo: h("x-kikoe-repo"),
+            ttl_s: h("x-kikoe-ttl") ? Number(h("x-kikoe-ttl")) : undefined,
+            ask: h("x-kikoe-ask") ? h("x-kikoe-ask").split(",") : undefined,
+          };
+        }
+        if (!init.body.trim() && init.kind !== "image")
+          return this.json(res, 400, { error: "nothing to show" });
+        if (!init.repo) init.repo = this.lastSpokeRepo;
+        if (init.kind === "diagram") {
+          // The agent writes boxes and arrows; the board gets vectors.
+          const svg = diagramToSvg(init.body);
+          if (!svg) return this.json(res, 400, { error: "empty diagram" });
+          init.kind = "svg";
+          init.body = svg;
+        }
+        const source = h("x-kikoe-source") || "manual";
+        const waitS = Math.max(
+          5,
+          Math.min(600, Number(h("x-kikoe-wait") || url.searchParams.get("wait") || 120)),
+        );
+        if (init.ask?.length) init.wait_s = waitS;
+        const pin = this.board.add(init);
+        log(
+          `pin ${pin.id} ${pin.kind} "${pin.title}" (${pin.repo || "no repo"})${pin.ask.length ? ` asking ${pin.ask.join("/")}` : ""} from ${source}`,
+        );
+        if (pin.ask.length) {
+          const answer = await this.board.wait(pin.id, waitS);
+          res.writeHead(200, { "content-type": "text/plain" });
+          res.end(answer);
+          return;
+        }
+        return this.json(res, 200, { ok: true, id: pin.id });
+      }
+      case "GET /pins":
+        return this.json(res, 200, {
+          pins: this.board.list(),
+          asking: this.board.asking()?.id ?? null,
+        });
+      case "POST /pins/clear":
+        return this.json(res, 200, { ok: true, cleared: this.board.clear() });
+      case "POST /answer": {
+        const b = JSON.parse((await this.body(req)) || "{}");
+        const to = this.answerWord(String(b.word ?? ""));
+        return this.json(res, to ? 200 : 409, { ok: Boolean(to), to });
+      }
+      case "POST /heard": {
+        const b = JSON.parse((await this.body(req)) || "{}");
+        return this.json(
+          res,
+          200,
+          this.hear(String(b.text ?? ""), { dur_s: b.dur_s, stt_ms: b.stt_ms }),
+        );
+      }
+      case "POST /mic": {
+        // Phases from the ear: hearing, transcribing, ready, level, dead.
+        const b = JSON.parse((await this.body(req)) || "{}");
+        const phase = String(b.phase ?? "");
+        if (phase === "ready") {
+          this.micPhase = "listening";
+          this.micDevice = String(b.text ?? "");
+          log(`mic ready on ${this.micDevice} at ${b.rate} Hz`);
+        } else if (phase === "dead") {
+          this.micPhase = "dead";
+          log(`mic died: ${b.text}`);
+        } else if (phase === "log") log(`mic: ${b.text}`);
+        else if (phase === "level") {
+          /* a heartbeat with the peak; doctor reads it */
+          this.micPhase = Number(b.peak) > 0.002 ? "listening" : "listening (silent input)";
+        }
+        if (["hearing", "idle", "transcribing", "dead"].includes(phase))
+          this.hub.publish("mic", { phase });
+        return this.json(res, 200, { ok: true });
+      }
+      case "POST /interrupt":
+        this.interrupt();
+        return this.json(res, 200, { ok: true });
+      case "POST /mode": {
+        const b = JSON.parse((await this.body(req)) || "{}");
+        this.setMode(String(b.mode ?? ""));
+        return this.json(res, 200, { ok: true, mode: this.narrator.mode });
+      }
+      case "POST /permission": {
+        const b = JSON.parse((await this.body(req)) || "{}");
+        const ok = this.answerPermission(Boolean(b.allow), b.id ? String(b.id) : undefined);
+        return this.json(res, ok ? 200 : 409, { ok, pending: this.pending?.id ?? null });
+      }
+      default:
+        return this.json(res, 404, { error: "no such route" });
+    }
+  }
+
+  /**
+   * Bind loopback only. Refuses if something already answers on the port:
+   * a foreign process is reported, never bound over.
+   */
+  async listen(port = this.settings.port): Promise<{ port: number }> {
+    const existing = await probe(port);
+    if (existing) {
+      throw new Error(
+        existing.kikoe
+          ? `an kikoe daemon is already running on port ${port} (pid ${existing.pid})`
+          : `something else is already listening on port ${port}`,
+      );
+    }
+    this.server = http.createServer((req, res) => {
+      this.handle(req, res).catch((e) => {
+        log(`handler error: ${(e as Error).message}`);
+        if (!res.headersSent) this.json(res, 500, { error: "internal" });
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      this.server!.once("error", reject);
+      this.server!.listen(port, "127.0.0.1", () => resolve());
+    });
+    this.timers.push(
+      setInterval(() => {
+        const lines = this.narrator.tick();
+        if (lines.length) this.arbiter.submitAll(lines);
+      }, 500),
+      setInterval(() => this.board.sweep(), 5000),
+      setInterval(() => {
+        const dropped = unloadIdleEngines();
+        if (dropped.length) log(`unloaded idle model: ${dropped.join(", ")}`);
+      }, 60_000),
+    );
+    log(`listening on 127.0.0.1:${port}, speaker ${this.speaker.info().device}`);
+    return { port };
+  }
+
+  async close(): Promise<void> {
+    for (const t of this.timers) clearInterval(t);
+    this.timers = [];
+    if (this.pending) this.answerPermission(false, this.pending.id);
+    this.board.clear();
+    this.arbiter.interrupt();
+    await new Promise<void>((resolve) => {
+      if (!this.server) return resolve();
+      this.server.close(() => resolve());
+      this.server.closeAllConnections?.();
+    });
+    this.ladder.close();
+    this.speaker.close();
+  }
+}
+
+export const VERSION = "0.1.0";
+
+/** Does a transcript echo a line we just spoke? Loose on purpose: STT paraphrases. */
+export function similar(heard: string, spoken: string): boolean {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]+/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
+  const a = new Set(norm(heard));
+  const b = norm(spoken);
+  if (!a.size || !b.length) return false;
+  const hits = b.filter((w) => a.has(w)).length;
+  return hits / Math.max(3, a.size) > 0.6;
+}
+
+function safeSpeaker(): Speaker {
+  try {
+    return new RtAudioSpeaker();
+  } catch (e) {
+    log(`no audio device: ${(e as Error).message}; playing nothing`);
+    return new NullSpeaker();
+  }
+}
+
+function displayArgs(e: ev.AgentEvent): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of ["command", "file_path", "path", "pattern", "url", "description"]) {
+    const v = e.args?.[k];
+    if (v) out[k] = String(v).slice(0, 200);
+  }
+  return out;
+}
+
+/** Is anything answering on the port? Returns what it is, or null. */
+export function probe(port: number): Promise<{ kikoe: boolean; pid?: number } | null> {
+  return new Promise((resolve) => {
+    const req = http.get({ host: "127.0.0.1", port, path: "/health", timeout: 800 }, (res) => {
+      let data = "";
+      res.on("data", (c) => {
+        data += c;
+      });
+      res.on("end", () => {
+        try {
+          const j = JSON.parse(data);
+          resolve({ kikoe: Boolean(j.ok && j.version), pid: j.pid });
+        } catch {
+          resolve({ kikoe: false });
+        }
+      });
+    });
+    req.on("timeout", () => {
+      req.destroy();
+      resolve({ kikoe: false });
+    });
+    req.on("error", () => resolve(null));
+  });
+}

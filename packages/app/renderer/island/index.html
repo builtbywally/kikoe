@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Kikoe</title>
+    <link rel="stylesheet" href="island.css" />
+  </head>
+  <body>
+    <!-- A display, with one control: the gear. Everything else on the pill is
+         read-only and the window passes clicks straight through — see
+         island.js for why.
+
+         The pill is always one row: it is glanced at. The panel below it is
+         where detail goes, and it only exists when there is something worth
+         reading — a plan, a command, the shape of an edit, or the audio
+         settings. -->
+    <div id="wrap" class="wrap">
+      <div id="island" class="island" data-state="disconnected">
+        <!-- The mark: the orb, with the six-ray burst inside. Below about 24px
+             the full twelve rays turn to mush, so the small variant drops every
+             other ray. See brand/BRAND.md. -->
+        <span class="orb-mini" id="orb-mini" aria-hidden="true"><svg viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="#f5f1ec" stroke-width="6.5" stroke-linecap="round"><path d="M32 23L32 5"/><path d="M39.79 27.5L50.19 21.5"/><path d="M39.79 36.5L50.19 42.5"/><path d="M32 41L32 59"/><path d="M24.21 36.5L13.81 42.5"/><path d="M24.21 27.5L13.81 21.5"/></g></svg></span>
+        <span class="text" id="text"></span>
+
+        <span class="state" id="state">connecting</span>
+
+        <!-- The one thing on this window that accepts a mouse event. It is a
+             button rather than a voice command because picking a speaker means
+             hearing the difference between two of them. -->
+        <button class="gear" id="gear" type="button" title="settings"
+                aria-label="settings">
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+            <path fill="currentColor"
+              d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zm0 5.7a2.1 2.1 0 1 1 0-4.2 2.1 2.1 0 0 1 0 4.2z"/>
+            <path fill="currentColor"
+              d="M20.3 13.2a8.6 8.6 0 0 0 0-2.4l1.8-1.4-1.8-3.1-2.2.7a8.4 8.4 0 0 0-2-1.2L15.7 3h-3.6l-.4 2.3v.5a8.4 8.4 0 0 0-2 1.2l-2.2-.7-1.8 3.1 1.8 1.4a8.6 8.6 0 0 0 0 2.4l-1.8 1.4 1.8 3.1 2.2-.7a8.4 8.4 0 0 0 2 1.2l.4 2.3h3.6l.4-2.3a8.4 8.4 0 0 0 2-1.2l2.2.7 1.8-3.1zm-1.9 3.2-1.6-.5-.7.6a6.9 6.9 0 0 1-1.6 1l-.8.4-.3 1.6h-.8l-.3-1.6-.8-.4a6.9 6.9 0 0 1-1.6-1l-.7-.6-1.6.5-.4-.7 1.3-1 .1-.9a7 7 0 0 1 0-1.9l-.1-.9-1.3-1 .4-.7 1.6.5.7-.6a6.9 6.9 0 0 1 1.6-1l.8-.4.3-1.6h.8l.3 1.6.8.4a6.9 6.9 0 0 1 1.6 1l.7.6 1.6-.5.4.7-1.3 1 .1.9a7 7 0 0 1 0 1.9l-.1.9 1.3 1z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="panel" class="panel" hidden>
+        <div class="panel-head"><span id="panel-title"></span></div>
+        <pre id="panel-body" class="panel-body"></pre>
+      </div>
+
+      <!-- Audio settings. Every row can be tested before it is chosen, because
+           the only reliable way to know which of three identically-named
+           endpoints is the one in your ears is to hear it. -->
+      <div id="settings" class="panel settings" hidden>
+        <div class="panel-head">
+          <span>audio</span>
+          <button class="close" id="settings-close" type="button"
+                  aria-label="close">×</button>
+        </div>
+        <div class="dev-group">
+          <div class="dev-label">output — what you hear</div>
+          <div class="dev-list" id="outputs"></div>
+        </div>
+        <div class="dev-group">
+          <div class="dev-label">input — what it hears</div>
+          <div class="dev-list" id="inputs"></div>
+        </div>
+        <div class="dev-note" id="settings-note"></div>
+      </div>
+    </div>
+
+    <script src="island.js"></script>
+  </body>
+</html>

@@ -1,0 +1,200 @@
+/**
+ * The ear. Runs as its own process (Electron's utility process), because
+ * transcription blocks for a few hundred milliseconds and the main process
+ * owns the windows and the speaker.
+ *
+ *   microphone (audify, 16 kHz mono) → Silero VAD → a speech segment →
+ *   Whisper (sherpa-onnx, CPU) → text → POST /heard to the daemon
+ *
+ * Nothing is recorded: the VAD holds a few seconds in memory and a segment
+ * is dropped the moment it has been transcribed. Phases (hearing,
+ * transcribing) go to the daemon too, so the island and the Room can show
+ * what the ear is doing.
+ */
+
+import { existsSync } from "node:fs";
+import http from "node:http";
+import path from "node:path";
+
+const PORT = Number(process.env.KIKOE_PORT || 4570);
+const TOKEN = process.env.KIKOE_TOKEN || "";
+const MODELS = process.env.KIKOE_MODELS || "";
+const DEVICE = process.env.KIKOE_MIC_DEVICE || "";
+const RATE = 16000;
+const FRAME = 320; // 20 ms
+
+function post(route: string, body: unknown): void {
+  const data = Buffer.from(JSON.stringify(body));
+  const req = http.request(
+    {
+      host: "127.0.0.1",
+      port: PORT,
+      path: route,
+      method: "POST",
+      timeout: 3000,
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        "content-type": "application/json",
+        "content-length": data.length,
+      },
+    },
+    (res) => res.resume(),
+  );
+  req.on("error", () => {});
+  req.on("timeout", () => req.destroy());
+  req.end(data);
+}
+
+function say(msg: string): void {
+  process.stderr.write(`[mic] ${msg}\n`);
+  post("/mic", { phase: "log", text: msg });
+}
+
+function main(): void {
+  const sherpa = require("sherpa-onnx-node");
+  const { RtAudio, RtAudioFormat } = require("audify");
+
+  const vadModel = path.join(MODELS, "silero_vad.onnx");
+  const whisperDir = path.join(MODELS, "sherpa-onnx-whisper-base.en");
+  const encoder = path.join(whisperDir, "base.en-encoder.int8.onnx");
+  const decoder = path.join(whisperDir, "base.en-decoder.int8.onnx");
+  const tokens = path.join(whisperDir, "base.en-tokens.txt");
+  for (const f of [vadModel, encoder, decoder, tokens]) {
+    if (!existsSync(f)) {
+      say(`model missing: ${f}`);
+      post("/mic", { phase: "dead", text: `model missing: ${path.basename(f)}` });
+      process.exit(2);
+    }
+  }
+
+  const vad = new sherpa.Vad(
+    {
+      sileroVad: {
+        model: vadModel,
+        threshold: 0.5,
+        minSilenceDuration: 0.55,
+        minSpeechDuration: 0.25,
+        maxSpeechDuration: 15,
+        windowSize: 512,
+      },
+      sampleRate: RATE,
+      numThreads: 1,
+      debug: 0,
+    },
+    30,
+  );
+  const t0 = Date.now();
+  const recognizer = new sherpa.OfflineRecognizer({
+    featConfig: { sampleRate: RATE, featureDim: 80 },
+    modelConfig: {
+      whisper: { encoder, decoder, language: "en", task: "transcribe", tailPaddings: -1 },
+      tokens,
+      numThreads: 2,
+      provider: "cpu",
+      debug: 0,
+    },
+  });
+  say(`whisper loaded in ${Date.now() - t0} ms`);
+
+  const rt = new RtAudio();
+  const devices: any[] = rt.getDevices();
+  let id = rt.getDefaultInputDevice();
+  if (DEVICE) {
+    const hit = devices.find(
+      (d) => d.inputChannels > 0 && String(d.name).toLowerCase().includes(DEVICE.toLowerCase()),
+    );
+    if (hit) id = hit.id;
+  }
+  const dev = devices.find((d) => d.id === id);
+  const FLOAT32 = RtAudioFormat?.RTAUDIO_FLOAT32 || 0x10;
+
+  // Prefer 16 kHz at the device; fall back to 48 kHz and decimate by three.
+  let rate = RATE;
+  let decimate = 1;
+  const open = (r: number, frames: number) =>
+    rt.openStream(
+      null,
+      { deviceId: id, nChannels: 1, firstChannel: 0 },
+      FLOAT32,
+      r,
+      frames,
+      "kikoe-mic",
+      onInput,
+      null,
+    );
+  try {
+    open(RATE, FRAME);
+  } catch (e) {
+    say(`16 kHz refused (${(e as Error).message}); opening at 48 kHz`);
+    rate = 48000;
+    decimate = 3;
+    open(48000, FRAME * 3);
+  }
+
+  let hearing = false;
+  let lastPhaseAt = 0;
+  let peak = 0;
+  let frames = 0;
+
+  function onInput(buf: Buffer): void {
+    let samples = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+    if (decimate > 1) {
+      const out = new Float32Array(Math.floor(samples.length / decimate));
+      for (let i = 0; i < out.length; i++) {
+        const j = i * decimate;
+        out[i] = ((samples[j] ?? 0) + (samples[j + 1] ?? 0) + (samples[j + 2] ?? 0)) / 3;
+      }
+      samples = out;
+    }
+    for (const v of samples) if (v > peak) peak = v;
+    frames++;
+    vad.acceptWaveform(samples);
+    const detected: boolean = vad.isDetected();
+    if (detected !== hearing) {
+      hearing = detected;
+      post("/mic", { phase: hearing ? "hearing" : "idle" });
+    }
+    if (Date.now() - lastPhaseAt > 10_000) {
+      lastPhaseAt = Date.now();
+      post("/mic", { phase: "level", peak: Number(peak.toFixed(3)), frames });
+      peak = 0;
+    }
+    while (!vad.isEmpty()) {
+      const seg = vad.front();
+      vad.pop();
+      transcribe(seg.samples, seg.samples.length / RATE);
+    }
+  }
+
+  function transcribe(samples: Float32Array, durS: number): void {
+    post("/mic", { phase: "transcribing" });
+    const t = Date.now();
+    const stream = recognizer.createStream();
+    stream.acceptWaveform({ samples, sampleRate: RATE });
+    recognizer.decode(stream);
+    const text = String(recognizer.getResult(stream).text ?? "").trim();
+    post("/heard", { text, dur_s: Number(durS.toFixed(2)), stt_ms: Date.now() - t });
+  }
+
+  rt.start();
+  post("/mic", { phase: "ready", text: String(dev?.name ?? id), rate });
+  say(`listening on ${dev?.name ?? id} at ${rate} Hz`);
+
+  process.on("SIGTERM", () => {
+    try {
+      rt.stop();
+      rt.closeStream();
+    } catch {
+      /* closing */
+    }
+    process.exit(0);
+  });
+}
+
+try {
+  main();
+} catch (e) {
+  process.stderr.write(`[mic] failed: ${(e as Error).stack ?? e}\n`);
+  post("/mic", { phase: "dead", text: (e as Error).message });
+  setTimeout(() => process.exit(1), 200);
+}

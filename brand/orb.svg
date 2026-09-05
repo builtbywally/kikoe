@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Kikoe">
+  <title>Kikoe</title>
+  <defs>
+    <radialGradient id="sphere" cx="36%" cy="30%" r="75%">
+      <stop offset="0" stop-color="#F5F1EC"/>
+      <stop offset="0.16" stop-color="#EDB893"/>
+      <stop offset="0.44" stop-color="#D2683F"/>
+      <stop offset="0.72" stop-color="#7A3A20"/>
+      <stop offset="0.92" stop-color="#2A1710"/>
+      <stop offset="1" stop-color="#14100E"/>
+    </radialGradient>
+  </defs>
+  <circle cx="64" cy="64" r="56" fill="url(#sphere)"/>
+  <g transform="translate(32 32)" fill="none" stroke="#F5F1EC" stroke-width="4.5" stroke-linecap="round">
+    <path d="M32 23L32 5"/><path d="M36.5 24.21L41.5 15.55"/><path d="M39.79 27.5L52.78 20"/><path d="M41 32L48 32"/><path d="M39.79 36.5L51.05 43"/><path d="M36.5 39.79L39.5 44.99"/><path d="M32 41L32 59"/><path d="M27.5 39.79L24.5 44.99"/><path d="M24.21 36.5L12.95 43"/><path d="M23 32L16 32"/><path d="M24.21 27.5L11.22 20"/><path d="M27.5 24.21L22.5 15.55"/>
+  </g>
+</svg>

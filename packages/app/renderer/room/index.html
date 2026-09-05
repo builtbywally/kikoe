@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; frame-src 'self' data: about:; connect-src http://127.0.0.1:*;" />
+  <title>Kikoe</title>
+  <link rel="stylesheet" href="../fonts/fonts.css" />
+  <link rel="stylesheet" href="room.css" />
+</head>
+<body data-view="room" data-orb="idle">
+  <div class="titlebar">
+    <span class="tb-orb"><svg viewBox="0 0 64 64" width="14" height="14" aria-hidden="true"><g fill="none" stroke="#f5f1ec" stroke-width="6.5" stroke-linecap="round"><path d="M32 23L32 5"/><path d="M39.79 27.5L50.19 21.5"/><path d="M39.79 36.5L50.19 42.5"/><path d="M32 41L32 59"/><path d="M24.21 36.5L13.81 42.5"/><path d="M24.21 27.5L13.81 21.5"/></g></svg></span>
+    <span class="tb-title">Kikoe</span>
+    <span class="tb-status" id="tb-status"></span>
+    <div class="tb-actions">
+      <button id="btn-board" class="quiet" title="C">control room</button>
+      <button id="btn-clear" class="quiet">clear the board</button>
+      <button id="btn-settings" class="quiet">settings</button>
+    </div>
+  </div>
+  <div id="history" class="history"></div>
+
+  <div id="line" class="line">
+    <div id="line-repo" class="line-repo"></div>
+    <div id="line-text" class="line-text">Nothing to say yet.</div>
+    <div id="line-hint" class="line-hint"></div>
+  </div>
+
+  <div id="orb-wrap" class="orb-wrap">
+    <div id="orb" class="orb idle"><svg class="orb-mark" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="#f5f1ec" stroke-width="4.5" stroke-linecap="round"><path d="M32 23L32 5"/><path d="M36.5 24.21L41.5 15.55"/><path d="M39.79 27.5L52.78 20"/><path d="M41 32L48 32"/><path d="M39.79 36.5L51.05 43"/><path d="M36.5 39.79L39.5 44.99"/><path d="M32 41L32 59"/><path d="M27.5 39.79L24.5 44.99"/><path d="M24.21 36.5L12.95 43"/><path d="M23 32L16 32"/><path d="M24.21 27.5L11.22 20"/><path d="M27.5 24.21L22.5 15.55"/></g></svg></div>
+    <div id="orb-label" class="orb-label">quiet</div>
+  </div>
+
+  <div id="board" class="board"></div>
+
+  <div id="agents" class="agents"></div>
+
+  <div class="corner left" id="corner-left"></div>
+
+  <div id="control" class="control" hidden>
+    <div class="control-head"><span>control room</span><button id="btn-room" class="quiet">back to the room</button></div>
+    <div id="needs" class="needs" hidden>
+      <div class="needs-k" id="needs-k"></div>
+      <div class="needs-q" id="needs-q"></div>
+      <div class="needs-a" id="needs-a"></div>
+    </div>
+    <div id="lanes" class="lanes"></div>
+    <div class="said two"><div><div class="said-title">what it said</div><div id="said" class="said-list"></div></div><div><div class="said-title">what you said</div><div id="you-said" class="said-list"></div></div></div>
+  </div>
+
+  <script src="room-web.js"></script>
+  <script src="board.js"></script>
+  <script src="room.js"></script>
+</body>
+</html>

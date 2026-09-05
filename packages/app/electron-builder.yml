@@ -1,0 +1,48 @@
+appId: app.kikoe.desktop
+productName: kikoe
+copyright: Copyright © 2026 builtbywally
+directories:
+  output: ../../out/app
+  buildResources: build
+files:
+  - dist/**
+  - renderer/**
+  - package.json
+  - "!**/*.map"
+extraResources:
+  - from: models
+    to: models
+  - from: build
+    to: build
+    filter: ["icon.png", "trayTemplate.png"]
+asarUnpack:
+  - "**/node_modules/audify/**"
+  - "**/node_modules/sherpa-onnx-node/**"
+  - "**/node_modules/sherpa-onnx-*/**"
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: kikoe-${version}-win-${arch}.${ext}
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  deleteAppDataOnUninstall: false
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: kikoe listens for "hey Claude" only when you turn the microphone on in settings.
+    LSUIElement: true
+  artifactName: kikoe-${version}-mac-${arch}.${ext}
+linux:
+  target: [AppImage]
+  category: Development
+  artifactName: kikoe-${version}-linux-${arch}.${ext}
