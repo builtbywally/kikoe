@@ -41,6 +41,23 @@ describe("the ear, through the daemon", () => {
     await d.close();
   });
 
+  it("keeps nothing of what is not addressed to it", async () => {
+    const d = quiet();
+    const frames: Record<string, unknown>[] = [];
+    d.hub.listen((f) => frames.push(f));
+    d.hear("we should move the meeting to thursday");
+    const row = d.heardLog[0];
+    expect(row?.kind).toBe("overheard");
+    expect(row?.text).toBe("");
+    expect(row?.words).toBe(7);
+    expect(JSON.stringify(frames)).not.toContain("thursday");
+    expect(JSON.stringify(d.state())).not.toContain("thursday");
+    // and what is addressed is kept, so the list stays useful
+    d.hear("kikoe thanks");
+    expect(d.heardLog[1]?.text).toBe("kikoe thanks");
+    await d.close();
+  });
+
   it("a bare yes releases an asked pin, and only while it is asking", async () => {
     const d = quiet();
     expect(d.hear("yes").kind).toBe("overheard");

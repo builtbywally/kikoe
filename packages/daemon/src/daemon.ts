@@ -172,6 +172,8 @@ export class Daemon {
     intent: string;
     said: string;
     stt_ms: number | null;
+    /** word count; the only thing kept of an utterance that was not for us */
+    words: number;
   }> = [];
   private readonly roomDir: string;
   private latencies: number[] = [];
@@ -366,34 +368,44 @@ export class Daemon {
     const recently =
       this.lastSpoken !== null &&
       (this.arbiter.pending() || Date.now() - this.lastSpoken.at < 4000);
+    const words = clean.split(/\s+/).filter(Boolean).length;
     if (recently && this.lastSpoken && similar(clean, this.lastSpoken.text)) {
-      this.hub.publish("mic", { phase: "overheard", text: clean, why: "self" });
+      this.hub.publish("mic", { phase: "overheard", why: "self" });
       return { kind: "self", intent: "" };
     }
     const awaiting = this.pending !== null || this.board.asking() !== undefined;
     const offered = this.board.asking()?.ask ?? [];
     const aliases = [...new Set([this.settings.wake_name, ...DEFAULT_ALIASES])];
     const d = route(clean, { aliases, awaitingAnswer: awaiting, offered });
-    log(
-      `heard "${clean}" -> ${d.kind}${d.intent ? ":" + d.intent : ""}${d.arg ? " " + d.arg : ""} (${meta.dur_s ?? "?"}s, stt ${meta.stt_ms ?? "?"} ms)`,
-    );
+    // What was not addressed to us is dropped here, whole. Not the log file,
+    // not the heard list, not the stream: a word count is all that survives,
+    // because an open mic in a room is only acceptable on those terms.
+    const addressed = d.kind !== "overheard" && d.kind !== "empty";
+    const timing = `${meta.dur_s ?? "?"}s, stt ${meta.stt_ms ?? "?"} ms`;
+    if (addressed)
+      log(
+        `heard "${clean}" -> ${d.kind}${d.intent ? ":" + d.intent : ""}${d.arg ? " " + d.arg : ""} (${timing})`,
+      );
+    else log(`heard: not for me, ${words} words, dropped (${timing})`);
 
     const record = (kind: string, intent: string, said = "") => {
+      const text = addressed ? clean : "";
       this.heardLog.push({
         ts: Date.now() / 1000,
-        text: clean,
+        text,
         kind,
         intent,
         said,
         stt_ms: meta.stt_ms ?? null,
+        words,
       });
       if (this.heardLog.length > 30) this.heardLog.shift();
-      this.hub.publish("heard", { text: clean, kind, intent, said });
+      this.hub.publish("heard", { text, kind, intent, said, words });
     };
     if (d.kind === "empty") return { kind: d.kind, intent: "" };
     if (d.kind === "overheard") {
       record("overheard", "");
-      this.hub.publish("mic", { phase: "overheard", text: clean });
+      this.hub.publish("mic", { phase: "overheard", words });
       return { kind: d.kind, intent: "" };
     }
     this.hub.publish("mic", { phase: "addressed", text: clean });

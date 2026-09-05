@@ -567,7 +567,7 @@ function renderControl(state) {
       minute: "2-digit",
     });
     const m = document.createElement("span");
-    m.textContent = `“${h.text}”`;
+    m.textContent = h.text ? `“${h.text}”` : `not for me · ${h.words ?? "?"} words · dropped`;
     const k = document.createElement("span");
     k.className = "k";
     k.dataset.kind = h.kind;
