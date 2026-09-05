@@ -51,7 +51,7 @@ jobs:
             app.exit(Object.values(out).every((v) => v === "ok") ? 0 : 1);
           });
           JS
-          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a ./node_modules/.bin/electron ./eltest.cjs; else ./node_modules/.bin/electron ./eltest.cjs; fi
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a ./node_modules/.bin/electron --no-sandbox ./eltest.cjs; else ./node_modules/.bin/electron ./eltest.cjs; fi
       - name: Build the installer
         run: pnpm --filter @kikoe/app dist
       - name: Smoke the unpacked build
