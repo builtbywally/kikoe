@@ -125,6 +125,8 @@ function cap(s) {
 
 // --- the orb ------------------------------------------------------------------
 
+let micWatchdog = null;
+let overheardUntil = 0;
 function setOrb(state, label) {
   el.orb.className = `orb ${state}`;
   el.orbLabel.textContent = label;
@@ -687,7 +689,15 @@ const handlers = {
   },
   mic(f) {
     if (f.phase === "hearing") return setOrb("listening", "hearing you");
-    if (f.phase === "transcribing") return setOrb("listening", "one moment");
+    if (f.phase === "transcribing") {
+      setOrb("listening", "one moment");
+      // if nothing follows, the transcript was lost somewhere; do not sit here
+      clearTimeout(micWatchdog);
+      micWatchdog = setTimeout(() => {
+        if (el.orbLabel.textContent === "one moment") setOrb("idle", "listening");
+      }, 6000);
+      return;
+    }
     if (f.phase === "addressed") {
       setOrb("listening", "heard you");
       el.lineRepo.textContent = "you said";
@@ -695,9 +705,17 @@ const handlers = {
       el.lineHint.textContent = "";
       return;
     }
-    if (f.phase === "overheard") return setOrb("idle", "not for me");
+    if (f.phase === "overheard") {
+      setOrb("idle", "not for me");
+      overheardUntil = Date.now() + 2500;
+      setTimeout(() => {
+        if (el.orbLabel.textContent === "not for me" && !speaking) setOrb("idle", "listening");
+      }, 2600);
+      return;
+    }
     if (f.phase === "thinking") return setOrb("speaking", "thinking");
     if (f.phase === "idle" && !speaking) {
+      if (Date.now() < overheardUntil) return; // let "not for me" be read
       if (pendingPermission) return showPermission();
       if (asking) return showAsking();
       setOrb("idle", "listening");

@@ -26,26 +26,41 @@ const UNLOAD_MS = 10 * 60 * 1000;
 const RATE = 16000;
 const FRAME = 320; // 20 ms
 
+let chain: Promise<void> = Promise.resolve();
+/** Posts are serialised: each leaves after the last was answered, so the
+ *  daemon sees phases in the order they happened. */
 function post(route: string, body: unknown): void {
-  const data = Buffer.from(JSON.stringify(body));
-  const req = http.request(
-    {
-      host: "127.0.0.1",
-      port: PORT,
-      path: route,
-      method: "POST",
-      timeout: 3000,
-      headers: {
-        authorization: `Bearer ${TOKEN}`,
-        "content-type": "application/json",
-        "content-length": data.length,
+  chain = chain.then(() => send(route, body)).catch(() => {});
+}
+function send(route: string, body: unknown): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const data = Buffer.from(JSON.stringify(body));
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port: PORT,
+        path: route,
+        method: "POST",
+        timeout: 3000,
+        headers: {
+          authorization: `Bearer ${TOKEN}`,
+          "content-type": "application/json",
+          "content-length": data.length,
+        },
       },
-    },
-    (res) => res.resume(),
-  );
-  req.on("error", () => {});
-  req.on("timeout", () => req.destroy());
-  req.end(data);
+      (res) => {
+        res.resume();
+        res.on("end", resolve);
+        res.on("error", () => resolve());
+      },
+    );
+    req.on("error", () => resolve());
+    req.on("timeout", () => {
+      req.destroy();
+      resolve();
+    });
+    req.end(data);
+  });
 }
 
 function say(msg: string): void {

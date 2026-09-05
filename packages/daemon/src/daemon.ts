@@ -416,6 +416,7 @@ export class Daemon {
     if (d.kind === "overheard") {
       record("overheard", "");
       this.hub.publish("mic", { phase: "overheard", words });
+      this.hub.publish("mic", { phase: "idle" });
       return { kind: d.kind, intent: "" };
     }
     this.hub.publish("mic", { phase: "addressed", text: clean });
