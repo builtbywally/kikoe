@@ -739,11 +739,24 @@ setInterval(() => {
 $("btn-board").addEventListener("click", showControl);
 $("btn-room").addEventListener("click", showRoom);
 $("btn-clear").addEventListener("click", () => window.room.clearBoard());
-$("btn-settings").addEventListener("click", () => window.room.openSettings());
+$("btn-settings").addEventListener("click", () => window.settingsPanel.open());
+if (window.room.onView)
+  window.room.onView((v) => {
+    if (v.view === "settings") window.settingsPanel.open(v.page);
+    else if (v.view === "control") showControl();
+    else {
+      window.settingsPanel.close();
+      showRoom();
+    }
+  });
 document.addEventListener("keydown", (e) => {
+  if (e.target && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (e.key === "c" || e.key === "C")
     el.body.dataset.view === "control" ? showRoom() : showControl();
-  if (e.key === "Escape") showRoom();
+  if (e.key === "Escape") {
+    if (el.body.dataset.view === "settings") window.settingsPanel.close();
+    else showRoom();
+  }
   if (e.key === "y" || e.key === "Y") window.room.answerWord("yes");
   if (e.key === "n" || e.key === "N") window.room.answerWord("no");
 });

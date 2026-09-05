@@ -11,6 +11,8 @@
   if (window.room) return;
   const params = new URLSearchParams(location.search);
   const token = params.get("token") || "";
+  const readOnly = token.startsWith("v-");
+  if (readOnly) document.documentElement.dataset.readonly = "true";
   const base = location.origin;
   const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
   const post = (path, body) =>

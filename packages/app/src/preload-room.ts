@@ -55,4 +55,28 @@ contextBridge.exposeInMainWorld("room", {
   clearBoard: () => ipcRenderer.invoke("room:clearBoard"),
   interrupt: () => ipcRenderer.invoke("settings:interrupt"),
   openSettings: (page?: string) => ipcRenderer.send("island:openSettings", page),
+  onView: (fn: (v: { view: string; page?: string }) => void) =>
+    ipcRenderer.on("room:view", (_e, v: { view: string; page?: string }) => fn(v)),
+});
+
+// Settings, inside the same window. Named calls only.
+contextBridge.exposeInMainWorld("kikoe", {
+  get: () => ipcRenderer.invoke("settings:get"),
+  save: (patch: Record<string, unknown>) => ipcRenderer.invoke("settings:save", patch),
+  say: (text: string, label?: string) => ipcRenderer.invoke("settings:say", text, label),
+  previewHooks: (profile: string) => ipcRenderer.invoke("settings:previewHooks", profile),
+  installHooks: (profile: string) => ipcRenderer.invoke("settings:installHooks", profile),
+  uninstallHooks: () => ipcRenderer.invoke("settings:uninstallHooks"),
+  migrate: () => ipcRenderer.invoke("settings:migrate"),
+  demo: () => ipcRenderer.invoke("settings:demo"),
+  elevenVoices: () => ipcRenderer.invoke("settings:elevenVoices"),
+  fetchKokoro: () => ipcRenderer.invoke("settings:fetchKokoro"),
+  removeKokoro: () => ipcRenderer.invoke("settings:removeKokoro"),
+  inputDevices: () => ipcRenderer.invoke("settings:inputDevices"),
+  copyLink: (kind: string) => ipcRenderer.invoke("settings:copyLink", kind),
+  openHome: () => ipcRenderer.invoke("settings:openHome"),
+  openLogs: () => ipcRenderer.invoke("settings:openLogs"),
+  pickClaudeSettings: () => ipcRenderer.invoke("settings:pickClaudeSettings"),
+  onProgress: (fn: (p: unknown) => void) =>
+    ipcRenderer.on("settings:progress", (_e, p: unknown) => fn(p)),
 });

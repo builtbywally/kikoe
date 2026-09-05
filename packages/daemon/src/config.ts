@@ -45,6 +45,8 @@ export interface Settings {
   wake_name: string;
   /** system | dark | light */
   theme: string;
+  /** tiny | base: the Whisper English model the ear uses */
+  stt_model: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -65,6 +67,7 @@ export const DEFAULTS: Settings = {
   mic_device: "",
   wake_name: "kikoe",
   theme: "system",
+  stt_model: "tiny",
 };
 
 const FILE = () => path.join(HOME, "config.local.json");
@@ -119,6 +122,24 @@ export function daemonToken(): string {
   }
   const t = randomBytes(24).toString("hex");
   writeFileSync(file, t + "\n", { encoding: "utf8", mode: 0o600 });
+  return t;
+}
+
+/**
+ * The viewer token: reads the stream, the state and the board, and nothing
+ * else. For a second screen that must never be able to approve a tool call.
+ */
+export function viewerToken(): string {
+  ensureHome();
+  const file = path.join(HOME, "viewer_token.txt");
+  try {
+    const t = readFileSync(file, "utf8").trim();
+    if (t) return t;
+  } catch {
+    /* create */
+  }
+  const t = `v-${randomBytes(18).toString("hex")}`;
+  writeFileSync(file, `${t}\n`, { encoding: "utf8", mode: 0o600 });
   return t;
 }
 

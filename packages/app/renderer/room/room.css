@@ -983,3 +983,35 @@ body.paused .orb-mark {
 .pin[data-kind="svg"] {
   max-width: 560px;
 }
+
+/* a viewer link: watch, never act */
+html[data-readonly="true"] .pin-foot,
+html[data-readonly="true"] .tb-actions,
+html[data-readonly="true"] .needs-a {
+  display: none;
+}
+
+/* the spoken line reads over anything: a veil rises from the bottom, like a
+   subtitle over a picture, and dims whatever card drifted under it */
+body[data-has-pins="true"] .line::before {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 300px;
+  background: linear-gradient(
+    to top,
+    var(--ink) 0%,
+    rgba(var(--bg-rgb), 0.92) 45%,
+    rgba(var(--bg-rgb), 0) 100%
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+body[data-has-pins="true"] .line {
+  z-index: 3;
+}
+.line-veil {
+  display: none;
+}

@@ -20,6 +20,9 @@ const PORT = Number(process.env.KIKOE_PORT || 4570);
 const TOKEN = process.env.KIKOE_TOKEN || "";
 const MODELS = process.env.KIKOE_MODELS || "";
 const DEVICE = process.env.KIKOE_MIC_DEVICE || "";
+const MODEL = process.env.KIKOE_STT_MODEL || "tiny";
+/** drop the recognizer after this long without speech; the VAD stays */
+const UNLOAD_MS = 10 * 60 * 1000;
 const RATE = 16000;
 const FRAME = 320; // 20 ms
 
@@ -55,10 +58,11 @@ function main(): void {
   const { RtAudio, RtAudioFormat } = require("audify");
 
   const vadModel = path.join(MODELS, "silero_vad.onnx");
-  const whisperDir = path.join(MODELS, "sherpa-onnx-whisper-base.en");
-  const encoder = path.join(whisperDir, "base.en-encoder.int8.onnx");
-  const decoder = path.join(whisperDir, "base.en-decoder.int8.onnx");
-  const tokens = path.join(whisperDir, "base.en-tokens.txt");
+  const size = MODEL === "base" ? "base" : "tiny";
+  const whisperDir = path.join(MODELS, `sherpa-onnx-whisper-${size}.en`);
+  const encoder = path.join(whisperDir, `${size}.en-encoder.int8.onnx`);
+  const decoder = path.join(whisperDir, `${size}.en-decoder.int8.onnx`);
+  const tokens = path.join(whisperDir, `${size}.en-tokens.txt`);
   for (const f of [vadModel, encoder, decoder, tokens]) {
     if (!existsSync(f)) {
       say(`model missing: ${f}`);
@@ -83,18 +87,34 @@ function main(): void {
     },
     30,
   );
-  const t0 = Date.now();
-  const recognizer = new sherpa.OfflineRecognizer({
-    featConfig: { sampleRate: RATE, featureDim: 80 },
-    modelConfig: {
-      whisper: { encoder, decoder, language: "en", task: "transcribe", tailPaddings: -1 },
-      tokens,
-      numThreads: 2,
-      provider: "cpu",
-      debug: 0,
-    },
-  });
-  say(`whisper loaded in ${Date.now() - t0} ms`);
+  let recognizer: any = null;
+  let lastSpeechAt = Date.now();
+  function loadRecognizer(): any {
+    if (recognizer) return recognizer;
+    const t0 = Date.now();
+    recognizer = new sherpa.OfflineRecognizer({
+      featConfig: { sampleRate: RATE, featureDim: 80 },
+      modelConfig: {
+        whisper: { encoder, decoder, language: "en", task: "transcribe", tailPaddings: -1 },
+        tokens,
+        numThreads: 2,
+        provider: "cpu",
+        debug: 0,
+      },
+    });
+    say(`whisper ${size} loaded in ${Date.now() - t0} ms`);
+    return recognizer;
+  }
+  loadRecognizer();
+  // An idle ear holds only the VAD. The first sound after a quiet spell
+  // pays the load again, well under a second.
+  setInterval(() => {
+    if (recognizer && Date.now() - lastSpeechAt > UNLOAD_MS) {
+      recognizer = null;
+      say("whisper unloaded after a quiet spell");
+      post("/mic", { phase: "unloaded" });
+    }
+  }, 60_000);
 
   const rt = new RtAudio();
   const devices: any[] = rt.getDevices();
@@ -150,6 +170,10 @@ function main(): void {
     frames++;
     vad.acceptWaveform(samples);
     const detected: boolean = vad.isDetected();
+    if (detected) {
+      lastSpeechAt = Date.now();
+      if (!recognizer) loadRecognizer();
+    }
     if (detected !== hearing) {
       hearing = detected;
       post("/mic", { phase: hearing ? "hearing" : "idle" });
@@ -169,10 +193,11 @@ function main(): void {
   function transcribe(samples: Float32Array, durS: number): void {
     post("/mic", { phase: "transcribing" });
     const t = Date.now();
-    const stream = recognizer.createStream();
+    const rec = loadRecognizer();
+    const stream = rec.createStream();
     stream.acceptWaveform({ samples, sampleRate: RATE });
-    recognizer.decode(stream);
-    const text = String(recognizer.getResult(stream).text ?? "").trim();
+    rec.decode(stream);
+    const text = String(rec.getResult(stream).text ?? "").trim();
     post("/heard", { text, dur_s: Number(durS.toFixed(2)), stt_ms: Date.now() - t });
   }
 

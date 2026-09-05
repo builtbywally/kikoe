@@ -34,9 +34,12 @@ export {
   fetchModel,
   installed as modelInstalled,
   removeModel,
+  fetchVad,
   SPECS,
   KOKORO,
   PIPER,
+  WHISPER_TINY,
+  WHISPER_BASE,
 } from "./models.js";
 export type { ModelSpec, Progress } from "./models.js";
 export {

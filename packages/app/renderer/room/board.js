@@ -88,7 +88,7 @@
     }
     const w = maxX - minX + PAD * 2;
     const h = maxY - minY + PAD * 2;
-    zoom = Math.max(FIT_FLOOR, Math.min(1, (rect.width - LEFT * 2) / w, (rect.height - 230) / h));
+    zoom = Math.max(FIT_FLOOR, Math.min(1, (rect.width - LEFT * 2) / w, (rect.height - 300) / h));
     panX = LEFT - minX * zoom;
     panY = TOP - minY * zoom;
     apply();

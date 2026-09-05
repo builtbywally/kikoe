@@ -39,7 +39,45 @@ export const PIPER: ModelSpec = {
   marker: "tokens.txt",
 };
 
-export const SPECS: Record<string, ModelSpec> = { kokoro: KOKORO, piper: PIPER };
+const ASR = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/";
+
+export const WHISPER_TINY: ModelSpec = {
+  name: "whisper-tiny",
+  dir: "sherpa-onnx-whisper-tiny.en",
+  url: `${ASR}sherpa-onnx-whisper-tiny.en.tar.bz2`,
+  size: 118_071_777,
+  marker: "tiny.en-tokens.txt",
+};
+
+export const WHISPER_BASE: ModelSpec = {
+  name: "whisper-base",
+  dir: "sherpa-onnx-whisper-base.en",
+  url: `${ASR}sherpa-onnx-whisper-base.en.tar.bz2`,
+  size: 208_576_005,
+  marker: "base.en-tokens.txt",
+};
+
+/** The VAD is a single file, not an archive. */
+export const VAD_URL = `${ASR}silero_vad.onnx`;
+
+export const SPECS: Record<string, ModelSpec> = {
+  kokoro: KOKORO,
+  piper: PIPER,
+  "whisper-tiny": WHISPER_TINY,
+  "whisper-base": WHISPER_BASE,
+};
+
+/** Fetch the VAD file if it is missing. Small, so no progress. */
+export async function fetchVad(): Promise<string> {
+  const file = path.join(MODELS, "silero_vad.onnx");
+  if (existsSync(file)) return file;
+  mkdirSync(MODELS, { recursive: true });
+  const res = await fetch(VAD_URL, { redirect: "follow" });
+  if (!res.ok || !res.body) throw new Error(`download failed: ${res.status}`);
+  await pipeline(Readable.fromWeb(res.body as any), createWriteStream(file));
+  log("model vad: installed");
+  return file;
+}
 
 export function installed(spec: ModelSpec): boolean {
   return existsSync(path.join(MODELS, spec.dir, spec.marker));

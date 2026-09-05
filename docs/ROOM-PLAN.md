@@ -138,3 +138,13 @@ before-and-after), and the evals will hold it to that.
 | A pin runs script | `html` only ever in `sandbox=""`; markdown and diff are rendered as text nodes |
 | The Room grows a text cursor | It has none. Editing happens in the agent's terminal, always |
 | Two questions at once | One held ask at a time, like permissions; the second waits |
+
+## One window (2026-09-06)
+
+Kikoe is one window. The Room is what it shows; the Control Room and
+Settings are views inside it (the `C` key and the title bar, or the tray),
+never separate windows. Settings was rewritten around the Room: start here,
+voice, listening, narration, Claude Code, the board, screens (viewer link
+and the link that can answer), look and startup, doctor. The old settings
+renderer and its preload are gone; the Room's preload carries the settings
+API. `--screenshot <path>` now also writes `<path>-settings.png`.

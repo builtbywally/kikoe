@@ -18,8 +18,11 @@ import {
   MODELS,
   type Settings,
   VERSION,
+  WHISPER_BASE,
+  WHISPER_TINY,
   elevenKeyFromFile,
   fetchModel,
+  fetchVad,
   hasCurl,
   hookStatus,
   installHooks,
@@ -57,7 +60,6 @@ process.env.KIKOE_PIPER_DIR ??= path.join(RESOURCES, "models", "vits-piper-en_GB
 let daemon: Daemon | null = null;
 let tray: Tray | null = null;
 let island: BrowserWindow | null = null;
-let settingsWin: BrowserWindow | null = null;
 let roomWin: BrowserWindow | null = null;
 let ear: Electron.UtilityProcess | null = null;
 let paused = false;
@@ -66,7 +68,9 @@ let restarts = 0;
 let lastCrash = "";
 let downloading: { name: string; received: number; total: number; phase: string } | null = null;
 const smoke = process.argv.includes("--smoke");
-const noAudio = process.argv.includes("--no-audio") || smoke;
+const shotIndex = process.argv.indexOf("--screenshot");
+const shotPath = shotIndex >= 0 ? (process.argv[shotIndex + 1] ?? "") : "";
+const noAudio = process.argv.includes("--no-audio") || smoke || Boolean(shotPath);
 
 // --- the key, in the keychain ----------------------------------------------
 
@@ -164,18 +168,39 @@ function toastIfQuiet(frame: Record<string, unknown>): void {
     body: what.slice(0, 160),
     silent: true,
   });
-  n.on("click", () => openSettings("sessions"));
+  n.on("click", () => {
+    openRoom();
+    roomWin?.webContents.send("room:view", { view: "control" });
+  });
   n.show();
 }
 
 // --- the ear -----------------------------------------------------------------
 
 /** The mic runs in its own process so a transcription never stalls a window. */
-function startEar(): void {
+async function startEar(): Promise<void> {
   if (ear || !daemon) return;
   const s = loadSettings();
   if (!s.mic) return;
   daemon.micPhase = "starting";
+  // The ear's models come on demand, the first time it is turned on.
+  try {
+    await fetchVad();
+    const spec = s.stt_model === "base" ? WHISPER_BASE : WHISPER_TINY;
+    if (!modelInstalled(spec)) {
+      daemon.micPhase = "downloading the speech model";
+      await fetchModel(spec, (p) => {
+        downloading = { name: spec.name, ...p };
+        roomWin?.webContents.send("settings:progress", downloading);
+      });
+      downloading = null;
+      roomWin?.webContents.send("settings:progress", null);
+    }
+  } catch (e) {
+    daemon.micPhase = `dead: ${(e as Error).message}`;
+    log(`ear models: ${(e as Error).message}`);
+    return;
+  }
   ear = utilityProcess.fork(path.join(__dirname, "mic.js"), [], {
     serviceName: "kikoe-mic",
     stdio: "pipe",
@@ -185,6 +210,7 @@ function startEar(): void {
       KIKOE_TOKEN: daemon.token,
       KIKOE_MODELS: MODELS,
       KIKOE_MIC_DEVICE: s.mic_device,
+      KIKOE_STT_MODEL: s.stt_model,
     },
   });
   ear.stderr?.on("data", (d: Buffer) => log(String(d).trim()));
@@ -250,42 +276,18 @@ function createIsland(): void {
 }
 
 function openSettings(page = ""): void {
-  if (settingsWin) {
-    settingsWin.show();
-    settingsWin.focus();
-    if (page) settingsWin.webContents.send("settings:goto", page);
-    return;
-  }
-  settingsWin = new BrowserWindow({
-    width: 760,
-    height: 680,
-    minWidth: 560,
-    minHeight: 480,
-    title: "kikoe",
-    show: false,
-    autoHideMenuBar: true,
-    frame: false,
-    titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#0f1115", symbolColor: "#f5f1ec", height: 36 },
-
-    webPreferences: {
-      preload: path.join(__dirname, "preload-settings.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  applyTheme(loadSettings().theme);
-  settingsWin.loadFile(path.join(RENDERER, "settings", "index.html"), page ? { hash: page } : {});
-  settingsWin.once("ready-to-show", () => settingsWin?.show());
-  settingsWin.on("closed", () => {
-    settingsWin = null;
-  });
+  // Settings live inside the Kikoe window, as a view beside the Room.
+  openRoom();
+  const send = () => roomWin?.webContents.send("room:view", { view: "settings", page });
+  if (roomWin?.webContents.isLoading()) roomWin.webContents.once("did-finish-load", send);
+  else send();
 }
 
 /**
- * The Room: the voice-first control room. A normal window, dark, that can
- * live full screen on a second monitor. It shows the spoken line, the orb,
- * the agents, and the board the agent pins things to.
+ * The Room: the voice-first control room. The one Kikoe window, dark, that
+ * can live full screen on a second monitor. It shows the spoken line, the
+ * orb, the agents, and the board the agent pins things to; the Control Room
+ * and settings are views inside it.
  */
 function openRoom(): void {
   if (roomWin) {
@@ -369,20 +371,40 @@ function buildTrayMenu(): void {
       click: () => {
         const on = !(daemon?.micPhase && daemon.micPhase !== "off" && daemon.micPhase !== "dead");
         saveSettings({ mic: on });
-        if (on) startEar();
+        if (on) void startEar();
         else stopEar();
       },
     },
     { label: "The Room", click: () => openRoom() },
     {
-      label: "Copy the Room link for another screen",
+      label: "Copy a viewer link for another screen",
+      click: () => {
+        if (!daemon) return;
+        clipboard.writeText(
+          `http://127.0.0.1:${daemon.settings.port}/room/?token=${daemon.viewer}`,
+        );
+      },
+    },
+    {
+      label: "Copy a link that can answer (careful)",
       click: () => {
         if (!daemon) return;
         clipboard.writeText(`http://127.0.0.1:${daemon.settings.port}/room/?token=${daemon.token}`);
+        new Notification({
+          title: "This link can approve tool calls",
+          body: "Anyone holding it can answer a permission. Share the viewer link unless you mean it.",
+          silent: true,
+        }).show();
       },
     },
     { label: "Clear the board", click: () => daemon?.board.clear() },
-    { label: "Sessions…", click: () => openSettings("sessions") },
+    {
+      label: "Control room",
+      click: () => {
+        openRoom();
+        roomWin?.webContents.send("room:view", { view: "control" });
+      },
+    },
     { label: "Settings…", click: () => openSettings() },
     { label: "Doctor…", click: () => openSettings("doctor") },
     {
@@ -436,7 +458,7 @@ function applyTheme(theme: string): void {
   const overlay = light
     ? { color: "#f5f1ec", symbolColor: "#14100e", height: 36 }
     : { color: "#14100e", symbolColor: "#f5f1ec", height: 36 };
-  for (const w of [roomWin, settingsWin]) {
+  for (const w of [roomWin]) {
     try {
       w?.setTitleBarOverlay(overlay);
       w?.setBackgroundColor(overlay.color);
@@ -534,9 +556,9 @@ ipcMain.handle(
     const s = saveSettings(rest);
     if ("start_at_login" in rest) applyLoginItem(Boolean(rest.start_at_login));
     if ("theme" in rest) applyTheme(String(rest.theme));
-    if ("mic" in rest || "mic_device" in rest) {
+    if ("mic" in rest || "mic_device" in rest || "stt_model" in rest) {
       stopEar();
-      if (loadSettings().mic) startEar();
+      if (loadSettings().mic) void startEar();
     }
     if ("port" in rest) await restartDaemon("port change");
     else if (
@@ -656,7 +678,7 @@ ipcMain.handle("settings:fetchKokoro", async () => {
   try {
     await fetchModel(KOKORO, (p) => {
       downloading = { name: "kokoro", ...p };
-      settingsWin?.webContents.send("settings:progress", downloading);
+      roomWin?.webContents.send("settings:progress", downloading);
     });
     daemon?.reconfigure(loadSettings(), loadElevenKey());
     return { ok: true };
@@ -664,7 +686,7 @@ ipcMain.handle("settings:fetchKokoro", async () => {
     return { error: (e as Error).message };
   } finally {
     downloading = null;
-    settingsWin?.webContents.send("settings:progress", null);
+    roomWin?.webContents.send("settings:progress", null);
   }
 });
 ipcMain.handle("settings:removeKokoro", () => {
@@ -693,6 +715,12 @@ ipcMain.handle("settings:inputDevices", () => {
   } catch (e) {
     return { error: (e as Error).message };
   }
+});
+ipcMain.handle("settings:copyLink", (_e, kind: string) => {
+  if (!daemon) return { error: "daemon not running" };
+  const token = kind === "full" ? daemon.token : daemon.viewer;
+  clipboard.writeText(`http://127.0.0.1:${daemon.settings.port}/room/?token=${token}`);
+  return { ok: true };
 });
 ipcMain.handle("settings:openHome", () => shell.openPath(HOME));
 ipcMain.handle("settings:openLogs", () => shell.openPath(path.join(HOME, "logs")));
@@ -791,7 +819,50 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     openRoom();
-    startEar();
+    if (shotPath) {
+      // Stage the board the way the design shows it, capture, exit.
+      await new Promise((r) => setTimeout(r, 1500));
+      daemon?.hook({
+        hook_event_name: "PreToolUse",
+        session_id: "shot",
+        cwd: process.cwd(),
+        tool_name: "Bash",
+        tool_input: { command: "pnpm test" },
+      });
+      daemon?.board.add({
+        kind: "markdown",
+        title: "why the retry is bounded",
+        body: "# Why the retry is bounded\n\nThree attempts with backoff, then give up.\n\n- a fourth never helped",
+        repo: "api",
+      });
+      daemon?.board.add({
+        kind: "table",
+        title: "npm test",
+        body: "npm test | 18 passed, 2 failed\npaths | joins with the platform separator | fail",
+        repo: "storefront",
+      });
+      daemon?.board.add({
+        kind: "diff",
+        title: "token refresh · 3 lines",
+        body: "-    const next = await this.fetchNew(token);\n+    const release = await this.lock.acquire();\n+    try { return await this.fetchNew(token); }\n+    finally { release(); }",
+        repo: "storefront",
+        ask: ["apply", "no"],
+        wait_s: 90,
+      });
+      await new Promise((r) => setTimeout(r, 2500));
+      const img = await roomWin?.webContents.capturePage();
+      if (img) writeFileSync(shotPath, img.toPNG());
+      // and the settings view, in the same window
+      roomWin?.webContents.send("room:view", { view: "settings", page: "welcome" });
+      await new Promise((r) => setTimeout(r, 1200));
+      const img2 = await roomWin?.webContents.capturePage();
+      if (img2) writeFileSync(shotPath.replace(/\.png$/, "-settings.png"), img2.toPNG());
+      process.stdout.write(`${JSON.stringify({ ok: Boolean(img), path: shotPath })}\n`);
+      await Promise.race([daemon?.close(), new Promise((r) => setTimeout(r, 2000))]);
+      app.exit(img ? 0 : 1);
+      return;
+    }
+    void startEar();
     daemon?.hub.listen((frame) => {
       if (frame.type === "control" && frame.intent === "shutdown") void quit();
     });

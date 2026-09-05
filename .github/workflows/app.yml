@@ -28,6 +28,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Sound libraries the native modules link against (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev libasound2t64 2>/dev/null || sudo apt-get install -y -q libasound2
       - name: Bundle the Piper voice
         shell: bash
         run: |
@@ -64,6 +67,23 @@ jobs:
             Linux)   xvfb-run -a ./linux-unpacked/kikoe --smoke ;;
           esac
           grep -q "listening on" "$KIKOE_HOME/logs/daemon.log"
+      - name: A picture of the Room, as built
+        shell: bash
+        env:
+          KIKOE_HOME: ${{ runner.temp }}/kikoe-home
+          KIKOE_PORT: "4580"
+        run: |
+          cd out/app
+          case "$RUNNER_OS" in
+            Windows) ./win-unpacked/kikoe.exe --screenshot "$RUNNER_TEMP/room.png" ;;
+            macOS)   ./mac*/kikoe.app/Contents/MacOS/kikoe --screenshot "$RUNNER_TEMP/room.png" ;;
+            Linux)   xvfb-run -a ./linux-unpacked/kikoe --screenshot "$RUNNER_TEMP/room.png" ;;
+          esac
+          test -s "$RUNNER_TEMP/room.png"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: room-${{ matrix.os }}
+          path: ${{ runner.temp }}/room.png
       - uses: actions/upload-artifact@v4
         with:
           name: kikoe-${{ matrix.os }}

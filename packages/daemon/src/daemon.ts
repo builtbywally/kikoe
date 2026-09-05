@@ -28,7 +28,16 @@ import {
   route,
   utterance,
 } from "@kikoe/core";
-import { HOME, LOGS, type Settings, daemonToken, ensureHome, loadSettings, log } from "./config.js";
+import {
+  HOME,
+  LOGS,
+  type Settings,
+  daemonToken,
+  ensureHome,
+  loadSettings,
+  log,
+  viewerToken,
+} from "./config.js";
 import { Hub } from "./hub.js";
 import { Board } from "./pins.js";
 import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
@@ -141,6 +150,7 @@ class LadderSink implements SpeechSink {
 export class Daemon {
   settings: Settings;
   readonly token: string;
+  readonly viewer: string;
   readonly hub = new Hub();
   readonly tracker = new Tracker();
   readonly narrator: Narrator;
@@ -178,6 +188,7 @@ export class Daemon {
     this.settings = opts.settings ?? loadSettings();
     this.roomDir = opts.roomDir ?? "";
     this.token = daemonToken();
+    this.viewer = viewerToken();
     ev.setRepoResolver(repoOf);
     this.narrator = new Narrator({ mode: this.settings.narrate });
     this.adapter = new ClaudeCodeAdapter({ readTranscript });
@@ -539,12 +550,15 @@ export class Daemon {
 
   // -- http --------------------------------------------------------------------
 
-  private authed(req: http.IncomingMessage, url: URL): boolean {
+  /** "full" can act; "viewer" can only watch; null is refused. */
+  private grant(req: http.IncomingMessage, url: URL): "full" | "viewer" | null {
     const h = req.headers.authorization ?? "";
-    if (h === `Bearer ${this.token}`) return true;
-    if ((req.headers["x-kikoe-token"] ?? "") === this.token) return true;
-    if (url.searchParams.get("token") === this.token) return true;
-    return false;
+    const presented = h.startsWith("Bearer ")
+      ? h.slice(7)
+      : String(req.headers["x-kikoe-token"] ?? url.searchParams.get("token") ?? "");
+    if (presented === this.token) return "full";
+    if (presented === this.viewer) return "viewer";
+    return null;
   }
 
   private json(res: http.ServerResponse, code: number, body: unknown): void {
@@ -639,7 +653,13 @@ export class Daemon {
       res.end(readFileSync(candidate));
       return;
     }
-    if (!this.authed(req, url)) return this.json(res, 401, { error: "unauthorized" });
+    const grant = this.grant(req, url);
+    if (!grant) return this.json(res, 401, { error: "unauthorized" });
+    // A viewer may look and may not touch.
+    const reading =
+      req.method === "GET" && ["/state", "/sessions", "/stream", "/pins"].includes(url.pathname);
+    if (grant === "viewer" && !reading)
+      return this.json(res, 403, { error: "viewer token: read only" });
 
     const answerMatch = /^POST \/pins\/([A-Za-z0-9_-]+)\/answer$/.exec(route);
     if (answerMatch) {

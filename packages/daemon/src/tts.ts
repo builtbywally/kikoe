@@ -62,7 +62,10 @@ type SherpaModel = { vits?: Record<string, string>; kokoro?: Record<string, stri
  * process ends up a gigabyte heavier per click. Idle heavy engines are
  * dropped after a while and reloaded on demand.
  */
-const ENGINES = new Map<string, { tts: any; lastUsed: number; heavy: boolean }>();
+const ENGINES = new Map<
+  string,
+  { tts: any; lastUsed: number; heavy: boolean; busy: Promise<void> }
+>();
 export const UNLOAD_AFTER_MS = 10 * 60 * 1000;
 
 export function unloadIdleEngines(now = Date.now()): string[] {
@@ -104,7 +107,7 @@ abstract class SherpaRung implements Rung {
       model: { ...cfg, numThreads: this.threads, debug: 0, provider: "cpu" },
       maxNumSentences: 1,
     });
-    ENGINES.set(key, { tts, lastUsed: Date.now(), heavy: this.heavy });
+    ENGINES.set(key, { tts, lastUsed: Date.now(), heavy: this.heavy, busy: Promise.resolve() });
     return tts;
   }
 
@@ -115,6 +118,34 @@ abstract class SherpaRung implements Rung {
     voice?: string,
   ): Promise<SpokenResult> {
     const tts = this.engine();
+    // sherpa's engines are not re-entrant: a preempted line is still inside
+    // generateAsync until its next chunk, so the next line waits for it.
+    const key = JSON.stringify(this.modelConfig());
+    const slot = ENGINES.get(key)!;
+    const previous = slot.busy;
+    let release: () => void = () => {};
+    slot.busy = new Promise<void>((r) => {
+      release = r;
+    });
+    await previous.catch(() => {});
+    if (signal.aborted) {
+      release();
+      throw new Error("cancelled");
+    }
+    try {
+      return await this.generate(tts, text, speaker, signal, voice);
+    } finally {
+      release();
+    }
+  }
+
+  private async generate(
+    tts: any,
+    text: string,
+    speaker: Speaker,
+    signal: AbortSignal,
+    voice?: string,
+  ): Promise<SpokenResult> {
     const rate: number = tts.sampleRate;
     const speakers: number = tts.numSpeakers ?? 1;
     const sid = Math.max(0, Math.min(speakers - 1, Number.parseInt(voice ?? "0", 10) || 0));
