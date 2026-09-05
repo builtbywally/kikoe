@@ -1,0 +1,15 @@
+{
+  "name": "@earshot/daemon",
+  "version": "0.1.0",
+  "description": "The long-lived process: hook endpoints, adapters, the TTS ladder, audio.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "dependencies": {
+    "@earshot/core": "workspace:*",
+    "audify": "^1.10.1",
+    "sherpa-onnx-node": "^1.13.7"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "a spent budget silences even a good reason",
+  "why": "Every unprompted line spends the same attention; a budget that bends for a sufficiently good reason is not a budget, and six good reasons an hour is already a chatty colleague.",
+  "clock": "2026-08-31T14:00:00",
+  "governor": {"budget_per_hour": 2, "spent": 2},
+  "sessions": [{"session": "s1", "label": "api", "status": "waiting", "pending_permission": "run npm install", "quiet_s": 300}],
+  "expect": {"spoken": 0}
+}

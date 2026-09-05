@@ -1,0 +1,10 @@
+{
+  "name": "a permission is asked as a question",
+  "why": "This is the one that always earns speech, and it has to be answerable out loud. A statement leaves the user unsure whether anything is waiting on them.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+     "tool_input": {"command": "rm -rf node_modules"}}
+  ],
+  "expect": {"spoken": 1, "ends_with": "?", "min_priority": 3}
+}

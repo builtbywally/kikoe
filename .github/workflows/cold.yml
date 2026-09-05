@@ -1,0 +1,55 @@
+name: cold-install
+
+# The first user's experience, as a test. A clean runner with nothing but
+# Node installs the published package, wires the hooks into a throwaway
+# Claude Code settings file, runs the demo with no audio device, and asks
+# the doctor. Red until Phase 1 delivers every command it calls. That is
+# the point: this job is the target, not a check.
+
+on:
+  push:
+    branches: ["**"]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  cold:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Pack the CLI the way npm would ship it
+        run: pnpm --filter earshot pack --pack-destination ../../out
+      - name: Install from the tarball into an empty directory
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/cold" && cd "$RUNNER_TEMP/cold"
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE"/out/earshot-*.tgz
+      - name: Hooks, demo, doctor
+        shell: bash
+        env:
+          EARSHOT_HOME: ${{ runner.temp }}/earshot-home
+          CLAUDE_SETTINGS: ${{ runner.temp }}/claude-settings.json
+        run: |
+          cd "$RUNNER_TEMP/cold"
+          npx earshot install claude --settings "$CLAUDE_SETTINGS"
+          npx earshot demo --no-audio
+          npx earshot doctor
+          npx earshot uninstall claude --settings "$CLAUDE_SETTINGS"
+      - name: Hook startup stays under budget
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/cold"
+          npx earshot bench hook --budget-ms 80

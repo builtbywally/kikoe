@@ -1,0 +1,23 @@
+{
+  "name": "earshot-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A local voice layer for coding agents. It speaks, and it listens.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.10.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc -b packages/core packages/daemon packages/cli",
+    "build": "tsc -b packages/core packages/daemon packages/cli"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

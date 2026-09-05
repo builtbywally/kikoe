@@ -1,0 +1,7 @@
+{
+  "name": "failing tests left idle get one nudge",
+  "why": "A red run the user walked away from is the highest-value unprompted fact this engine knows; ten minutes idle means they did not see it land.",
+  "clock": "2026-08-31T14:00:00",
+  "sessions": [{"session": "s1", "label": "api", "status": "idle", "last_test_result": "3 failed", "quiet_s": 700}],
+  "expect": {"spoken": 1, "contains": ["failing tests", "api"]}
+}

@@ -1,0 +1,9 @@
+{
+  "name": "a turn that died is critical",
+  "why": "The turn ending badly is the single most useful thing to hear when you walked away, and the old adapter could not see it at all.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "StopFailure", "error": "model stream disconnected after 4 minutes"}
+  ],
+  "expect": {"spoken": 1, "min_priority": 4}
+}

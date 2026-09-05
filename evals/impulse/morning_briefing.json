@@ -1,0 +1,8 @@
+{
+  "name": "the morning briefing arrives after its time",
+  "why": "The briefing is the one impulse the user scheduled themselves; a day it silently skips is a broken promise, not a quiet day.",
+  "clock": "2026-08-31T08:35:00",
+  "briefing_time": "08:30",
+  "tasks": [{"text": "send the invoice", "due": "2026-08-31"}],
+  "expect": {"spoken": 1, "contains": ["Morning", "1 due today"]}
+}

@@ -1,0 +1,9 @@
+{
+  "name": "one briefing per day, however many ticks pass",
+  "why": "The engine wakes every fifteen seconds all morning; a briefing that repeats on each wake is an alarm clock, not a colleague.",
+  "clock": "2026-08-31T08:35:00",
+  "briefing_time": "08:30",
+  "ticks": 3,
+  "governor": {"min_gap_s": 0},
+  "expect": {"spoken": 1, "contains": ["Morning"]}
+}

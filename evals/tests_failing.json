@@ -1,0 +1,16 @@
+{
+  "name": "a red run is never reported as green",
+  "why": "The worst bug this layer can have. Runners emit the counts in either order, so pass and fail are matched independently and any nonzero failure wins.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "npm test"},
+     "tool_response": "Tests: 18 passed, 2 failed, 20 total"}
+  ],
+  "expect": {
+    "spoken": 1,
+    "contains_any": ["2 failed"],
+    "excludes": ["all 20 passed", "all passed", "tests pass"],
+    "min_priority": 3
+  }
+}

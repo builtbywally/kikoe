@@ -1,0 +1,12 @@
+{
+  "name": "a burst of edits is one sentence, not five",
+  "why": "Five edits in three seconds is one thought. Speaking each one is how a narrator becomes noise.",
+  "mode": "verbose",
+  "settle": true,
+  "hooks": [
+    {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "src/auth/token_refresh.ts"}},
+    {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "src/auth/session.ts"}},
+    {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "src/db/pool.py"}}
+  ],
+  "expect": {"spoken": 1, "contains_any": ["3 files"]}
+}

@@ -1,0 +1,14 @@
+{
+  "name": "verbose mode does not reopen a terminal the user never opened",
+  "why": "The floor is code, not a mode. Verbose narrates the terminal the user is watching; a spawned session has no terminal to watch, so turning the dial up must not turn the fleet into a radio. Idle is silent here too: a headless gate denies itself on silence, so nagging that it is waiting would advertise a wait the machinery already resolves.",
+  "mode": "verbose",
+  "events": [
+    {"kind": "turn_start", "source": "claude-headless", "session": "bg1", "repo": "web", "text": "bump the linter and fix what falls out"},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg1", "repo": "web", "tool": "Bash", "args": {"command": "npm run lint"}},
+    {"kind": "text", "source": "claude-headless", "session": "bg1", "repo": "web", "text": "Twelve lint errors, most in the header component."},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg1", "repo": "web", "tool": "Edit", "args": {"file_path": "src/components/header.tsx"}},
+    {"kind": "idle", "source": "claude-headless", "session": "bg1", "repo": "web"},
+    {"kind": "tool_end", "source": "claude-headless", "session": "bg1", "repo": "web", "tool": "Bash", "status": "ok", "text": "clean"}
+  ],
+  "expect": {"spoken": 0}
+}

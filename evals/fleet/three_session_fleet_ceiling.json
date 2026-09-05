@@ -1,0 +1,27 @@
+{
+  "name": "three sessions, one mouth, a hard ceiling",
+  "why": "The headline case. Three concurrent spawned sessions triple event volume, and the product's load-bearing claim is knowing when to stay quiet. Fifteen speakable-looking events go in; only the permission question and the three completions may come out. If this ceiling ever rises, the fleet has started narrating itself and the claim is gone.",
+  "mode": "normal",
+  "events": [
+    {"kind": "permission", "source": "claude-headless", "session": "bg1", "repo": "api", "tool": "Bash", "args": {"command": "pytest"}, "text": "Bash"},
+    {"kind": "turn_start", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "fix the auth tests"},
+    {"kind": "turn_start", "source": "claude-headless", "session": "bg2", "repo": "web", "text": "upgrade the build"},
+    {"kind": "turn_start", "source": "claude-headless", "session": "bg3", "repo": "infra", "text": "rotate the secrets"},
+    {"kind": "text", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "Two of the auth tests fail on token expiry."},
+    {"kind": "text", "source": "claude-headless", "session": "bg2", "repo": "web", "text": "The build breaks on the new bundler defaults."},
+    {"kind": "text", "source": "claude-headless", "session": "bg3", "repo": "infra", "text": "Found four secrets past their rotation window."},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg1", "repo": "api", "tool": "Edit", "args": {"file_path": "src/auth/token.ts"}},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg2", "repo": "web", "tool": "Bash", "args": {"command": "npm run build"}},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg3", "repo": "infra", "tool": "Bash", "args": {"command": "terraform plan"}},
+    {"kind": "text", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "The expiry check was off by one hour."},
+    {"kind": "text", "source": "claude-headless", "session": "bg2", "repo": "web", "text": "Halfway through the bundler config now."},
+    {"kind": "turn_end", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "Auth fix is in and the tests pass."},
+    {"kind": "turn_end", "source": "claude-headless", "session": "bg2", "repo": "web", "text": "The web build is green again."},
+    {"kind": "turn_end", "source": "claude-headless", "session": "bg3", "repo": "infra", "text": ""}
+  ],
+  "expect": {
+    "spoken_at_most": 4,
+    "contains_any": ["shall i"],
+    "excludes": ["editing", "running", "halfway", "off by one"]
+  }
+}

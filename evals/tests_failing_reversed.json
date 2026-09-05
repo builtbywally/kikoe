@@ -1,0 +1,16 @@
+{
+  "name": "a red run read in the other order is still red",
+  "why": "pytest prints failures first, jest prints passes first. Matching a single regex against whichever number comes first is how a failing run gets announced as a pass.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "pytest"},
+     "tool_response": "2 failed, 18 passed in 3.14s"}
+  ],
+  "expect": {
+    "spoken": 1,
+    "contains_any": ["2 failed"],
+    "excludes": ["all passed"],
+    "min_priority": 3
+  }
+}

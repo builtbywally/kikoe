@@ -1,0 +1,13 @@
+{
+  "name": "a spawned session working is not news",
+  "why": "The user never opened this terminal and is not watching it, so progress from a background session is noise by definition. This stream even includes a failing test count — attention-grade for a watched session — and it still stays quiet, because the session is working the failure unwatched and will raise its own permission or error if it needs a human.",
+  "mode": "normal",
+  "events": [
+    {"kind": "turn_start", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "fix the flaky auth test"},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg1", "repo": "api", "tool": "Bash", "args": {"command": "pytest"}},
+    {"kind": "text", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "The failure is in the token refresh path. Narrowing it down now."},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg1", "repo": "api", "tool": "Edit", "args": {"file_path": "src/auth/token.ts"}},
+    {"kind": "tool_end", "source": "claude-headless", "session": "bg1", "repo": "api", "tool": "Bash", "status": "ok", "text": "2 failed, 18 passed in 4.1s"}
+  ],
+  "expect": {"spoken": 0}
+}

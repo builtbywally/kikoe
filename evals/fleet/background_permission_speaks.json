@@ -1,0 +1,9 @@
+{
+  "name": "a spawned session asking permission is always heard",
+  "why": "The one background moment that must cross the floor: the session is blocked on a yes, the gate denies on silence, and a muted question becomes a denial the user never chose. It also has to name its repo — the user is about to answer a bare yes to a session they cannot see.",
+  "mode": "normal",
+  "events": [
+    {"kind": "permission", "source": "claude-headless", "session": "bg1", "repo": "api", "tool": "Bash", "args": {"command": "npm install"}, "text": "Bash"}
+  ],
+  "expect": {"spoken": 1, "ends_with": "?", "min_priority": 3, "contains_any": ["shall i"]}
+}

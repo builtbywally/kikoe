@@ -1,0 +1,9 @@
+{
+  "name": "a spawned session dying is always heard",
+  "why": "A background run that died silently is work the user believes is still happening. Failure is one of the three kinds allowed through the floor precisely because nobody is watching the terminal that would have shown the traceback.",
+  "mode": "normal",
+  "events": [
+    {"kind": "error", "source": "claude-headless", "session": "bg1", "repo": "infra", "text": "headless run failed. The sidecar ran out of memory."}
+  ],
+  "expect": {"spoken": 1, "min_priority": 4, "contains_any": ["error"]}
+}

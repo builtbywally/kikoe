@@ -1,0 +1,12 @@
+{
+  "name": "the same line twice is said once",
+  "why": "Two identical alerts back to back sound like a stutter, not emphasis.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "npm test"}, "tool_response": "Tests: 20 passed, 20 total"},
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "npm test"}, "tool_response": "Tests: 20 passed, 20 total"}
+  ],
+  "expect": {"spoken": 1}
+}

@@ -1,0 +1,20 @@
+{
+  "name": "a chatty session runs out of budget before its sibling goes unheard",
+  "why": "Even within its allowed severities, one session must not monopolise the speaker. Eight lawful milestones from one session against a single line from another: the bucket lets the burst through, drops the excess, and the quiet session's one line still lands. Without the bucket the count is nine and the sibling waits behind all of them.",
+  "mode": "normal",
+  "events": [
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "Found the root cause in the retry logic."},
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "The cache was serving stale entries after restart."},
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "Rewrote the eviction path to check expiry first."},
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "The first three test cases pass now."},
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "Two edge cases remain around empty caches."},
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "Handled the empty cache on cold start."},
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "All the cache tests pass locally."},
+    {"kind": "text", "source": "claude_code", "session": "fg1", "repo": "api", "text": "Cleaning up the debug logging before the finish."},
+    {"kind": "text", "source": "claude_code", "session": "fg2", "repo": "web", "text": "The deploy is ready for review."}
+  ],
+  "expect": {
+    "spoken_at_most": 5,
+    "contains_any": ["deploy is ready"]
+  }
+}

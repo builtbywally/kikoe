@@ -1,0 +1,12 @@
+{
+  "name": "@earshot/core",
+  "version": "0.1.0",
+  "description": "The narrator, the arbiter, and the register. Pure logic, no I/O, no native code.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
+  "sideEffects": false
+}

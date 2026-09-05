@@ -1,0 +1,14 @@
+{
+  "name": "silent mode still speaks for a human decision",
+  "why": "Silent means uninterrupted, not unreachable. Progress and results go quiet; something blocking on a person does not.",
+  "mode": "silent",
+  "hooks": [
+    {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "a.ts"}},
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "npm test"}, "tool_response": "Tests: 20 passed, 20 total"},
+    {"hook_event_name": "Stop", "last_assistant_message": "All done."},
+    {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+     "tool_input": {"command": "git push --force"}}
+  ],
+  "expect": {"spoken": 1, "min_priority": 3}
+}

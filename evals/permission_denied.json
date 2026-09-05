@@ -1,0 +1,10 @@
+{
+  "name": "a denial is not read back",
+  "why": "They just said no. Narrating it is narrating their own keystroke.",
+  "mode": "verbose",
+  "hooks": [
+    {"hook_event_name": "PermissionDenied", "tool_name": "Bash",
+     "tool_input": {"command": "rm -rf node_modules"}}
+  ],
+  "expect": {"spoken": 0}
+}

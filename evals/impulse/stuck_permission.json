@@ -1,0 +1,7 @@
+{
+  "name": "an agent left waiting earns a reminder",
+  "why": "The narrator announced the permission once, at the moment it appeared; five minutes of silence later, the user has demonstrably not heard it, and a blocked agent is lost time compounding.",
+  "clock": "2026-08-31T14:00:00",
+  "sessions": [{"session": "s1", "label": "api", "status": "waiting", "pending_permission": "run the migration", "quiet_s": 300}],
+  "expect": {"spoken": 1, "contains": ["waiting on you", "5 minutes"]}
+}

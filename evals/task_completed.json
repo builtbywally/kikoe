@@ -1,0 +1,10 @@
+{
+  "name": "a background task finishing is worth hearing",
+  "why": "This is the walked-away-and-it-came-back case, one of the four moments the spec says always earns speech.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "TaskCompleted", "agent_type": "Explore",
+     "last_assistant_message": "Migration finished, twelve tables."}
+  ],
+  "expect": {"spoken": 1, "min_priority": 2}
+}

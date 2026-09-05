@@ -1,0 +1,13 @@
+{
+  "name": "earshot",
+  "version": "0.1.0",
+  "description": "A local voice layer for coding agents. It speaks, and it listens.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "earshot": "./dist/bin.js", "es": "./dist/bin.js" },
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "keywords": ["claude-code", "voice", "tts", "stt", "coding-agent", "narration"],
+  "repository": { "type": "git", "url": "git+https://github.com/builtbywally/earshot.git" },
+  "dependencies": { "@earshot/core": "workspace:*", "@earshot/daemon": "workspace:*" }
+}

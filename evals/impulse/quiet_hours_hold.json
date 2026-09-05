@@ -1,0 +1,8 @@
+{
+  "name": "quiet hours mean silence, even with something to say",
+  "why": "The governor is the only brake the user kept when they chose fully autonomous; an agent stuck at 23:30 waits for morning, because a voice in a dark house is how the feature gets uninstalled.",
+  "clock": "2026-08-31T23:30:00",
+  "governor": {"quiet_hours": "23:00-08:00"},
+  "sessions": [{"session": "s1", "label": "api", "status": "waiting", "pending_permission": "run the migration", "quiet_s": 300}],
+  "expect": {"spoken": 0}
+}

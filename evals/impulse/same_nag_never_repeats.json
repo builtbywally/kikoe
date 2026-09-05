@@ -1,0 +1,9 @@
+{
+  "name": "one reminder per fact, however many ticks see it",
+  "why": "The dedupe key and the per-family cooldown are two brakes on the same failure — the reminder that repeats until the user mutes the whole product. Three ticks over the same stuck agent must produce one sentence.",
+  "clock": "2026-08-31T14:00:00",
+  "ticks": 3,
+  "governor": {"min_gap_s": 0},
+  "sessions": [{"session": "s1", "label": "api", "status": "waiting", "pending_permission": "run the migration", "quiet_s": 300}],
+  "expect": {"spoken": 1}
+}

@@ -1,0 +1,10 @@
+{
+  "name": "a reply full of markdown becomes a spoken sentence",
+  "why": "Claude writes for a terminal: headings, fences, backticked identifiers, paths. None of it survives contact with a speaker.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "Stop",
+     "last_assistant_message": "## Done\n\nFixed the race in `src/auth/token_refresh.ts` by calling `lock.acquire()`.\n\n```ts\nawait lock.acquire()\n```\n\n- both tests pass\n- see `getUserById`\n"}
+  ],
+  "expect": {"spoken": 1, "contains_any": ["token refresh"], "excludes": ["```", "##", "getUserById"]}
+}

@@ -1,0 +1,8 @@
+{
+  "name": "never speak into the user's own sentence",
+  "why": "The politeness gate is what separates an impulse from an interruption; a nudge landing while the mic is open talks over the human it exists to help.",
+  "clock": "2026-08-31T14:00:00",
+  "mic": "hearing",
+  "sessions": [{"session": "s1", "label": "api", "status": "waiting", "pending_permission": "run npm install", "quiet_s": 300}],
+  "expect": {"spoken": 0}
+}

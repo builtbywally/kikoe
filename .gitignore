@@ -1,0 +1,18 @@
+# Secrets and per-machine state. None of this belongs in a public repo.
+daemon_token.txt
+*_key.txt
+config.local.json
+*.wav
+*.webm
+
+# Model weights: fetched on demand, gigabytes.
+models/
+
+# Build
+dist/
+*.tsbuildinfo
+node_modules/
+.pnpm-store/
+
+# Logs
+*.log

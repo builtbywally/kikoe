@@ -1,0 +1,10 @@
+{
+  "name": "a spawned session finishing is always heard",
+  "why": "Done is the moment the user stopped waiting for after they stopped watching. It is the payoff of dispatching work at all, and the floor exists to protect exactly this line from drowning in the chatter that led up to it.",
+  "mode": "normal",
+  "events": [
+    {"kind": "text", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "Running the suite one last time to confirm."},
+    {"kind": "turn_end", "source": "claude-headless", "session": "bg1", "repo": "api", "text": "Fixed the flaky retry test. The suite is green."}
+  ],
+  "expect": {"spoken": 1, "contains_any": ["green"]}
+}

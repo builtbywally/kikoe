@@ -1,0 +1,12 @@
+{
+  "name": "the session the user opened keeps its voice",
+  "why": "The floor is scoped to sessions the user did not open. The terminal they are actually watching must narrate exactly as it did before the fleet existed — a quieting change that also quiets the foreground has broken the product the other way.",
+  "mode": "normal",
+  "events": [
+    {"kind": "text", "source": "claude-headless", "session": "bg1", "repo": "web", "text": "Still working through the bundler config."},
+    {"kind": "tool_start", "source": "claude-headless", "session": "bg2", "repo": "infra", "tool": "Bash", "args": {"command": "terraform plan"}},
+    {"kind": "tool_end", "source": "claude_code", "session": "fg1", "repo": "api", "tool": "Bash", "status": "ok", "text": "===== 12 passed in 3.41s ====="},
+    {"kind": "turn_end", "source": "claude_code", "session": "fg1", "repo": "api", "text": "Done with the tracker cleanup."}
+  ],
+  "expect": {"spoken": 2, "contains_any": ["12 passed"], "excludes": ["bundler", "terraform"]}
+}

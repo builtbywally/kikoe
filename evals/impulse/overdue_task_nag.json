@@ -1,0 +1,7 @@
+{
+  "name": "an overdue task speaks up on its own",
+  "why": "This is the life half of the product doing its job: a task board nobody looks at is a text file, and the reminder arriving by voice is the reason it lives here instead.",
+  "clock": "2026-08-31T14:00:00",
+  "tasks": [{"text": "send the invoice", "due": "2026-08-30"}],
+  "expect": {"spoken": 1, "contains": ["invoice"]}
+}

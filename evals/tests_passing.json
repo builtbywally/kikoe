@@ -1,0 +1,11 @@
+{
+  "name": "a green run is a milestone, not an alert",
+  "why": "Good news is worth one line at normal volume. It must not preempt, and it must not shout.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "npm test"},
+     "tool_response": "Tests: 20 passed, 20 total"}
+  ],
+  "expect": {"spoken": 1, "contains_any": ["passed"], "max_priority": 2}
+}
