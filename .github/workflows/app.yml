@@ -30,7 +30,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Sound libraries the native modules link against (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev libasound2t64 2>/dev/null || sudo apt-get install -y -q libasound2
+        run: sudo apt-get update -q && sudo apt-get install -y -q libasound2 libpulse0-dev libasound2t64 libpulse0 2>/dev/null || sudo apt-get install -y -q libasound2
       - name: Bundle the Piper voice
         shell: bash
         run: |

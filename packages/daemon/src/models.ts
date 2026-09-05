@@ -120,10 +120,16 @@ export async function fetchModel(
   onProgress({ phase: "unpack", received: total, total });
   rmSync(dest, { recursive: true, force: true });
   await new Promise<void>((resolve, reject) => {
-    execFile("tar", ["-xjf", archive, "-C", MODELS], { windowsHide: true }, (err, _out, stderr) => {
-      if (err) return reject(new Error(`tar failed: ${stderr || err.message}`));
-      resolve();
-    });
+    // relative paths, from inside the models dir: GNU tar on Windows reads "C:" as a host
+    execFile(
+      "tar",
+      ["-xjf", path.basename(archive)],
+      { cwd: MODELS, windowsHide: true },
+      (err, _out, stderr) => {
+        if (err) return reject(new Error(`tar failed: ${stderr || err.message}`));
+        resolve();
+      },
+    );
   });
   rmSync(archive, { force: true });
   if (!installed(spec)) throw new Error(`unpacked, but ${spec.marker} is missing`);

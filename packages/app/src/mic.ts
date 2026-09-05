@@ -184,7 +184,8 @@ function main(): void {
       peak = 0;
     }
     while (!vad.isEmpty()) {
-      const seg = vad.front();
+      // Electron forbids external ArrayBuffers; ask for a copy
+      const seg = vad.front(false);
       vad.pop();
       transcribe(seg.samples, seg.samples.length / RATE);
     }
