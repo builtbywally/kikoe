@@ -76,7 +76,8 @@ function main(): void {
       sileroVad: {
         model: vadModel,
         threshold: 0.5,
-        minSilenceDuration: 0.55,
+        // a person pauses after the name; that pause must not end the segment
+        minSilenceDuration: 1.0,
         minSpeechDuration: 0.25,
         maxSpeechDuration: 15,
         windowSize: 512,

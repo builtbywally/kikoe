@@ -20,6 +20,13 @@ describe("routing", () => {
     expect(gate("we should kick this to thursday")[0]).toBe(false);
   });
 
+  it("attends to the next thing after a bare name", () => {
+    expect(route("hey kikoe")).toMatchObject({ kind: "social", intent: "hello", text: "" });
+    expect(route("what's it doing", { attending: true }).kind).toBe("question");
+    expect(route("what's it doing", { attending: false }).kind).toBe("overheard");
+    expect(route("", { attending: true }).kind).toBe("empty");
+  });
+
   it("control words never become work", () => {
     for (const t of ["kikoe stop", "hey kikoe, be quiet", "kikoe shut up"]) {
       const d = route(t);

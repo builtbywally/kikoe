@@ -164,6 +164,8 @@ export class Daemon {
   private lastSpoken: { text: string; at: number } | null = null;
   private lastRepeatable = "";
   micPhase = "off";
+  /** until when an utterance without the name still counts as for us */
+  private attentionUntil = 0;
   micDevice = "";
   readonly heardLog: Array<{
     ts: number;
@@ -376,7 +378,12 @@ export class Daemon {
     const awaiting = this.pending !== null || this.board.asking() !== undefined;
     const offered = this.board.asking()?.ask ?? [];
     const aliases = [...new Set([this.settings.wake_name, ...DEFAULT_ALIASES])];
-    const d = route(clean, { aliases, awaitingAnswer: awaiting, offered });
+    const attending = Date.now() < this.attentionUntil;
+    const d = route(clean, { aliases, awaitingAnswer: awaiting, offered, attending });
+    if (d.addressed) this.attentionUntil = 0;
+    // The name on its own opens the window: "kikoe" ... "what's it doing".
+    if (d.kind === "social" && d.intent === "hello" && !d.text)
+      this.attentionUntil = Date.now() + 8000;
     // What was not addressed to us is dropped here, whole. Not the log file,
     // not the heard list, not the stream: a word count is all that survives,
     // because an open mic in a room is only acceptable on those terms.

@@ -44,6 +44,8 @@ export const DEFAULT_ALIASES = [
   "kikoa",
   "geeko",
   "kekoe",
+  "cookie",
+  "a cookie",
 ];
 
 const YES = [
@@ -135,10 +137,18 @@ export interface RouteOptions {
   awaitingAnswer?: boolean;
   /** offered answers for the thing waiting, if any */
   offered?: string[];
+  /**
+   * The name was said on its own a moment ago and we answered "yes?". The
+   * next thing said is for us even without the name; the daemon opens the
+   * window and closes it after one utterance or a few seconds.
+   */
+  attending?: boolean;
 }
 
 export function route(text: string, opts: RouteOptions = {}): Decision {
-  const [addressed, rest] = gate(text, opts.aliases);
+  const gated = gate(text, opts.aliases);
+  const [addressed, rest] =
+    !gated[0] && opts.attending && normalize(text) ? [true, normalize(text)] : gated;
   const base = { addressed, text: rest, arg: "" };
   if (!rest && !addressed) return { kind: "empty", intent: "", ...base };
   if (!rest && addressed) return { kind: "social", intent: "hello", ...base };

@@ -41,6 +41,14 @@ describe("the ear, through the daemon", () => {
     await d.close();
   });
 
+  it("a bare name opens a window for the next utterance, once", async () => {
+    const d = quiet();
+    expect(d.hear("hey kick").kind).toBe("social");
+    expect(d.hear("how long has it been going").kind).toBe("question");
+    expect(d.hear("how long has it been going").kind).toBe("overheard");
+    await d.close();
+  });
+
   it("keeps nothing of what is not addressed to it", async () => {
     const d = quiet();
     const frames: Record<string, unknown>[] = [];
