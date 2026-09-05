@@ -47,6 +47,8 @@ export interface Settings {
   theme: string;
   /** tiny | base: the Whisper English model the ear uses */
   stt_model: string;
+  /** keep the text of what was not for us too; for tuning the name gate, off by default */
+  hear_debug: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -68,6 +70,7 @@ export const DEFAULTS: Settings = {
   wake_name: "kikoe",
   theme: "system",
   stt_model: "tiny",
+  hear_debug: false,
 };
 
 const FILE = () => path.join(HOME, "config.local.json");

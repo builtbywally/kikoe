@@ -381,15 +381,18 @@ export class Daemon {
     // not the heard list, not the stream: a word count is all that survives,
     // because an open mic in a room is only acceptable on those terms.
     const addressed = d.kind !== "overheard" && d.kind !== "empty";
+    // hear_debug is the one exception, and it says so in every line it keeps.
+    const keep = addressed || this.settings.hear_debug;
     const timing = `${meta.dur_s ?? "?"}s, stt ${meta.stt_ms ?? "?"} ms`;
     if (addressed)
       log(
         `heard "${clean}" -> ${d.kind}${d.intent ? ":" + d.intent : ""}${d.arg ? " " + d.arg : ""} (${timing})`,
       );
+    else if (keep) log(`heard (debug) "${clean}" -> not for me (${timing})`);
     else log(`heard: not for me, ${words} words, dropped (${timing})`);
 
     const record = (kind: string, intent: string, said = "") => {
-      const text = addressed ? clean : "";
+      const text = keep ? clean : "";
       this.heardLog.push({
         ts: Date.now() / 1000,
         text,

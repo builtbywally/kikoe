@@ -568,6 +568,7 @@ function renderControl(state) {
     });
     const m = document.createElement("span");
     m.textContent = h.text ? `“${h.text}”` : `not for me · ${h.words ?? "?"} words · dropped`;
+    if (h.text && h.kind === "overheard") d.dataset.debug = "1";
     const k = document.createElement("span");
     k.className = "k";
     k.dataset.kind = h.kind;

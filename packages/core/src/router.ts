@@ -33,6 +33,17 @@ export const DEFAULT_ALIASES = [
   "kicko",
   "keiko",
   "kikou",
+  // what Whisper actually makes of it, from the heard log
+  "kick",
+  "kicky",
+  "kick oh",
+  "kick away",
+  "kick oi",
+  "kiku",
+  "keeko",
+  "kikoa",
+  "geeko",
+  "kekoe",
 ];
 
 const YES = [

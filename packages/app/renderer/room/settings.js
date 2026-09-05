@@ -56,6 +56,7 @@
     $("mic").checked = Boolean(s.mic);
     $("wake").value = s.wake_name || "kikoe";
     $("stt-model").value = s.stt_model || "tiny";
+    $("hear-debug").checked = Boolean(s.hear_debug);
     $("claude-path").textContent = info.claudeSettingsPath;
     $("eleven-key").placeholder = info.hasElevenKey
       ? "key saved in the keychain (paste to replace)"
@@ -378,6 +379,7 @@
       mic_device: device ? device.split(" (")[0].slice(0, 24) : "",
       wake_name: $("wake").value.trim() || "kikoe",
       stt_model: $("stt-model").value,
+      hear_debug: $("hear-debug").checked,
     });
     note(
       "mic-note",

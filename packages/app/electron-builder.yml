@@ -1,5 +1,6 @@
 appId: app.kikoe.desktop
 productName: kikoe
+executableName: kikoe
 copyright: Copyright © 2026 builtbywally
 directories:
   output: ../../out/app

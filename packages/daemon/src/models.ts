@@ -90,6 +90,17 @@ export type Progress = (p: {
 }) => void;
 
 /** Download and unpack. Idempotent: an installed model returns at once. */
+/**
+ * Windows ships bsdtar in System32, which reads .tar.bz2 on its own. A shell
+ * that puts Git's GNU tar first on PATH hands us one whose bzip2 helper fails
+ * from inside Electron, so on Windows the system one is named outright.
+ */
+function tarBinary(): string {
+  if (process.platform !== "win32") return "tar";
+  const sys = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+  return existsSync(sys) ? sys : "tar";
+}
+
 export async function fetchModel(
   spec: ModelSpec,
   onProgress: Progress = () => {},
@@ -122,7 +133,7 @@ export async function fetchModel(
   await new Promise<void>((resolve, reject) => {
     // relative paths, from inside the models dir: GNU tar on Windows reads "C:" as a host
     execFile(
-      "tar",
+      tarBinary(),
       ["-xjf", path.basename(archive)],
       { cwd: MODELS, windowsHide: true },
       (err, _out, stderr) => {

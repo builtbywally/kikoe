@@ -52,9 +52,15 @@ describe("the ear, through the daemon", () => {
     expect(row?.words).toBe(7);
     expect(JSON.stringify(frames)).not.toContain("thursday");
     expect(JSON.stringify(d.state())).not.toContain("thursday");
+    // the tuning switch keeps it, and says so
+    d.settings.hear_debug = true;
+    d.hear("lunch at noon then");
+    expect(d.heardLog[1]?.text).toBe("lunch at noon then");
+    expect(d.heardLog[1]?.kind).toBe("overheard");
+    d.settings.hear_debug = false;
     // and what is addressed is kept, so the list stays useful
     d.hear("kikoe thanks");
-    expect(d.heardLog[1]?.text).toBe("kikoe thanks");
+    expect(d.heardLog[2]?.text).toBe("kikoe thanks");
     await d.close();
   });
 

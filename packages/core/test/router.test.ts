@@ -12,6 +12,14 @@ describe("the name gate", () => {
 });
 
 describe("routing", () => {
+  it("takes what Whisper makes of the name in a real room", () => {
+    expect(gate("Hey kick, what's it doing")[0]).toBe(true);
+    expect(gate("kicky go silent")[0]).toBe(true);
+    expect(gate("kick away, stop")[0]).toBe(true);
+    expect(gate("kick the tyres before we ship")[0]).toBe(true); // the cost of hearing 'kick'
+    expect(gate("we should kick this to thursday")[0]).toBe(false);
+  });
+
   it("control words never become work", () => {
     for (const t of ["kikoe stop", "hey kikoe, be quiet", "kikoe shut up"]) {
       const d = route(t);
