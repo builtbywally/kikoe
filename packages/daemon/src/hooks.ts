@@ -308,7 +308,15 @@ export function install(opts: {
   return { file, backup, events, command, kind, assets };
 }
 
-export function uninstall(opts: { file?: string; dryRun?: boolean; legacy?: boolean } = {}): {
+/**
+ * Removes our hooks; with `legacy`, the old ClaudeTalks ones too; with
+ * `keepOurs`, only the old ones. Migration is the second case: taking the
+ * user's working hooks along with the dead ones is exactly the bug it once
+ * had.
+ */
+export function uninstall(
+  opts: { file?: string; dryRun?: boolean; legacy?: boolean; keepOurs?: boolean } = {},
+): {
   file: string;
   removed: string[];
   legacyRemoved: string[];
@@ -322,20 +330,20 @@ export function uninstall(opts: { file?: string; dryRun?: boolean; legacy?: bool
   for (const ev of Object.keys(hooks)) {
     const before = hooks[ev] ?? [];
     const after = before.filter((g) => {
-      if (isOurs(g)) return false;
+      if (isOurs(g)) return opts.keepOurs === true;
       if (opts.legacy && isLegacy(g)) {
         legacyRemoved.push(ev);
         return false;
       }
       return true;
     });
-    if (before.some(isOurs)) removed.push(ev);
+    if (!opts.keepOurs && before.some(isOurs)) removed.push(ev);
     if (after.length) hooks[ev] = after;
     else delete hooks[ev];
   }
   data.hooks = Object.keys(hooks).length ? hooks : undefined;
   if (!opts.dryRun && (removed.length || legacyRemoved.length)) save(file, data);
-  const assets = opts.dryRun ? [] : removeAssets(Boolean(opts.legacy));
+  const assets = opts.dryRun ? [] : removeAssets(Boolean(opts.legacy), Boolean(opts.keepOurs));
   return { file, removed, legacyRemoved: [...new Set(legacyRemoved)], assets };
 }
 
@@ -427,12 +435,12 @@ const LEGACY_ASSET_PATHS = () => [
   assetPath(["skills", "speak", "SKILL.md"]),
 ];
 
-export function removeAssets(legacy = false): string[] {
+export function removeAssets(legacy = false, keepOurs = false): string[] {
   const removed: string[] = [];
-  const candidates = Object.values(ASSETS).map((a) => assetPath(a.rel));
+  const candidates = keepOurs ? [] : Object.values(ASSETS).map((a) => assetPath(a.rel));
   if (legacy) candidates.push(...LEGACY_ASSET_PATHS());
   for (const file of new Set(candidates)) {
-    if (marked(file) || (legacy && isLegacyAsset(file))) {
+    if ((!keepOurs && marked(file)) || (legacy && isLegacyAsset(file))) {
       try {
         unlinkSync(file);
         removed.push(file);

@@ -619,7 +619,7 @@ ipcMain.handle("settings:uninstallHooks", () => {
 ipcMain.handle("settings:migrate", () => {
   try {
     const file = loadSettings().claude_settings || settingsPath();
-    const r = uninstallHooks({ file, legacy: true });
+    const r = uninstallHooks({ file, legacy: true, keepOurs: true });
     log(`legacy hooks removed: ${r.legacyRemoved.join(", ")}; assets ${r.assets.length}`);
     return { ok: true, ...r };
   } catch (e) {

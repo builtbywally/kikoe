@@ -109,3 +109,24 @@ describe("redaction", () => {
     expect(out).toContain("[redacted]");
   });
 });
+
+describe("migration", () => {
+  it("removes the old hooks and leaves ours, assets included", () => {
+    const file = path.join(HOME, "migrate.json");
+    writeFileSync(file, JSON.stringify(FOREIGN));
+    hooks.install({ file, profile: "balanced", port: 4570, token: "t" });
+    hooks.installAssets();
+    const before = hooks.status(file);
+    expect(before.installed.length).toBeGreaterThan(0);
+    expect(before.legacy.length).toBeGreaterThan(0);
+    const r = hooks.uninstall({ file, legacy: true, keepOurs: true });
+    expect(r.legacyRemoved.length).toBeGreaterThan(0);
+    expect(r.removed).toEqual([]);
+    const after = hooks.status(file);
+    expect(after.legacy).toEqual([]);
+    expect(after.installed).toEqual(before.installed);
+    expect(hooks.assetStatus().length).toBe(2);
+    // the foreign hook that is neither ours nor legacy is untouched
+    expect(JSON.stringify(JSON.parse(readFileSync(file, "utf8")))).toContain("notify.py");
+  });
+});
