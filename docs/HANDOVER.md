@@ -73,6 +73,8 @@ User data: `~/.kikoe/` — `config.local.json` (settings), `daemon_token.txt`,
 `viewer_token.txt`, `hook.curlrc` / `speak.curlrc` / `show.curlrc`,
 `elevenlabs_key.txt` + `.enc`, `anthropic_key.txt` + `.enc` (never print),
 `board.json` (sticky pins), `conversation.jsonl`, `memory.md` (Kik's notes),
+`inner.md` (Kik's private inner note, rewritten after each exchange),
+`presence.json` (when the user was last here and last greeted),
 `models/` (Piper, Kokoro, Whisper base, Silero VAD), `logs/daemon.log`,
 `metrics.jsonl`.
 
@@ -101,6 +103,15 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    instruct_agent, create_artifact, update_artifact, read_board,
    remove_artifact, point_at, ask_user, remember, forget, set_mode,
    clear_board, pin_note.
+   Between utterances Kik keeps an inner note (`reflectNow()`, five
+   seconds after an exchange, ending or error, at most every thirty):
+   what it thinks is going on, what it expects, what it meant to say. The
+   note goes into the system prompt and the minute check-in compares the
+   picture against it. The first thing the user says after an hour away
+   is a return: a hello inside the reply if addressed, a hello of its own
+   if overheard (only the gap is used, never the words). If the model's
+   first clause takes over 1.5 s, Kik says "hm" or "one sec" first.
+   The goal all of this serves is `docs/SENTIENCE.md`.
 4. The Room renders the daemon's `/stream` frames: `pin`, `heard`, `mic`,
    `speech`, `sessions`, `event`, `focus`, `suggest`, `look`. The board is a
    pan/zoom canvas (`board.js`): frames per repo, cards placed in columns,
@@ -116,7 +127,8 @@ Flight": the desk mic M8 hears the room), `wake_name` ("kik"),
 text of everything heard; turn off when the name lands reliably),
 `hear_you` (true), `barge_in` (true, headset only), `brain` (true),
 `brain_model` (Haiku 4.5; Sonnet 5 option), `brain_narrates`,
-`brain_checkin`, `backdrop` ("aurora"), `backdrop_dim`, `backdrop_blur`,
+`brain_checkin`, `brain_greets` (hello after an hour away), `backdrop`
+("aurora"), `backdrop_dim`, `backdrop_blur`,
 `backdrop_image`, `start_at_login`, `theme`.
 
 ## Decisions already made (don't relitigate)

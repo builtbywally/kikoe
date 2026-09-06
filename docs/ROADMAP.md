@@ -72,7 +72,11 @@ The bar: a designer would keep it open.
 - Version history per artifact; "undo what you just changed".
 - Text and image drop from the desktop; paste from the clipboard.
 - The canvas on the second screen is live and interactive, not just a
-  viewer; a phone view for answering permissions from the couch.
+  viewer.
+- A remote controller on tablet and phone (asked for 2026-09-06, for a
+  later stage): the same daemon over the viewer link, a touch-first page
+  that answers permissions, talks to Kik by voice or text, shows the
+  canvas, and starts or stops agents from the couch or another room.
 
 ## Milestone 4: Agents (by 2026-10-18)
 

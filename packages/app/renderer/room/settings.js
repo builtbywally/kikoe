@@ -69,6 +69,7 @@
     $("brain-model").value = s.brain_model || "claude-haiku-4-5-20251001";
     $("brain-narrates").checked = s.brain_narrates !== false;
     $("brain-checkin").checked = s.brain_checkin !== false;
+    $("brain-greets").checked = s.brain_greets !== false;
     $("anthropic-key").placeholder = info.hasAnthropicKey
       ? "key saved in the keychain (paste to replace)"
       : "Anthropic API key (stored in the OS keychain)";
@@ -411,6 +412,7 @@
       brain_model: $("brain-model").value,
       brain_narrates: $("brain-narrates").checked,
       brain_checkin: $("brain-checkin").checked,
+      brain_greets: $("brain-greets").checked,
     };
     if (key) patch.anthropicKey = key;
     if (patch.brain && !key && !info.hasAnthropicKey)

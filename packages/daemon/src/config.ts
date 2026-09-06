@@ -66,6 +66,8 @@ export interface Settings {
   brain_narrates: boolean;
   /** it may speak up unprompted when something is worth it */
   brain_checkin: boolean;
+  /** it says hello when the user comes back after a while away */
+  brain_greets: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -98,6 +100,7 @@ export const DEFAULTS: Settings = {
   brain_model: "claude-haiku-4-5-20251001",
   brain_narrates: true,
   brain_checkin: true,
+  brain_greets: true,
 };
 
 const FILE = () => path.join(HOME, "config.local.json");

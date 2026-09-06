@@ -107,6 +107,20 @@ export interface SpokenRecord {
 
 /** after an exchange, how long the next thing said is for us without the name */
 const ATTENTION_MS = 20_000;
+/** away this long, and the next thing the user says is a return */
+const AWAY_MS = 3600_000;
+/** what Kik says while the model is still thinking */
+const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
+
+/** "forty minutes", "three hours", "a night", "two days" */
+export function describeGap(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  if (min < 90) return `${min} minutes`;
+  const h = Math.round(ms / 3600_000);
+  if (h < 20) return `${h} hours`;
+  const d = Math.round(ms / 86_400_000);
+  return d <= 1 ? "a night" : `${d} days`;
+}
 
 export interface DaemonOptions {
   settings?: Settings;
@@ -120,6 +134,10 @@ export interface DaemonOptions {
   /** keep sticky pins in ~/.kikoe/board.json (off for smoke and screenshot runs) */
   persistBoard?: boolean;
   onSpeech?: (phase: SpeechPhase, info: SpeechInfo) => void;
+  /** how long after an exchange the inner note is rewritten (tests shorten it) */
+  reflectMs?: number;
+  /** how long the model may take before Kik says "hm" (tests shorten it) */
+  fillerMs?: number;
 }
 
 /**
@@ -208,6 +226,19 @@ export class Daemon {
   private timers: NodeJS.Timeout[] = [];
   private agentSpokeAt = 0;
   eventsSeen = 0;
+  /** when the user was last here and last greeted; on disk so a restart keeps it */
+  presence = { seen: 0, greeted: 0 };
+  private presenceTimer: NodeJS.Timeout | null = null;
+  /** the user just came back and this is the first thing they said; the reply says hello */
+  private returned: { after: number; at: number } | null = null;
+  /** Kik's private inner note: what it thinks is going on. Never spoken. */
+  private innerNote = "";
+  private reflectTimer: NodeJS.Timeout | null = null;
+  private reflectedAt = 0;
+  private reflecting = false;
+  private readonly reflectMs: number;
+  private readonly fillerMs: number;
+  private lastFiller = "";
 
   constructor(opts: DaemonOptions = {}) {
     this.anthropicKey = opts.anthropicKey ?? "";
@@ -228,6 +259,12 @@ export class Daemon {
       ...(opts.elevenKey ? { elevenKey: opts.elevenKey } : {}),
     });
     this.persistBoard = opts.persistBoard !== false;
+    this.reflectMs = opts.reflectMs ?? 5000;
+    this.fillerMs = opts.fillerMs ?? 1500;
+    if (this.persistBoard) {
+      this.presence = this.presenceFromDisk();
+      this.innerNote = this.innerFromDisk();
+    }
     this.board = new Board((e) => {
       this.hub.publish("pin", { ...e });
       if (this.persistBoard) this.saveBoardSoon();
@@ -270,6 +307,10 @@ export class Daemon {
   ingest(e: ev.AgentEvent): number {
     this.eventsSeen++;
     this.tracker.apply(e);
+    // Hooks mean the user is at the desk driving agents, even if silent.
+    this.presence.seen = Date.now();
+    this.savePresenceSoon();
+    if (e.kind === ev.TURN_END || e.kind === ev.ERROR) this.reflectSoon();
     let lines = this.narrator.narrate(e);
     // Claude spoke for itself this turn; the hook's summary would say it twice.
     if (e.kind === ev.TURN_END && Date.now() / 1000 - this.agentSpokeAt < SELF_SPOKEN_WINDOW_S) {
@@ -477,6 +518,7 @@ export class Daemon {
       void this.decideDirected(clean, meta);
       return { kind: "deciding", intent: "" };
     }
+    this.arrived(addressed);
     if (d.kind === "overheard") {
       record("overheard", "");
       this.hub.publish("mic", { phase: "overheard", words });
@@ -583,10 +625,15 @@ export class Daemon {
     this.eventsAtCheckin = this.eventsSeen;
     try {
       const said = await brain.compose(
-        "Nothing has been said for a while. Looking at the picture, is there one thing worth telling the user unprompted: an agent that has been waiting on them, one stuck on the same thing for a long time, a pattern of failures? If so, say it in one sentence. If not, reply with a single hyphen.",
+        this.innerNote
+          ? "Nothing has been said for a while. Compare your inner note, what you expected, with the picture now. If something has changed that the user would want to hear, or something you meant to tell them is still untold and worth it now, say it in one sentence. Otherwise reply with a single hyphen."
+          : "Nothing has been said for a while. Looking at the picture, is there one thing worth telling the user unprompted: an agent that has been waiting on them, one stuck on the same thing for a long time, a pattern of failures? If so, say it in one sentence. If not, reply with a single hyphen.",
         this.brainSystem(),
       );
-      if (said) this.say(said, ev.SEV_MILESTONE, "head");
+      if (said) {
+        this.say(said, ev.SEV_MILESTONE, "head");
+        this.reflectSoon();
+      }
     } catch (err) {
       log(`brain check-in failed: ${(err as Error).message}`);
     }
@@ -667,6 +714,137 @@ export class Daemon {
       return { kind: "held" };
     }
     return this.hear(clean, meta);
+  }
+
+  // --- presence: noticing the user ------------------------------------------------
+  private presenceFile(): string {
+    return path.join(HOME, "presence.json");
+  }
+  private presenceFromDisk(): { seen: number; greeted: number } {
+    try {
+      if (!existsSync(this.presenceFile())) return { seen: 0, greeted: 0 };
+      const p = JSON.parse(readFileSync(this.presenceFile(), "utf8")) as Record<string, unknown>;
+      return { seen: Number(p.seen) || 0, greeted: Number(p.greeted) || 0 };
+    } catch {
+      return { seen: 0, greeted: 0 };
+    }
+  }
+  private savePresenceSoon(): void {
+    if (!this.persistBoard || this.presenceTimer) return;
+    this.presenceTimer = setTimeout(() => {
+      this.presenceTimer = null;
+      try {
+        mkdirSync(HOME, { recursive: true });
+        writeFileSync(this.presenceFile(), JSON.stringify(this.presence));
+      } catch (e) {
+        log(`presence: could not write: ${(e as Error).message}`);
+      }
+    }, 5000);
+    this.presenceTimer.unref();
+  }
+
+  /**
+   * The user said something. If they have been away for a while, this is
+   * where Kik notices: an addressed sentence gets its hello inside the
+   * reply; an overheard one gets a hello of its own. Only the gap is used,
+   * never the words.
+   */
+  private arrived(addressed: boolean): void {
+    const now = Date.now();
+    const gap = this.presence.seen ? now - this.presence.seen : 0;
+    this.presence.seen = now;
+    this.savePresenceSoon();
+    if (gap < AWAY_MS || now - this.presence.greeted < AWAY_MS) return;
+    if (!this.settings.brain_greets || !this.brain()) return;
+    this.presence.greeted = now;
+    if (addressed) {
+      this.returned = { after: gap, at: now };
+      return;
+    }
+    void this.greet(gap);
+  }
+
+  private async greet(gap: number): Promise<void> {
+    const brain = this.brain();
+    if (!brain) return;
+    try {
+      const said = await brain.compose(
+        `The user has just come back after ${describeGap(gap)}. You heard them, but they were not talking to you. Say hello the way a colleague at the next desk would: one sentence, at most fifteen words, in context. Mention the one thing worth knowing, if there is one: what changed while they were away, what is still on the canvas, what you were in the middle of. A plain hello is fine. If it would be an intrusion right now, reply with a single hyphen.`,
+        this.brainSystem(),
+      );
+      if (!said) return;
+      log(`hello after ${describeGap(gap)}`);
+      this.say(said, ev.SEV_MILESTONE, "head");
+      this.openWindow("", said);
+      this.reflectSoon();
+    } catch (err) {
+      log(`hello failed: ${(err as Error).message}`);
+    }
+  }
+
+  // --- the inner thread: what Kik thinks between utterances -------------------------
+  private innerFile(): string {
+    return path.join(HOME, "inner.md");
+  }
+  private innerFromDisk(): string {
+    try {
+      return existsSync(this.innerFile()) ? readFileSync(this.innerFile(), "utf8").trim() : "";
+    } catch {
+      return "";
+    }
+  }
+  /** Kik's private note, for the Control Room. */
+  inner(): string {
+    return this.innerNote;
+  }
+  /**
+   * Something happened worth a thought: an exchange, an ending, an error.
+   * A little later, once at a time and not too often, the inner note is
+   * rewritten against the picture. Off the reply path.
+   */
+  reflectSoon(): void {
+    if (this.reflectTimer || !this.brain()) return;
+    const wait = Math.max(this.reflectMs, this.reflectedAt + this.reflectMs * 6 - Date.now());
+    this.reflectTimer = setTimeout(() => {
+      this.reflectTimer = null;
+      void this.reflectNow();
+    }, wait);
+    this.reflectTimer.unref();
+  }
+  async reflectNow(): Promise<string> {
+    const brain = this.brain();
+    if (!brain || this.reflecting) return this.innerNote;
+    this.reflecting = true;
+    this.reflectedAt = Date.now();
+    try {
+      const recent = brain.recent(4);
+      const note = await brain.compose(
+        [
+          "Rewrite your private inner note. It is for you alone and never spoken: what is going on with the agents right now, what you are waiting for and what you expect to happen next, what you meant to tell the user and have not yet, and what the user seems to be doing. Keep what still holds, drop what is stale, and note anything you got wrong. First person, plain prose, at most a hundred words. Reply with the note only.",
+          recent ? `The last exchanges:\n${recent}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        this.brainSystem(),
+      );
+      if (note) {
+        this.innerNote = note.slice(0, 1500);
+        if (this.persistBoard) {
+          try {
+            mkdirSync(HOME, { recursive: true });
+            writeFileSync(this.innerFile(), `${this.innerNote}\n`);
+          } catch (e) {
+            log(`inner: could not write: ${(e as Error).message}`);
+          }
+        }
+        this.hub.publish("inner", { text: this.innerNote });
+      }
+    } catch (err) {
+      log(`reflection failed: ${(err as Error).message}`);
+    } finally {
+      this.reflecting = false;
+    }
+    return this.innerNote;
   }
 
   // --- the board on disk: sticky pins survive a restart ---------------------------
@@ -772,11 +950,28 @@ export class Daemon {
     const brain = this.brain();
     if (!brain) return;
     let said = "";
+    // While the model thinks, a person would say "hm". One short sound if
+    // the first clause is slow; a hello needs none.
+    let filler: NodeJS.Timeout | null =
+      kind === "social"
+        ? null
+        : setTimeout(() => {
+            filler = null;
+            const pick = FILLERS.filter((f) => f !== this.lastFiller);
+            const f = pick[Math.floor(Math.random() * pick.length)] ?? "Hm.";
+            this.lastFiller = f;
+            this.say(f, ev.SEV_MILESTONE, "head");
+          }, this.fillerMs);
+    const stopFiller = () => {
+      if (filler) clearTimeout(filler);
+      filler = null;
+    };
     try {
       said = await brain.reply(text, {
         system: this.brainSystem(),
         tools: this.brainTools(),
         onClause: (clause) => {
+          stopFiller();
           const next = /^next:\s*(.+)$/i.exec(clause.trim());
           if (next) {
             const options = (next[1] ?? "")
@@ -804,8 +999,11 @@ export class Daemon {
       record(kind, intent, said);
       this.say(said, ev.SEV_ATTENTION, "head");
     } finally {
+      stopFiller();
+      this.returned = null;
       this.openWindow(text, said);
       this.hub.publish("mic", { phase: "idle" });
+      this.reflectSoon();
     }
   }
 
@@ -841,6 +1039,14 @@ export class Daemon {
     if (mem)
       lines.push(
         `What you remember about the user and their work (your notes; use remember to add, forget to drop):\n${mem.slice(0, 4000)}`,
+      );
+    if (this.innerNote)
+      lines.push(
+        `What you were thinking a moment ago (your private note; nothing in it has been said aloud unless it appears above):\n${this.innerNote}`,
+      );
+    if (this.returned && Date.now() - this.returned.at < 60_000)
+      lines.push(
+        `The user has just come back after ${describeGap(this.returned.after)} and this is the first thing they have said. Say hello in passing, the way a colleague would, then answer.`,
       );
     lines.push(
       `Narration mode: ${this.narrator.mode}. Local time ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}, ${new Date().toDateString()}.`,
@@ -1260,6 +1466,8 @@ export class Daemon {
         key: Boolean(this.anthropicKey),
       },
       instructions: this.instructions.length,
+      inner: this.innerNote,
+      presence: this.presence,
       look: this.look(),
       mode: this.narrator.mode,
       tts: {
@@ -1697,6 +1905,8 @@ export class Daemon {
   async close(): Promise<void> {
     if (this.held) clearTimeout(this.held.timer);
     if (this.checkinTimer) clearInterval(this.checkinTimer);
+    if (this.reflectTimer) clearTimeout(this.reflectTimer);
+    if (this.presenceTimer) clearTimeout(this.presenceTimer);
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     if (this.pending) this.answerPermission(false, this.pending.id);

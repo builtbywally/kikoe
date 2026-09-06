@@ -373,3 +373,158 @@ describe("memory", () => {
     await d2.close();
   });
 });
+
+describe("presence and the inner thread", () => {
+  const settings = () =>
+    ({ ...config.DEFAULTS, tts: "none", brain: true, mic: false }) as typeof config.DEFAULTS;
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("rewrites its inner note after an exchange and thinks from it next time", async () => {
+    const { f, sent } = fakeFetch([
+      text("Nothing is running."),
+      text("Nothing running; the user asked what was up; I expect a session to start soon."),
+      text("Still nothing."),
+    ]);
+    const d = new Daemon({
+      settings: settings(),
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f,
+      reflectMs: 5,
+    });
+    d.hear("kik what's up");
+    await wait(80);
+    expect(d.inner()).toContain("expect a session to start");
+    expect(d.state().inner).toContain("expect a session");
+    expect(String(sent[1]?.messages && JSON.stringify(sent[1].messages))).toContain("inner note");
+    d.hear("and now");
+    await wait(30);
+    expect(String(sent[2]?.system)).toContain("What you were thinking a moment ago");
+    expect(String(sent[2]?.system)).toContain("expect a session to start");
+    await d.close();
+  });
+
+  it("checks in as a diff against what it expected", async () => {
+    const { f, sent } = fakeFetch([
+      text("I expect the test run to go green."),
+      text("The tests have been red for a while now."),
+    ]);
+    const d = new Daemon({
+      settings: settings(),
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f,
+      reflectMs: 5,
+    });
+    d.hook({
+      hook_event_name: "PreToolUse",
+      session_id: "s",
+      cwd: HOME,
+      tool_name: "Bash",
+      tool_input: { command: "pnpm test" },
+    });
+    await d.reflectNow();
+    await d.checkIn();
+    expect(JSON.stringify(sent[1]?.messages)).toContain("Compare your inner note");
+    expect(String(sent[1]?.system)).toContain("I expect the test run to go green");
+    await d.close();
+  });
+
+  it("says hello on its own when you come back after a while", async () => {
+    const { f, sent } = fakeFetch([text("Morning. The timer page is still up.")]);
+    const d = new Daemon({
+      settings: settings(),
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f,
+      reflectMs: 5,
+    });
+    d.presence.seen = Date.now() - 9 * 3600_000;
+    // overheard, not addressed: the words never reach the model, the gap does
+    expect(d.hear("right then, coffee first").kind).toBe("deciding");
+    await wait(60);
+    const hello = sent
+      .map((s) => JSON.stringify(s.messages))
+      .find((m) => m.includes("come back after 9 hours"));
+    expect(hello).toBeDefined();
+    expect(hello).not.toContain("coffee");
+    expect(d.presence.greeted).toBeGreaterThan(0);
+    // not twice
+    d.presence.seen = Date.now() - 9 * 3600_000;
+    d.hear("kik hello");
+    await wait(30);
+    expect(String(sent[sent.length - 1]?.system)).not.toContain("just come back");
+    await d.close();
+  });
+
+  it("folds the hello into the reply when the first thing said is for it", async () => {
+    const { f, sent } = fakeFetch([text("Hey. Nothing ran overnight.")]);
+    const d = new Daemon({
+      settings: settings(),
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f,
+      reflectMs: 5,
+    });
+    d.presence.seen = Date.now() - 2 * 3600_000;
+    d.hear("kik what happened overnight");
+    await wait(40);
+    expect(String(sent[0]?.system)).toContain("just come back after 2 hours");
+    expect(sent.length).toBeGreaterThanOrEqual(1);
+    // the hook keeps presence fresh: no hello for someone who has been typing
+    d.presence.greeted = 0;
+    d.hook({
+      hook_event_name: "PreToolUse",
+      session_id: "s",
+      cwd: HOME,
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    });
+    d.hear("kik and now");
+    await wait(30);
+    expect(String(sent[sent.length - 1]?.system)).not.toContain("just come back");
+    await d.close();
+  });
+
+  it("says hm when the model is slow, and not when it is quick", async () => {
+    const { f } = fakeFetch([text("Quick answer.")]);
+    const slow = (async (url: unknown, init?: RequestInit) => {
+      await wait(60);
+      return f(url as string, init);
+    }) as unknown as typeof fetch;
+    const d = new Daemon({
+      settings: settings(),
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: slow,
+      fillerMs: 15,
+      reflectMs: 5,
+    });
+    const said: string[] = [];
+    d.hub.listen((fr) => {
+      if (fr.type === "speech" && fr.phase === "speaking") said.push(String(fr.text));
+    });
+    d.hear("kik what's it doing");
+    await wait(150);
+    expect(said.some((s) => ["Hm.", "One sec.", "Let me look.", "Mm."].includes(s))).toBe(true);
+    expect(said).toContain("Quick answer.");
+    await d.close();
+    const { f: f2 } = fakeFetch([text("Quick answer.")]);
+    const d2 = new Daemon({
+      settings: settings(),
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f2,
+      fillerMs: 50,
+      reflectMs: 5,
+    });
+    const said2: string[] = [];
+    d2.hub.listen((fr) => {
+      if (fr.type === "speech" && fr.phase === "speaking") said2.push(String(fr.text));
+    });
+    d2.hear("kik what's it doing");
+    await wait(120);
+    expect(said2.some((s) => ["Hm.", "One sec.", "Let me look.", "Mm."].includes(s))).toBe(false);
+    await d2.close();
+  });
+});
