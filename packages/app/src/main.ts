@@ -984,6 +984,15 @@ if (!app.requestSingleInstanceLock()) {
         ask: ["apply", "no"],
         wait_s: 90,
       });
+      // a live web card, framing the daemon itself so the shot needs no network
+      daemon?.board.add({
+        kind: "web",
+        title: "the shop on localhost",
+        body: `http://127.0.0.1:${loadSettings().port}/`,
+        repo: "kik",
+        by: "kik",
+        size: "wide",
+      });
       await new Promise((r) => setTimeout(r, 2500));
       const img = await roomWin?.webContents.capturePage();
       if (img) writeFileSync(shotPath, img.toPNG());
