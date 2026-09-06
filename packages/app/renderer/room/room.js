@@ -127,6 +127,8 @@ function cap(s) {
 
 let micWatchdog = null;
 let overheardUntil = 0;
+let attendingUntil = 0;
+let attendingTimer = null;
 function setOrb(state, label) {
   el.orb.className = `orb ${state}`;
   el.orbLabel.textContent = label;
@@ -714,8 +716,21 @@ const handlers = {
       return;
     }
     if (f.phase === "thinking") return setOrb("speaking", "thinking");
+    if (f.phase === "attending") {
+      attendingUntil = Number(f.until) || Date.now() + 20000;
+      if (!speaking) setOrb("listening", "with you");
+      clearTimeout(attendingTimer);
+      attendingTimer = setTimeout(
+        () => {
+          if (el.orbLabel.textContent === "with you") setOrb("idle", "listening");
+        },
+        Math.max(0, attendingUntil - Date.now()),
+      );
+      return;
+    }
     if (f.phase === "idle" && !speaking) {
       if (Date.now() < overheardUntil) return; // let "not for me" be read
+      if (Date.now() < attendingUntil) return setOrb("listening", "with you");
       if (pendingPermission) return showPermission();
       if (asking) return showAsking();
       setOrb("idle", "listening");

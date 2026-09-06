@@ -51,6 +51,8 @@ export interface Settings {
   hear_debug: boolean;
   /** a question aimed at "you" is for Kik, name or no name */
   hear_you: boolean;
+  /** talking over Kik stops it (headset only; through speakers it hears itself) */
+  barge_in: boolean;
   /** a model in the head: what is addressed to Kik goes to the API */
   brain: boolean;
   brain_model: string;
@@ -81,6 +83,7 @@ export const DEFAULTS: Settings = {
   stt_model: "tiny",
   hear_debug: false,
   hear_you: true,
+  barge_in: false,
   brain: false,
   brain_model: "claude-haiku-4-5-20251001",
   brain_narrates: true,

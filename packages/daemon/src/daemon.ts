@@ -388,6 +388,7 @@ export class Daemon {
   hear(
     text: string,
     meta: { dur_s?: number; stt_ms?: number } = {},
+    opts: { force?: boolean; decided?: boolean } = {},
   ): { kind: string; intent: string; said?: string } {
     const clean = text.trim();
     // Half duplex: while the speaker plays, and for a moment after, the mic
@@ -403,7 +404,7 @@ export class Daemon {
     const awaiting = this.pending !== null || this.board.asking() !== undefined;
     const offered = this.board.asking()?.ask ?? [];
     const aliases = [...new Set([this.settings.wake_name, ...DEFAULT_ALIASES])];
-    const attending = Date.now() < this.attentionUntil;
+    const attending = Date.now() < this.attentionUntil || opts.force === true;
     const d = route(clean, {
       aliases,
       awaitingAnswer: awaiting,
@@ -413,8 +414,7 @@ export class Daemon {
     });
     if (d.addressed) this.attentionUntil = 0;
     // The name on its own opens the window: "kikoe" ... "what's it doing".
-    if (d.kind === "social" && d.intent === "hello" && !d.text)
-      this.attentionUntil = Date.now() + ATTENTION_MS;
+    if (d.kind === "social" && d.intent === "hello" && !d.text) this.openWindow(clean, "");
     // What was not addressed to us is dropped here, whole. Not the log file,
     // not the heard list, not the stream: a word count is all that survives,
     // because an open mic in a room is only acceptable on those terms.
@@ -444,6 +444,10 @@ export class Daemon {
       this.hub.publish("heard", { text, kind, intent, said, words });
     };
     if (d.kind === "empty") return { kind: d.kind, intent: "" };
+    if (d.kind === "overheard" && !opts.decided && this.grayZone()) {
+      void this.decideDirected(clean, meta);
+      return { kind: "deciding", intent: "" };
+    }
     if (d.kind === "overheard") {
       record("overheard", "");
       this.hub.publish("mic", { phase: "overheard", words });
@@ -483,7 +487,7 @@ export class Daemon {
     }
     record(d.kind, d.intent, said ?? "");
     // After an exchange, the next thing said is for us without the name.
-    if (d.kind !== "control") this.attentionUntil = Date.now() + ATTENTION_MS;
+    if (d.kind !== "control") this.openWindow(clean, said ?? "");
     if (said) {
       this.hub.publish("mic", { phase: "thinking", text: clean });
       this.say(said, ev.SEV_ATTENTION, "head");
@@ -556,6 +560,78 @@ export class Daemon {
     }
   }
 
+  private lastExchange = { you: "", kik: "", at: 0 };
+
+  /** After an exchange, the next thing said is for us; the Room shows it. */
+  private openWindow(you: string, kik: string): void {
+    this.attentionUntil = Date.now() + ATTENTION_MS;
+    this.lastExchange = { you, kik, at: Date.now() };
+    this.hub.publish("mic", { phase: "attending", until: this.attentionUntil });
+  }
+
+  /**
+   * The gray zone: the window has closed but an exchange was recent, so a
+   * sentence without the name may still be a follow-up. Only with a model
+   * to ask, and only with hear_you on.
+   */
+  private grayZone(): boolean {
+    if (!this.settings.hear_you || !this.brain()) return false;
+    const since = Date.now() - this.lastExchange.at;
+    return since >= 0 && since < 90_000;
+  }
+
+  private async decideDirected(
+    text: string,
+    meta: { dur_s?: number; stt_ms?: number },
+  ): Promise<void> {
+    const brain = this.brain();
+    let yes = false;
+    try {
+      const last = `User: ${this.lastExchange.you}\nKik: ${this.lastExchange.kik}`;
+      yes = brain ? await brain.directed(text, last) : false;
+    } catch (e) {
+      log(`directed check failed: ${(e as Error).message}`);
+    }
+    log(`follow-up? ${yes ? "yes" : "no"} (${text.split(/\s+/).length} words)`);
+    this.hear(text, meta, yes ? { force: true, decided: true } : { decided: true });
+  }
+
+  /**
+   * Endpointing: Whisper punctuates, so a transcript without a final mark
+   * is probably half a sentence. It waits a moment for the rest.
+   */
+  private held: {
+    text: string;
+    meta: { dur_s?: number; stt_ms?: number };
+    timer: NodeJS.Timeout;
+  } | null = null;
+  hearSegment(text: string, meta: { dur_s?: number; stt_ms?: number }): { kind: string } {
+    const clean = text.trim();
+    if (this.held) {
+      clearTimeout(this.held.timer);
+      const joined = `${this.held.text} ${clean}`.trim();
+      const m = {
+        dur_s: (this.held.meta.dur_s ?? 0) + (meta.dur_s ?? 0),
+        stt_ms: (this.held.meta.stt_ms ?? 0) + (meta.stt_ms ?? 0),
+      };
+      this.held = null;
+      return this.hearSegment(joined, m);
+    }
+    if (clean && !/[.?!]["')\]]?$/.test(clean) && clean.split(/\s+/).length < 40) {
+      this.held = {
+        text: clean,
+        meta,
+        timer: setTimeout(() => {
+          const h = this.held;
+          this.held = null;
+          if (h) this.hear(h.text, h.meta);
+        }, 1200),
+      };
+      return { kind: "held" };
+    }
+    return this.hear(clean, meta);
+  }
+
   /** The model head, when there is a key and the setting is on. */
   brain(): Brain | null {
     if (!this.settings.brain || !this.anthropicKey) return null;
@@ -596,7 +672,7 @@ export class Daemon {
       record(kind, intent, said);
       this.say(said, ev.SEV_ATTENTION, "head");
     } finally {
-      this.attentionUntil = Date.now() + ATTENTION_MS;
+      this.openWindow(text, said);
       this.hub.publish("mic", { phase: "idle" });
     }
   }
@@ -1157,7 +1233,7 @@ export class Daemon {
         return this.json(
           res,
           200,
-          this.hear(String(b.text ?? ""), { dur_s: b.dur_s, stt_ms: b.stt_ms }),
+          this.hearSegment(String(b.text ?? ""), { dur_s: b.dur_s, stt_ms: b.stt_ms }),
         );
       }
       case "POST /mic": {
@@ -1175,6 +1251,12 @@ export class Daemon {
         else if (phase === "level") {
           /* a heartbeat with the peak; doctor reads it */
           this.micPhase = Number(b.peak) > 0.002 ? "listening" : "listening (silent input)";
+        }
+        // Barge-in: talking over Kik stops it. Headsets only; through
+        // speakers the mic hears Kik and would cut every line.
+        if (phase === "hearing" && this.settings.barge_in && this.arbiter.pending()) {
+          log("barge-in: you spoke, Kik stopped");
+          this.interrupt();
         }
         if (["hearing", "idle", "transcribing", "dead"].includes(phase))
           this.hub.publish("mic", { phase });
@@ -1237,6 +1319,7 @@ export class Daemon {
   }
 
   async close(): Promise<void> {
+    if (this.held) clearTimeout(this.held.timer);
     if (this.checkinTimer) clearInterval(this.checkinTimer);
     for (const t of this.timers) clearInterval(t);
     this.timers = [];

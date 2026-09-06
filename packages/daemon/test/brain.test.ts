@@ -201,3 +201,42 @@ describe("the brain in the daemon", () => {
     await d.close();
   });
 });
+
+describe("conversation, the way the assistants do it", () => {
+  it("decides a follow-up in the gray zone with the model, and keeps its window", async () => {
+    const { f, sent } = fakeFetch([
+      text("Nothing's running."),
+      text("yes"),
+      text("Since about noon."),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f });
+    d.hear("kik what's it doing");
+    await new Promise((r) => setTimeout(r, 30));
+    // close the window by hand; the exchange is still recent
+    (d as unknown as { attentionUntil: number }).attentionUntil = 0;
+    expect(d.hear("and since when has that been the case").kind).toBe("deciding");
+    await new Promise((r) => setTimeout(r, 60));
+    expect(String((sent[1]?.messages as Array<{ content: string }>)[0]?.content)).toContain(
+      "since when",
+    );
+    expect(d.heardLog.at(-1)?.kind).toBe("chat");
+    expect(d.heardLog.at(-1)?.text).toBe("and since when has that been the case");
+    await d.close();
+  });
+
+  it("holds half a sentence for its other half", async () => {
+    const settings = { ...config.DEFAULTS, tts: "none", mic: false } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false });
+    expect(d.hearSegment("kik how long has it", {}).kind).toBe("held");
+    expect(d.hearSegment("been going?", {}).kind).toBe("question");
+    expect(d.heardLog[0]?.text).toBe("kik how long has it been going?");
+    expect(d.hearSegment("kik thanks.", {}).kind).toBe("social");
+    await d.close();
+  });
+});

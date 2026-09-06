@@ -146,6 +146,33 @@ export class Brain {
     return text === "-" || text === "—" ? "" : text;
   }
 
+  /**
+   * Follow-up detection the way the assistants do it now: given the last
+   * exchange, was this next sentence said to us or to someone else? A
+   * yes/no from the model, nothing kept.
+   */
+  async directed(text: string, lastExchange: string): Promise<boolean> {
+    const prompt = `You decide whether a sentence overheard by a voice assistant named Kik was addressed to Kik or to someone else in the room. Kik speaks for the user's coding agents and can answer questions about them and take instructions for them.
+
+The last exchange with Kik, a moment ago:
+${lastExchange || "(none)"}
+
+The new sentence, as transcribed (may contain recognition errors):
+"${text}"
+
+Answer with exactly one word: yes if it was addressed to Kik, no if not.`;
+    const { blocks } = await this.stream("You answer with one word.", [], undefined, () => {}, [
+      { at: Date.now(), role: "user", content: prompt },
+    ]);
+    const answer = blocks
+      .filter((b): b is Extract<Block, { type: "text" }> => b.type === "text")
+      .map((b) => b.text)
+      .join(" ")
+      .trim()
+      .toLowerCase();
+    return answer.startsWith("yes");
+  }
+
   /** One streamed request. Text deltas go to `emit`; tool calls come back whole. */
   private async stream(
     system: string,

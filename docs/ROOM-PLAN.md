@@ -166,3 +166,22 @@ rulebook remains the fallback when the model is unreachable and the whole
 thing when there is no key. Key in the OS keychain (`anthropic_key.enc`) or
 `~/.kikoe/anthropic_key.txt`. Only what is addressed to Kik leaves the
 machine.
+
+## Conversation, the way the assistants do it (2026-09-06)
+
+Studied LiveKit's turn detector, Pipecat's interruption pipeline, and the
+Amazon/Apple device-directed-speech work (Apple 2024: an LLM sees the first
+query and decides whether the follow-up is for the device). What landed:
+
+- **Follow-up window**: twenty seconds after any exchange the next thing
+  said is for Kik; the orb reads "with you" (Alexa's light, our way).
+- **Gray zone**: for ninety seconds after an exchange, a sentence with no
+  name and no "you" is put to the model with the last exchange: for Kik or
+  not? One word back, nothing kept. `hear_you` covers both.
+- **Endpointing**: Whisper punctuates; a transcript without a final mark is
+  held 1.2 s for its other half and merged. VAD silence is 1.0 s.
+- **Barge-in**: `barge_in` (off by default; on for a headset) stops Kik when
+  the ear hears you start talking. No acoustic echo cancellation yet, so
+  through speakers it would hear itself.
+- Still open: a real wake-word model for "kik", AEC for speaker users,
+  streaming ASR partials so the reply can start before the sentence ends.

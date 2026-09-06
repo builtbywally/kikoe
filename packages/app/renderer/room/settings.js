@@ -58,6 +58,7 @@
     $("stt-model").value = s.stt_model || "tiny";
     $("hear-debug").checked = Boolean(s.hear_debug);
     $("hear-you").checked = s.hear_you !== false;
+    $("barge-in").checked = Boolean(s.barge_in);
     $("brain").checked = Boolean(s.brain);
     $("brain-model").value = s.brain_model || "claude-haiku-4-5-20251001";
     $("brain-narrates").checked = s.brain_narrates !== false;
@@ -389,6 +390,7 @@
       stt_model: $("stt-model").value,
       hear_debug: $("hear-debug").checked,
       hear_you: $("hear-you").checked,
+      barge_in: $("barge-in").checked,
     });
     note(
       "mic-note",
