@@ -27,6 +27,16 @@ describe("routing", () => {
     expect(route("", { attending: true }).kind).toBe("empty");
   });
 
+  it("takes a question put to 'you' as put to it", () => {
+    const on = { youQuestions: true };
+    expect(route("what do you think about this?", on).kind).toBe("question");
+    expect(route("do you have your brain on", on).kind).toBe("question");
+    expect(route("can you clear the board", on).kind).toBe("control");
+    expect(route("what do you think about this?").kind).toBe("overheard");
+    expect(route("we should kick this to thursday", on).kind).toBe("overheard");
+    expect(route("I think you should go home", on).kind).toBe("overheard");
+  });
+
   it("control words never become work", () => {
     for (const t of ["kikoe stop", "hey kikoe, be quiet", "kikoe shut up"]) {
       const d = route(t);

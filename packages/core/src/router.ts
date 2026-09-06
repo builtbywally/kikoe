@@ -100,6 +100,14 @@ const CONTROLS: Array<[RegExp, string, (m: RegExpExecArray) => string]> = [
 ];
 
 // The normalizer drops apostrophes, so "what's" arrives as "whats".
+/**
+ * A question put to "you", with nobody else in the room, is put to us:
+ * "what do you think about this", "do you have your brain on", "can you
+ * clear the board". Opt-in by the daemon; off while a call is running.
+ */
+const YOU_QUESTION =
+  /^(what|how|do|did|does|can|could|are|were|will|would|have|should|is|why|where|when|which|who)\b[^?]{0,40}\byou\b|^(you|your)\b.*\?$|^(what|how) (do|would|about) you\b/;
+
 const QUESTIONS = [
   /^whats? (it|you|they|he|she|everyone|everything) (doing|up to|working on)/,
   /^whats? (going on|happening|the status|up)/,
@@ -149,12 +157,18 @@ export interface RouteOptions {
    * window and closes it after one utterance or a few seconds.
    */
   attending?: boolean;
+  /** a question aimed at "you" counts as addressed, name or no name */
+  youQuestions?: boolean;
 }
 
 export function route(text: string, opts: RouteOptions = {}): Decision {
   const gated = gate(text, opts.aliases);
-  const [addressed, rest] =
-    !gated[0] && opts.attending && normalize(text) ? [true, normalize(text)] : gated;
+  const plain = normalize(text);
+  const implied =
+    !gated[0] &&
+    plain.length > 0 &&
+    (opts.attending === true || (opts.youQuestions === true && YOU_QUESTION.test(plain)));
+  const [addressed, rest] = implied ? [true, plain] : gated;
   const base = { addressed, text: rest, arg: "" };
   if (!rest && !addressed) return { kind: "empty", intent: "", ...base };
   if (!rest && addressed) return { kind: "social", intent: "hello", ...base };
@@ -174,8 +188,10 @@ export function route(text: string, opts: RouteOptions = {}): Decision {
 
   if (!addressed) return { kind: "overheard", intent: "", ...base };
 
+  // "can you clear the board" is "clear the board"
+  const asked = bare.replace(/^(can|could|would|will) you\s+/, "");
   for (const [re, intent, arg] of CONTROLS) {
-    const m = re.exec(bare);
+    const m = re.exec(asked);
     if (m) return { kind: "control", intent, ...base, arg: arg(m) };
   }
   if (YES.includes(bare)) return { kind: "answer", intent: "yes", ...base };

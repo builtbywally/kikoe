@@ -98,6 +98,9 @@ export interface SpokenRecord {
   latency_ms: number | null;
 }
 
+/** after an exchange, how long the next thing said is for us without the name */
+const ATTENTION_MS = 20_000;
+
 export interface DaemonOptions {
   settings?: Settings;
   /** the Room renderer directory, served at /room for a browser on a tunnel */
@@ -401,11 +404,17 @@ export class Daemon {
     const offered = this.board.asking()?.ask ?? [];
     const aliases = [...new Set([this.settings.wake_name, ...DEFAULT_ALIASES])];
     const attending = Date.now() < this.attentionUntil;
-    const d = route(clean, { aliases, awaitingAnswer: awaiting, offered, attending });
+    const d = route(clean, {
+      aliases,
+      awaitingAnswer: awaiting,
+      offered,
+      attending,
+      youQuestions: this.settings.hear_you !== false,
+    });
     if (d.addressed) this.attentionUntil = 0;
     // The name on its own opens the window: "kikoe" ... "what's it doing".
     if (d.kind === "social" && d.intent === "hello" && !d.text)
-      this.attentionUntil = Date.now() + 8000;
+      this.attentionUntil = Date.now() + ATTENTION_MS;
     // What was not addressed to us is dropped here, whole. Not the log file,
     // not the heard list, not the stream: a word count is all that survives,
     // because an open mic in a room is only acceptable on those terms.
@@ -474,7 +483,7 @@ export class Daemon {
     }
     record(d.kind, d.intent, said ?? "");
     // After an exchange, the next thing said is for us without the name.
-    if (d.kind !== "control") this.attentionUntil = Date.now() + 10_000;
+    if (d.kind !== "control") this.attentionUntil = Date.now() + ATTENTION_MS;
     if (said) {
       this.hub.publish("mic", { phase: "thinking", text: clean });
       this.say(said, ev.SEV_ATTENTION, "head");
@@ -587,7 +596,7 @@ export class Daemon {
       record(kind, intent, said);
       this.say(said, ev.SEV_ATTENTION, "head");
     } finally {
-      this.attentionUntil = Date.now() + 10_000;
+      this.attentionUntil = Date.now() + ATTENTION_MS;
       this.hub.publish("mic", { phase: "idle" });
     }
   }

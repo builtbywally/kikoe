@@ -57,6 +57,7 @@
     $("wake").value = s.wake_name || "kikoe";
     $("stt-model").value = s.stt_model || "tiny";
     $("hear-debug").checked = Boolean(s.hear_debug);
+    $("hear-you").checked = s.hear_you !== false;
     $("brain").checked = Boolean(s.brain);
     $("brain-model").value = s.brain_model || "claude-haiku-4-5-20251001";
     $("brain-narrates").checked = s.brain_narrates !== false;
@@ -387,6 +388,7 @@
       wake_name: $("wake").value.trim() || "kikoe",
       stt_model: $("stt-model").value,
       hear_debug: $("hear-debug").checked,
+      hear_you: $("hear-you").checked,
     });
     note(
       "mic-note",

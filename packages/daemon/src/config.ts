@@ -49,6 +49,8 @@ export interface Settings {
   stt_model: string;
   /** keep the text of what was not for us too; for tuning the name gate, off by default */
   hear_debug: boolean;
+  /** a question aimed at "you" is for Kik, name or no name */
+  hear_you: boolean;
   /** a model in the head: what is addressed to Kik goes to the API */
   brain: boolean;
   brain_model: string;
@@ -78,6 +80,7 @@ export const DEFAULTS: Settings = {
   theme: "system",
   stt_model: "tiny",
   hear_debug: false,
+  hear_you: true,
   brain: false,
   brain_model: "claude-haiku-4-5-20251001",
   brain_narrates: true,
