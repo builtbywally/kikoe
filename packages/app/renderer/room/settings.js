@@ -57,6 +57,13 @@
     $("wake").value = s.wake_name || "kikoe";
     $("stt-model").value = s.stt_model || "tiny";
     $("hear-debug").checked = Boolean(s.hear_debug);
+    $("brain").checked = Boolean(s.brain);
+    $("brain-model").value = s.brain_model || "claude-haiku-4-5-20251001";
+    $("brain-narrates").checked = s.brain_narrates !== false;
+    $("brain-checkin").checked = s.brain_checkin !== false;
+    $("anthropic-key").placeholder = info.hasAnthropicKey
+      ? "key saved in the keychain (paste to replace)"
+      : "Anthropic API key (stored in the OS keychain)";
     $("claude-path").textContent = info.claudeSettingsPath;
     $("eleven-key").placeholder = info.hasElevenKey
       ? "key saved in the keychain (paste to replace)"
@@ -385,6 +392,31 @@
       "mic-note",
       r.error ? r.error : $("mic").checked ? "listening" : "off",
       r.error ? "bad" : "good",
+    );
+  });
+  $("brain-save").addEventListener("click", async () => {
+    const key = $("anthropic-key").value.trim();
+    const patch = {
+      brain: $("brain").checked,
+      brain_model: $("brain-model").value,
+      brain_narrates: $("brain-narrates").checked,
+      brain_checkin: $("brain-checkin").checked,
+    };
+    if (key) patch.anthropicKey = key;
+    if (patch.brain && !key && !info.hasAnthropicKey)
+      return note("brain-note", "Paste an Anthropic API key first.", "bad");
+    note("brain-note", "saving…");
+    const r = await api.save(patch);
+    if (r.error) return note("brain-note", r.error, "bad");
+    info = await api.get();
+    $("anthropic-key").value = "";
+    $("anthropic-key").placeholder = info.hasAnthropicKey
+      ? "key saved in the keychain (paste to replace)"
+      : "Anthropic API key";
+    note(
+      "brain-note",
+      patch.brain ? "on: say “kik, what do you think?”" : "off: the rulebook answers",
+      "good",
     );
   });
   $("narrate-save").addEventListener("click", async () => {

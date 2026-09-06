@@ -45,7 +45,8 @@ describe("the ear, through the daemon", () => {
     const d = quiet();
     expect(d.hear("hey kick").kind).toBe("social");
     expect(d.hear("how long has it been going").kind).toBe("question");
-    expect(d.hear("how long has it been going").kind).toBe("overheard");
+    // the window re-opens after each exchange, so the third goes through too
+    expect(d.hear("how long has it been going").kind).toBe("question");
     await d.close();
   });
 

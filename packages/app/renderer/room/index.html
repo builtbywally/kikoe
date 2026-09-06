@@ -110,12 +110,23 @@
           <button id="mic-save" class="primary">Save</button> <span id="mic-note" class="note"></span>
         </div>
         <label class="check"><input type="checkbox" id="hear-debug" /> Tuning: keep the text of everything it hears, including what was not for it. Off by default; turn it off again when the name is landing.</label>
+        <h3>A mind of its own</h3>
+        <p>With this on, what you say to Kik goes to Claude together with the live picture of your agents. It answers in its own words, can approve, deny, pin and hand your instructions to the agent, phrases its own narration, and may speak up when something is worth it. Only what is addressed to it leaves the machine.</p>
+        <label class="check"><input type="checkbox" id="brain" /> Think and talk with Claude.</label>
+        <div class="actions">
+          <select id="brain-model"><option value="claude-haiku-4-5-20251001">Haiku 4.5 · fastest</option><option value="claude-sonnet-5">Sonnet 5 · sharper</option></select>
+          <input type="password" id="anthropic-key" placeholder="Anthropic API key" autocomplete="off" style="width: 260px" />
+        </div>
+        <label class="check"><input type="checkbox" id="brain-narrates" /> Phrase milestones, errors and endings its own way.</label>
+        <label class="check"><input type="checkbox" id="brain-checkin" /> Speak up unprompted when something is worth it.</label>
+        <div class="actions"><button id="brain-save" class="primary">Save</button> <span id="brain-note" class="note"></span></div>
         <h3>What you can say</h3>
         <ul class="says">
           <li><b>hey kikoe, what's it doing</b> · <b>did the tests pass</b> · <b>how long has it been going</b> · <b>what's waiting on me</b></li>
           <li><b>kikoe, stop</b> · <b>go verbose</b> · <b>go silent</b> · <b>repeat that</b> · <b>switch to storefront</b></li>
           <li><b>kikoe, clear the board</b> · <b>show me the board</b> · <b>back to the room</b></li>
           <li>a bare <b>yes</b>, <b>no</b>, or <b>apply</b> when it has asked you something</li>
+          <li>with a mind of its own: anything. <b>kik, tell it to add a retry to the fetch</b> · <b>what do you think of that diff</b> · <b>how long has this been going</b>. After an exchange, the next thing you say needs no name.</li>
         </ul>
         <p class="dim">Only what is addressed to it is kept, and shown in the Control Room under "what you said". Anything else is dropped the moment it is transcribed; a word count is all that is logged. The model loads in under a second and unloads after ten quiet minutes.</p>
       </section>

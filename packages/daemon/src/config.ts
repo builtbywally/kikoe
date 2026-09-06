@@ -49,6 +49,13 @@ export interface Settings {
   stt_model: string;
   /** keep the text of what was not for us too; for tuning the name gate, off by default */
   hear_debug: boolean;
+  /** a model in the head: what is addressed to Kik goes to the API */
+  brain: boolean;
+  brain_model: string;
+  /** the model phrases milestones, errors and endings in its own words */
+  brain_narrates: boolean;
+  /** it may speak up unprompted when something is worth it */
+  brain_checkin: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -71,6 +78,10 @@ export const DEFAULTS: Settings = {
   theme: "system",
   stt_model: "tiny",
   hear_debug: false,
+  brain: false,
+  brain_model: "claude-haiku-4-5-20251001",
+  brain_narrates: true,
+  brain_checkin: true,
 };
 
 const FILE = () => path.join(HOME, "config.local.json");
@@ -147,6 +158,15 @@ export function viewerToken(): string {
 }
 
 /** Developer fallback for the ElevenLabs key; the app prefers the keychain. */
+export function anthropicKeyFromFile(): string {
+  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY.trim();
+  try {
+    return readFileSync(path.join(HOME, "anthropic_key.txt"), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 export function elevenKeyFromFile(): string {
   if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY.trim();
   try {

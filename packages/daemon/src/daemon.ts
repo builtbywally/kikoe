@@ -28,6 +28,7 @@ import {
   route,
   utterance,
 } from "@kikoe/core";
+import { Brain, type BrainTool, PERSONA } from "./brain.js";
 import {
   HOME,
   LOGS,
@@ -103,6 +104,9 @@ export interface DaemonOptions {
   roomDir?: string;
   audio?: boolean;
   elevenKey?: string;
+  anthropicKey?: string;
+  /** for tests: the fetch the brain uses */
+  fetchImpl?: typeof fetch;
   onSpeech?: (phase: SpeechPhase, info: SpeechInfo) => void;
 }
 
@@ -166,6 +170,12 @@ export class Daemon {
   micPhase = "off";
   /** until when an utterance without the name still counts as for us */
   private attentionUntil = 0;
+  private anthropicKey = "";
+  private readonly fetchImpl: typeof fetch;
+  private brainCache: Brain | null = null;
+  private checkinTimer: NodeJS.Timeout | null = null;
+  /** what the user said for an agent, by voice, waiting for its turn to end */
+  readonly instructions: Array<{ repo: string; text: string; at: number }> = [];
   micDevice = "";
   readonly heardLog: Array<{
     ts: number;
@@ -188,6 +198,10 @@ export class Daemon {
   eventsSeen = 0;
 
   constructor(opts: DaemonOptions = {}) {
+    this.anthropicKey = opts.anthropicKey ?? "";
+    this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.checkinTimer = setInterval(() => void this.checkIn(), 60_000);
+    this.checkinTimer.unref();
     ensureHome();
     this.settings = opts.settings ?? loadSettings();
     this.roomDir = opts.roomDir ?? "";
@@ -244,6 +258,12 @@ export class Daemon {
     if (e.kind === ev.TURN_END && Date.now() / 1000 - this.agentSpokeAt < SELF_SPOKEN_WINDOW_S) {
       lines = lines.filter((u) => !(u.dedupe.startsWith("done:") || u.dedupe.startsWith("end:")));
     }
+    // A model in the head phrases what is worth saying, in its own words.
+    // Permissions stay stock: they must be instant.
+    if (lines.length && this.settings.brain_narrates && this.brain() && this.brainSpeaksFor(e)) {
+      void this.brainNarrate(e, lines);
+      lines = [];
+    }
     const queued = this.arbiter.submitAll(lines);
     this.hub.publish("event", {
       kind: e.kind,
@@ -296,7 +316,9 @@ export class Daemon {
    * A voice change swaps the ladder and nothing else: the server stays up,
    * the tracker keeps its sessions, the arbiter keeps its counts.
    */
-  reconfigure(settings: Settings, elevenKey?: string): void {
+  reconfigure(settings: Settings, elevenKey?: string, anthropicKey?: string): void {
+    if (anthropicKey !== undefined) this.anthropicKey = anthropicKey;
+    this.brainCache = null;
     this.interrupt();
     const old = this.ladder;
     this.settings = settings;
@@ -421,6 +443,15 @@ export class Daemon {
     }
     this.hub.publish("mic", { phase: "addressed", text: clean });
 
+    if (
+      (d.kind === "question" || d.kind === "social" || d.kind === "work") &&
+      this.brain() !== null
+    ) {
+      this.hub.publish("mic", { phase: "thinking", text: clean });
+      void this.converse(clean, d.kind, d.intent, record);
+      return { kind: "chat", intent: d.kind };
+    }
+
     let said: string | undefined;
     switch (d.kind) {
       case "control":
@@ -442,12 +473,282 @@ export class Daemon {
         break;
     }
     record(d.kind, d.intent, said ?? "");
+    // After an exchange, the next thing said is for us without the name.
+    if (d.kind !== "control") this.attentionUntil = Date.now() + 10_000;
     if (said) {
       this.hub.publish("mic", { phase: "thinking", text: clean });
       this.say(said, ev.SEV_ATTENTION, "head");
     }
     this.hub.publish("mic", { phase: "idle" });
     return { kind: d.kind, intent: d.intent, ...(said ? { said } : {}) };
+  }
+
+  private brainSpeaksFor(e: ev.AgentEvent): boolean {
+    if (e.severity < ev.SEV_MILESTONE) return false;
+    return (
+      e.kind === ev.TURN_END ||
+      e.kind === ev.ERROR ||
+      e.kind === ev.TOOL_END ||
+      e.kind === ev.NOTIFICATION
+    );
+  }
+
+  /** The event, said the model's way; the stock line if the model is away. */
+  private async brainNarrate(
+    e: ev.AgentEvent,
+    lines: ReturnType<typeof utterance>[],
+  ): Promise<void> {
+    const brain = this.brain();
+    const first = lines[0];
+    if (!brain || !first) return;
+    const template = lines.map((u) => u.text).join(" ");
+    try {
+      const prompt = [
+        `Something just happened in ${e.repo || "the agent's repo"}: ${e.kind}${e.tool ? ` (${e.tool})` : ""}${e.status ? `, ${e.status}` : ""}.`,
+        e.text ? `Detail: ${String(e.text).slice(0, 500)}` : "",
+        `The stock line would be: "${template}".`,
+        "Say it your way, aloud, in one or two sentences and at most twenty-five words. Keep every fact in the stock line. No greeting. If it is not worth interrupting the user for, reply with a single hyphen.",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const said = await brain.compose(prompt, this.brainSystem());
+      if (!said) {
+        log(`brain kept quiet on ${e.kind}`);
+        return;
+      }
+      this.arbiter.submitAll([{ ...first, text: said }]);
+    } catch (err) {
+      log(`brain narration failed: ${(err as Error).message}; stock line`);
+      this.arbiter.submitAll(lines);
+    }
+  }
+
+  private eventsAtCheckin = 0;
+  /**
+   * Once a minute, if things have happened and nothing has been said for a
+   * couple of minutes, the model may say one thing unprompted, or nothing.
+   */
+  async checkIn(): Promise<void> {
+    const brain = this.brain();
+    if (!brain || !this.settings.brain_checkin) return;
+    if (this.eventsSeen === this.eventsAtCheckin) return;
+    if (!Object.keys(this.tracker.snapshot()).length) return;
+    const lastSaid = this.history[this.history.length - 1]?.ts ?? 0;
+    if (Date.now() / 1000 - lastSaid < 120) return;
+    this.eventsAtCheckin = this.eventsSeen;
+    try {
+      const said = await brain.compose(
+        "Nothing has been said for a while. Looking at the picture, is there one thing worth telling the user unprompted: an agent that has been waiting on them, one stuck on the same thing for a long time, a pattern of failures? If so, say it in one sentence. If not, reply with a single hyphen.",
+        this.brainSystem(),
+      );
+      if (said) this.say(said, ev.SEV_MILESTONE, "head");
+    } catch (err) {
+      log(`brain check-in failed: ${(err as Error).message}`);
+    }
+  }
+
+  /** The model head, when there is a key and the setting is on. */
+  brain(): Brain | null {
+    if (!this.settings.brain || !this.anthropicKey) return null;
+    if (!this.brainCache || this.brainCache.model !== this.settings.brain_model)
+      this.brainCache = new Brain({
+        key: this.anthropicKey,
+        model: this.settings.brain_model,
+        fetchImpl: this.fetchImpl,
+        log,
+      });
+    return this.brainCache;
+  }
+
+  private async converse(
+    text: string,
+    kind: string,
+    intent: string,
+    record: (kind: string, intent: string, said?: string) => void,
+  ): Promise<void> {
+    const brain = this.brain();
+    if (!brain) return;
+    let said = "";
+    try {
+      said = await brain.reply(text, {
+        system: this.brainSystem(),
+        tools: this.brainTools(),
+        onClause: (clause) => this.say(clause, ev.SEV_ATTENTION, "head"),
+      });
+      record("chat", kind, said);
+    } catch (e) {
+      log(`brain failed: ${(e as Error).message}; rules answered`);
+      said =
+        kind === "question"
+          ? headAnswer(text, Object.values(this.tracker.snapshot()))
+          : kind === "social"
+            ? headSocial(intent)
+            : "I can't reach the model right now. Say that to the terminal.";
+      record(kind, intent, said);
+      this.say(said, ev.SEV_ATTENTION, "head");
+    } finally {
+      this.attentionUntil = Date.now() + 10_000;
+      this.hub.publish("mic", { phase: "idle" });
+    }
+  }
+
+  /** The live picture the model answers from. Rebuilt every utterance. */
+  brainSystem(): string {
+    const lines: string[] = [PERSONA, "", "Right now:"];
+    const brief = this.tracker.brief();
+    lines.push(brief ? brief : "No agents are running.");
+    if (this.pending)
+      lines.push(
+        `Waiting for the user's approval: ${this.pending.text || "a tool call"} in ${this.pending.repo}.`,
+      );
+    const pins = this.board.list();
+    if (pins.length) {
+      lines.push(`On the board (${pins.length} pins):`);
+      for (const p of pins.slice(0, 4)) {
+        const ask = p.ask?.length && !p.answer ? ` [asking: ${p.ask.join("/")}]` : "";
+        lines.push(
+          `- ${p.kind} "${p.title}" in ${p.repo}${ask}: ${p.body.slice(0, 600).replace(/\s+/g, " ")}`,
+        );
+      }
+    }
+    const recent = this.history.slice(-5).map((h) => h.text);
+    if (recent.length)
+      lines.push(`Last things said aloud: ${recent.map((t) => `"${t}"`).join(" ")}`);
+    if (this.instructions.length)
+      lines.push(
+        `Instructions waiting for an agent: ${this.instructions.map((i) => `${i.repo}: ${i.text}`).join("; ")}`,
+      );
+    lines.push(
+      `Narration mode: ${this.narrator.mode}. Local time ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+    );
+    return lines.join("\n");
+  }
+
+  brainTools(): BrainTool[] {
+    const str = (description: string) => ({ type: "string", description });
+    return [
+      {
+        name: "approve",
+        description: "Approve the tool call or board question the user is being asked about.",
+        input_schema: { type: "object", properties: {} },
+        run: () => this.answerWord("yes") ?? "nothing was waiting",
+      },
+      {
+        name: "deny",
+        description: "Deny the tool call or board question the user is being asked about.",
+        input_schema: { type: "object", properties: {} },
+        run: () => this.answerWord("no") ?? "nothing was waiting",
+      },
+      {
+        name: "answer_board",
+        description: "Answer the board's open question with one of its offered words.",
+        input_schema: {
+          type: "object",
+          properties: { word: str("the offered word, e.g. apply") },
+          required: ["word"],
+        },
+        run: (i) =>
+          this.board.answerCurrent(String(i.word ?? "")) ? "answered" : "nothing was asking",
+      },
+      {
+        name: "instruct_agent",
+        description:
+          "Give the coding agent an instruction from the user. It is handed over when the agent's current turn ends, or with the user's next prompt if it is idle.",
+        input_schema: {
+          type: "object",
+          properties: {
+            instruction: str("what the user wants done, in their words"),
+            repo: str("which repo's agent; omit if there is only one"),
+          },
+          required: ["instruction"],
+        },
+        run: (i) => this.instruct(String(i.instruction ?? ""), i.repo ? String(i.repo) : undefined),
+      },
+      {
+        name: "set_mode",
+        description: "Change how much is narrated: silent, attention, normal or verbose.",
+        input_schema: {
+          type: "object",
+          properties: { mode: str("silent | attention | normal | verbose") },
+          required: ["mode"],
+        },
+        run: (i) => {
+          this.setMode(String(i.mode ?? "normal"));
+          return `mode ${this.narrator.mode}`;
+        },
+      },
+      {
+        name: "clear_board",
+        description: "Clear everything off the board.",
+        input_schema: { type: "object", properties: {} },
+        run: () => {
+          this.board.clear();
+          return "cleared";
+        },
+      },
+      {
+        name: "pin_note",
+        description: "Pin a short note to the board for the user to read later.",
+        input_schema: {
+          type: "object",
+          properties: { title: str("a few words"), body: str("the note, plain text") },
+          required: ["title", "body"],
+        },
+        run: (i) => {
+          this.board.add({
+            kind: "text",
+            title: String(i.title ?? "note"),
+            body: String(i.body ?? ""),
+            repo: "kikoe",
+          });
+          return "pinned";
+        },
+      },
+    ];
+  }
+
+  /** Queue an instruction for an agent; says what will happen to it. */
+  instruct(text: string, repo?: string): string {
+    const sessions = Object.values(this.tracker.snapshot());
+    const target =
+      repo ??
+      sessions.find((s) => s.status === "working")?.repo ??
+      sessions[sessions.length - 1]?.repo;
+    if (!target) return "no agent is connected; nothing to hand it to";
+    this.instructions.push({ repo: target, text, at: Date.now() });
+    const s = sessions.find((x) => x.repo === target);
+    const when = s?.status === "working" ? "when its turn ends" : "with the user's next prompt";
+    log(`instruction queued for ${target}: ${text}`);
+    return `queued for ${target}; it gets it ${when}`;
+  }
+
+  /**
+   * The reply that carries a queued instruction back through a hook: Stop
+   * makes the agent continue with it; UserPromptSubmit adds it as context.
+   */
+  hookReply(payload: Record<string, unknown>, repo: string): Record<string, unknown> | null {
+    const event = String(payload.hook_event_name ?? "");
+    if (!this.instructions.length) return null;
+    const mine = this.instructions.filter((i) => i.repo === repo);
+    if (!mine.length) return null;
+    const text = mine.map((i) => i.text).join(" Then: ");
+    if (event === "Stop" && !payload.stop_hook_active) {
+      for (const i of mine) this.instructions.splice(this.instructions.indexOf(i), 1);
+      return {
+        decision: "block",
+        reason: `The user said this by voice, through Kikoe; treat it as their next message: ${text}`,
+      };
+    }
+    if (event === "UserPromptSubmit") {
+      for (const i of mine) this.instructions.splice(this.instructions.indexOf(i), 1);
+      return {
+        hookSpecificOutput: {
+          hookEventName: "UserPromptSubmit",
+          additionalContext: `The user also said this by voice, through Kikoe, before this prompt: ${text}`,
+        },
+      };
+    }
+    return null;
   }
 
   private control(intent: string, arg: string): string | undefined {
@@ -546,6 +847,12 @@ export class Daemon {
       ok: true,
       version: VERSION,
       uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
+      brain: {
+        on: this.brain() !== null,
+        model: this.settings.brain_model,
+        key: Boolean(this.anthropicKey),
+      },
+      instructions: this.instructions.length,
       mode: this.narrator.mode,
       tts: {
         ladder: this.ladder.names,
@@ -734,6 +1041,11 @@ export class Daemon {
           });
           return;
         }
+        const carried = this.hookReply(
+          payload,
+          e?.repo ?? path.basename(String(payload.cwd ?? "")),
+        );
+        if (carried) return this.json(res, 200, carried);
         return this.json(res, 200, { ok: true, kind: e?.kind ?? null });
       }
       case "POST /event": {
@@ -916,6 +1228,7 @@ export class Daemon {
   }
 
   async close(): Promise<void> {
+    if (this.checkinTimer) clearInterval(this.checkinTimer);
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     if (this.pending) this.answerPermission(false, this.pending.id);

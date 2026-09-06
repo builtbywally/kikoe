@@ -10,11 +10,13 @@ export {
   daemonToken,
   ensureHome,
   elevenKeyFromFile,
+  anthropicKeyFromFile,
   log,
   redact,
 } from "./config.js";
 export type { Settings } from "./config.js";
 export { Hub } from "./hub.js";
+export { Brain, PERSONA, type BrainTool } from "./brain.js";
 export type { Frame } from "./hub.js";
 export { NullSpeaker, RtAudioSpeaker, listOutputDevices, resample, earcon } from "./speaker.js";
 export type { Speaker, SpeakerInfo, Earcon } from "./speaker.js";

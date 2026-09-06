@@ -20,6 +20,7 @@ import {
   VERSION,
   WHISPER_BASE,
   WHISPER_TINY,
+  anthropicKeyFromFile,
   elevenKeyFromFile,
   fetchModel,
   fetchVad,
@@ -102,6 +103,29 @@ function saveElevenKey(key: string): void {
   writeFileSync(KEY_FILE(), safeStorage.encryptString(key), { mode: 0o600 });
 }
 
+const ANTHROPIC_FILE = () => path.join(HOME, "anthropic_key.enc");
+
+function loadAnthropicKey(): string {
+  try {
+    if (existsSync(ANTHROPIC_FILE()) && safeStorage.isEncryptionAvailable()) {
+      const k = safeStorage.decryptString(readFileSync(ANTHROPIC_FILE())).trim();
+      if (k) return k;
+    }
+  } catch {
+    /* fall through to the developer file */
+  }
+  return anthropicKeyFromFile();
+}
+
+function saveAnthropicKey(key: string): void {
+  mkdirSync(HOME, { recursive: true });
+  if (!safeStorage.isEncryptionAvailable())
+    throw new Error("the OS keychain is not available on this machine");
+  writeFileSync(ANTHROPIC_FILE(), key ? safeStorage.encryptString(key) : Buffer.alloc(0), {
+    mode: 0o600,
+  });
+}
+
 // --- daemon -----------------------------------------------------------------
 
 async function startDaemon(): Promise<void> {
@@ -110,6 +134,7 @@ async function startDaemon(): Promise<void> {
     settings,
     audio: !noAudio,
     elevenKey: loadElevenKey(),
+    anthropicKey: loadAnthropicKey(),
     roomDir: path.join(RENDERER, "room"),
   });
   await daemon.listen();
@@ -526,6 +551,7 @@ function snapshot() {
     settings: s,
     version: VERSION,
     hasElevenKey: Boolean(loadElevenKey()),
+    hasAnthropicKey: Boolean(loadAnthropicKey()),
     hooks: hookStatus(s.claude_settings || settingsPath()),
     claudeSettingsPath: s.claude_settings || settingsPath(),
     curl: hasCurl(),
@@ -550,9 +576,13 @@ function snapshot() {
 ipcMain.handle("settings:get", () => snapshot());
 ipcMain.handle(
   "settings:save",
-  async (_e, patch: Partial<Settings> & { elevenKey?: string | null }) => {
-    const { elevenKey, ...rest } = patch;
+  async (
+    _e,
+    patch: Partial<Settings> & { elevenKey?: string | null; anthropicKey?: string | null },
+  ) => {
+    const { elevenKey, anthropicKey, ...rest } = patch;
     if (elevenKey !== undefined && elevenKey !== null) saveElevenKey(elevenKey);
+    if (anthropicKey !== undefined && anthropicKey !== null) saveAnthropicKey(anthropicKey);
     const s = saveSettings(rest);
     if ("start_at_login" in rest) applyLoginItem(Boolean(rest.start_at_login));
     if ("theme" in rest) applyTheme(String(rest.theme));
@@ -567,7 +597,7 @@ ipcMain.handle(
       ) ||
       elevenKey !== undefined
     ) {
-      daemon?.reconfigure(loadSettings(), loadElevenKey());
+      daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey());
     } else if (rest.narrate) daemon?.setMode(rest.narrate);
     buildTrayMenu();
     return { ok: true, settings: s };
@@ -680,7 +710,7 @@ ipcMain.handle("settings:fetchKokoro", async () => {
       downloading = { name: "kokoro", ...p };
       roomWin?.webContents.send("settings:progress", downloading);
     });
-    daemon?.reconfigure(loadSettings(), loadElevenKey());
+    daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey());
     return { ok: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -691,7 +721,7 @@ ipcMain.handle("settings:fetchKokoro", async () => {
 });
 ipcMain.handle("settings:removeKokoro", () => {
   removeModel(KOKORO);
-  daemon?.reconfigure(loadSettings(), loadElevenKey());
+  daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey());
   return { ok: true };
 });
 ipcMain.handle("settings:answerPermission", (_e, allow: boolean, id?: string) => ({

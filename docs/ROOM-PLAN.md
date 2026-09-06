@@ -148,3 +148,21 @@ voice, listening, narration, Claude Code, the board, screens (viewer link
 and the link that can answer), look and startup, doctor. The old settings
 renderer and its preload are gone; the Room's preload carries the settings
 API. `--screenshot <path>` now also writes `<path>-settings.png`.
+
+## A mind of its own (2026-09-06)
+
+`packages/daemon/src/brain.ts`: Claude in the head, plain fetch against the
+Messages API, streamed clause by clause into the voice. Everything addressed
+to Kik that is not a reflex (stop, quiet, yes, no) goes to it with the live
+picture: agents, what is waiting, the board, what was last said. Tools:
+approve, deny, answer the board, set the mode, clear the board, pin a note,
+and `instruct_agent`, which queues the user's words and hands them to the
+agent through its next Stop hook (`decision: block` with the instruction as
+the reason) or as context on the next prompt. With `brain_narrates` the
+model phrases milestones, errors and endings itself; permissions stay stock
+so they are instant. With `brain_checkin` it may say one thing unprompted
+when things have happened and nothing has been said for two minutes. The
+rulebook remains the fallback when the model is unreachable and the whole
+thing when there is no key. Key in the OS keychain (`anthropic_key.enc`) or
+`~/.kikoe/anthropic_key.txt`. Only what is addressed to Kik leaves the
+machine.
