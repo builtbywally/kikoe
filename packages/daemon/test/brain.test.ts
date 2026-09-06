@@ -756,3 +756,32 @@ describe("the designer", () => {
     await d.close();
   });
 });
+
+describe("the designer's manners", () => {
+  it("says the wait itself, and sketches quickly on the voice model when asked", async () => {
+    const { f, sent } = fakeFetch([
+      toolCall("design_artifact", { title: "Sketch", brief: "a rough timer", quick: true }),
+      text("export default function App() { return <p>t</p>; }"),
+      text("Sketched."),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f });
+    const said: string[] = [];
+    d.hub.listen((fr) => {
+      if (fr.type === "speech" && fr.phase === "speaking") said.push(String(fr.text));
+    });
+    d.hear("kik quick sketch of a timer");
+    await new Promise((r) => setTimeout(r, 80));
+    expect(said.some((s) => /twenty seconds/.test(s))).toBe(true);
+    expect(sent[1]?.model).toBe(config.DEFAULTS.brain_model);
+    expect(sent[1]?.max_tokens).toBe(6000);
+    expect(String(sent[1]?.system)).toContain("quick sketch");
+    expect(d.board.list().some((p) => p.kind === "react")).toBe(true);
+    await d.close();
+  });
+});

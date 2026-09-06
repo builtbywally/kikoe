@@ -62,6 +62,8 @@ seconds for Haiku's decent-but-shallow version.
   real.
 - A "quick mockup" path on Haiku would be worth adding for throwaway
   sketches; twenty-five seconds is a different experience from ninety.
+  Done the same day: `design_artifact` takes `quick: true`, and the tool
+  says the wait aloud either way.
 
 ## Caveats
 

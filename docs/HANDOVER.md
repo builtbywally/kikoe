@@ -21,7 +21,7 @@ an empty checkout whose CLAUDE.md now points here.
 cd ~/orca/projects/kikoe
 pnpm install                     # pnpm 10; audify/electron builds allowed in pnpm-workspace.yaml
 pnpm build                       # tsc -b for core, daemon, cli, app
-pnpm test                        # vitest, 132 tests; never touches ~/.claude or the speaker
+pnpm test                        # vitest, 133 tests; never touches ~/.claude or the speaker
 pnpm lint                        # biome; it also reformats after edits
 pnpm typecheck
 pnpm app                         # build + run from source (kills nothing; the installed app holds the port)
@@ -118,7 +118,11 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    the JSX in the frame, Tailwind is the play CDN. `design_artifact`
    takes a brief and asks `artifact_model` (Sonnet 5 by default, a
    setting) with `DESIGN_BRIEF`; Kik is told to use it for any page, app
-   or comparison instead of writing html itself. Needs the network;
+   or comparison instead of writing html itself. The tool speaks the wait
+   itself ("give me a minute or two", "still on it" at 75 s) and `quick:
+   true` sketches on `brain_model` (Haiku) in about twenty seconds with
+   a shorter brief. `docs/EVAL-MODELS.md` has the Sonnet vs Haiku numbers
+   behind those choices; `pnpm eval:models` reruns them. Needs the network;
    offline, the kit-html path still works. Pin kind `web` is a live iframe (localhost app,
    site, or a search engine as a browser); the Room strips X-Frame-Options
    and frame-ancestors for subframes so sites show.

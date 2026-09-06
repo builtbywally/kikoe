@@ -1434,12 +1434,17 @@ export class Daemon {
       {
         name: "design_artifact",
         description:
-          "Have a page, app, dashboard, mockup, visual comparison or small tool designed and built for the canvas as a working React app with real UI. Give a brief in a few sentences: what it is for, what it shows, what the user can do on it, any data or facts to include. Takes a few seconds; say so aloud before calling it. Returns the id; then point_at it. Use this, not create_artifact with html, for anything a designer would make.",
+          "Have a page, app, dashboard, mockup, visual comparison or small tool designed and built for the canvas as a working React app with real UI. Give a brief in a few sentences: what it is for, what it shows, what the user can do on it, any data or facts to include. The full designer takes a minute or two; quick takes about twenty seconds and is rougher: use quick when the user says quick, rough, sketch or mockup, or wants to see something fast. Do not announce the wait yourself; the tool says it aloud. Returns the id; then point_at it. Use this, not create_artifact with html, for anything a designer would make.",
         input_schema: {
           type: "object",
           properties: {
             title: str("a few words"),
             brief: str("what to build, in a few sentences, with the facts it needs"),
+            quick: {
+              type: "boolean",
+              description:
+                "a rough sketch in about twenty seconds instead of a finished page in a minute or two",
+            },
             sticky: { type: "boolean", description: "keep it until removed" },
             near: str("id of a card this belongs beside"),
           },
@@ -1451,14 +1456,41 @@ export class Daemon {
           const brief = String(i.brief ?? "").trim();
           if (!brief) return "the brief is empty";
           const picture = this.tracker.brief();
-          const t0 = Date.now();
-          const code = stripFences(
-            await brain.generate(
-              `Brief: ${brief}\n\nTitle: ${String(i.title ?? "")}${picture ? `\n\nContext, in case it helps: ${picture}` : ""}`,
-              DESIGN_BRIEF,
-              this.settings.artifact_model ? { model: this.settings.artifact_model } : {},
-            ),
+          const quick = Boolean(i.quick);
+          // The wait is real, so the tool says so itself, once, and again
+          // if it runs long; the model is told not to.
+          this.say(
+            quick
+              ? "Sketching it, give me twenty seconds."
+              : "Building that, give me a minute or two.",
+            ev.SEV_ATTENTION,
+            "head",
           );
+          const nudge = setTimeout(
+            () => this.say("Still on it.", ev.SEV_MILESTONE, "head"),
+            quick ? 40_000 : 75_000,
+          );
+          nudge.unref();
+          const t0 = Date.now();
+          let code = "";
+          try {
+            code = stripFences(
+              await brain.generate(
+                `Brief: ${brief}\n\nTitle: ${String(i.title ?? "")}${picture ? `\n\nContext, in case it helps: ${picture}` : ""}`,
+                quick
+                  ? `${DESIGN_BRIEF}\n\nThis one is a quick sketch: the whole idea on one screen, real copy, working controls, but keep it to about two hundred lines and skip secondary states.`
+                  : DESIGN_BRIEF,
+                {
+                  model: quick
+                    ? this.settings.brain_model
+                    : this.settings.artifact_model || this.settings.brain_model,
+                  ...(quick ? { maxTokens: 6000 } : {}),
+                },
+              ),
+            );
+          } finally {
+            clearTimeout(nudge);
+          }
           if (!/export\s+default/.test(code) && !/function\s+App\b/.test(code))
             return "the designer returned no component";
           const pin = this.board.add({
@@ -1472,7 +1504,9 @@ export class Daemon {
             size: "wide",
             ttl_s: i.sticky ? undefined : 3600,
           });
-          log(`designed ${pin.id} "${pin.title}" in ${Date.now() - t0} ms, ${code.length} chars`);
+          log(
+            `designed ${pin.id} "${pin.title}" ${quick ? "quickly " : ""}in ${Date.now() - t0} ms, ${code.length} chars`,
+          );
           this.hub.publish("focus", { id: pin.id });
           this.reflectSoon();
           return `built ${pin.id}`;
