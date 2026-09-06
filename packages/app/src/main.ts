@@ -135,6 +135,7 @@ async function startDaemon(): Promise<void> {
     audio: !noAudio,
     elevenKey: loadElevenKey(),
     anthropicKey: loadAnthropicKey(),
+    persistBoard: !smoke && !shotPath,
     roomDir: path.join(RENDERER, "room"),
   });
   await daemon.listen();

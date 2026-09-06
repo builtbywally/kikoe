@@ -110,6 +110,8 @@ export interface DaemonOptions {
   anthropicKey?: string;
   /** for tests: the fetch the brain uses */
   fetchImpl?: typeof fetch;
+  /** keep sticky pins in ~/.kikoe/board.json (off for smoke and screenshot runs) */
+  persistBoard?: boolean;
   onSpeech?: (phase: SpeechPhase, info: SpeechInfo) => void;
 }
 
@@ -218,11 +220,12 @@ export class Daemon {
       settings: this.settings,
       ...(opts.elevenKey ? { elevenKey: opts.elevenKey } : {}),
     });
+    this.persistBoard = opts.persistBoard !== false;
     this.board = new Board((e) => {
       this.hub.publish("pin", { ...e });
-      this.saveBoardSoon();
+      if (this.persistBoard) this.saveBoardSoon();
     });
-    this.loadBoard();
+    if (this.persistBoard) this.loadBoard();
     this.arbiter = new Arbiter(new LadderSink(this), {
       onSpeech: (phase, info) => {
         this.hub.publish("speech", { phase, ...info });
@@ -646,6 +649,7 @@ export class Daemon {
 
   // --- the board on disk: sticky pins survive a restart ---------------------------
   private boardTimer: NodeJS.Timeout | null = null;
+  private readonly persistBoard: boolean;
   private boardFile(): string {
     return path.join(HOME, "board.json");
   }

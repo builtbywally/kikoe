@@ -21,6 +21,8 @@ const el = {
 
 let sessions = {};
 let pins = [];
+// the last snapshot from the daemon: the conversation card reads heard from it
+let state = null;
 let asking = null;
 let pendingPermission = null;
 let mode = "normal";
@@ -774,6 +776,7 @@ const handlers = {
     rest();
     window.room.state().then((s) => {
       if (!s) return;
+      state = s;
       pins = s.pins ?? [];
       asking = s.asking ?? null;
       pendingPermission = s.pending_permission ? { ...s.pending_permission, text: "" } : null;
