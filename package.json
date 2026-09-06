@@ -16,7 +16,8 @@
     "typecheck": "tsc -b packages/core packages/daemon packages/cli packages/app",
     "build": "tsc -b packages/core packages/daemon packages/cli packages/app",
     "app": "pnpm build && pnpm --filter @kikoe/app start",
-    "app:dist": "pnpm build && pnpm --filter @kikoe/app dist"
+    "app:dist": "pnpm build && pnpm --filter @kikoe/app dist",
+    "eval:models": "pnpm build && node scripts/eval-models.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
