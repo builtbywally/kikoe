@@ -294,3 +294,82 @@ describe("artifacts by voice", () => {
     expect(typeof msgs[0]?.content).toBe("string");
   });
 });
+
+describe("the canvas is how it communicates", () => {
+  it("asks with buttons and points at things; the Next line is shown, not spoken", async () => {
+    const { f } = fakeFetch([
+      toolCall("ask_user", {
+        question: "Ship tonight or tomorrow?",
+        options: ["tonight", "tomorrow"],
+      }),
+      toolCall("point_at", { id: "PIN" }),
+      text("Tonight it is. Next: what's left | show me the list"),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f });
+    const frames: Record<string, unknown>[] = [];
+    d.hub.listen((fr) => frames.push(fr));
+    d.hear("kik when should we ship");
+    await new Promise((r) => setTimeout(r, 40));
+    const ask = d.board.asking();
+    expect(ask?.ask).toEqual(["tonight", "tomorrow"]);
+    expect(ask?.by).toBe("kik");
+    // the user clicks a button
+    expect(d.board.answer(ask!.id, "tonight")).toBe(true);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(frames.some((fr) => fr.type === "focus" && fr.id === ask!.id)).toBe(true);
+    expect(frames.some((fr) => fr.type === "suggest")).toBe(true);
+    const sug = frames.find((fr) => fr.type === "suggest") as { options: string[] };
+    expect(sug.options).toEqual(["what's left", "show me the list"]);
+    expect(d.heardLog.at(-1)?.said).toBe("Tonight it is.");
+    expect(d.state().look.backdrop).toBe("grid");
+    await d.close();
+  });
+});
+
+describe("memory", () => {
+  it("remembers across a restart: the notes and the conversation", async () => {
+    const { f } = fakeFetch([
+      toolCall("remember", { fact: "the user ships on Fridays" }),
+      text("Noted."),
+      text("Fridays, you said."),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({
+      settings,
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f,
+      persistBoard: true,
+    });
+    d.hear("kik we ship on fridays");
+    await new Promise((r) => setTimeout(r, 60));
+    expect(d.memory()).toContain("the user ships on Fridays");
+    await d.close();
+    // a new daemon, same home: the picture carries the note and the exchange
+    const { f: f2, sent } = fakeFetch([text("Friday.")]);
+    const d2 = new Daemon({
+      settings,
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f2,
+      persistBoard: true,
+    });
+    d2.hear("kik when do we ship");
+    await new Promise((r) => setTimeout(r, 60));
+    expect(String(sent[0]?.system)).toContain("ships on Fridays");
+    const msgs = sent[0]?.messages as Array<{ role: string; content: unknown }>;
+    expect(JSON.stringify(msgs)).toContain("we ship on fridays");
+    await d2.close();
+  });
+});

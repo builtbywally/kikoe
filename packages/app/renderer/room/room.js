@@ -23,6 +23,11 @@ let sessions = {};
 let pins = [];
 // the last snapshot from the daemon: the conversation card reads heard from it
 let state = null;
+// what Kik suggested you say next; a live line of what you are saying; recent events per repo
+let suggestions = [];
+let liveYou = "";
+let thinking = false;
+const recentEvents = new Map();
 let asking = null;
 let pendingPermission = null;
 let mode = "normal";
@@ -131,6 +136,27 @@ let micWatchdog = null;
 let overheardUntil = 0;
 let attendingUntil = 0;
 let attendingTimer = null;
+/** The backdrop: bundled by name and theme, or the user's own image. */
+function applyLook(look) {
+  if (!look) return;
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const board = document.getElementById("board");
+  board.dataset.backdrop = look.backdrop || "grid";
+  let url = "";
+  if (["paper", "ink", "aurora", "nebula"].includes(look.backdrop))
+    url = `url(../backdrops/${look.backdrop}-${dark ? "dark" : "light"}.jpg)`;
+  else if (look.backdrop === "custom" && look.image)
+    url = window.room.native
+      ? `url(file:///${String(look.image).replace(/\\/g, "/")})`
+      : `url(${window.room.backdropUrl ? window.room.backdropUrl() : ""})`;
+  board.style.setProperty("--backdrop-url", url || "none");
+  board.style.setProperty("--backdrop-dim", String(look.dim ?? 0.35));
+  document.body.dataset.frosted = look.blur === false ? "0" : "1";
+}
+window
+  .matchMedia("(prefers-color-scheme: dark)")
+  .addEventListener("change", () => applyLook(state?.look));
+
 function setOrb(state, label) {
   el.orb.className = `orb ${state}`;
   el.orbLabel.textContent = label;
@@ -358,7 +384,8 @@ function renderBody(pin) {
     case "html": {
       // Sandboxed: no scripts, no navigation, no same-origin. A page, not a program.
       const f = document.createElement("iframe");
-      f.setAttribute("sandbox", "");
+      // scripts yes, so a page can tick; same-origin no, so it stays a page
+      f.setAttribute("sandbox", "allow-scripts");
       f.srcdoc = pin.body;
       return f;
     }
@@ -412,16 +439,22 @@ function pinCard(p) {
       : p.answer
         ? `answered: ${p.answer}`
         : p.kind === "conversation"
-          ? "with you"
-          : p.sticky
-            ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
-            : age < 60
-              ? "pinned now"
-              : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
+          ? thinking
+            ? "thinking"
+            : "with you"
+          : p.kind === "agents" || p.kind === "events"
+            ? "live"
+            : p.sticky
+              ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
+              : age < 60
+                ? "pinned now"
+                : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
   head.append(title, when);
   const body = document.createElement("div");
   body.className = "pin-body";
   if (p.kind === "conversation") body.append(conversationBody());
+  else if (p.kind === "agents") body.append(agentsBody());
+  else if (p.kind === "events") body.append(eventsBody(p.repo));
   else if (p.kind === "checklist") body.append(checklistBody(p));
   else if (p.kind === "note") body.append(noteBody(p));
   else body.append(renderBody(p));
@@ -430,7 +463,9 @@ function pinCard(p) {
   if (p.sticky) card.dataset.sticky = "1";
   const foot = document.createElement("div");
   foot.className = "pin-foot";
-  if (p.kind === "conversation") {
+  if (p.kind === "conversation" || p.kind === "agents" || p.kind === "events") {
+    card.dataset.live = "1";
+    if (p.kind === "conversation" && speaking) card.dataset.speaking = "1";
     card.append(foot);
     return card;
   }
@@ -447,6 +482,16 @@ function pinCard(p) {
     note.textContent = "nothing here is editable";
     foot.append(note);
   } else {
+    if (p.kind === "html" || p.kind === "svg" || p.kind === "image" || p.size === "wide") {
+      const open = document.createElement("button");
+      open.textContent = "open";
+      open.title = "in its own window";
+      open.addEventListener("click", () => window.room.openArtifact(p.id));
+      const save = document.createElement("button");
+      save.textContent = "download";
+      save.addEventListener("click", () => window.room.saveArtifact(p.id));
+      foot.append(open, save);
+    }
     const ask = document.createElement("button");
     ask.textContent = "ask kik";
     ask.addEventListener("click", () => {
@@ -490,7 +535,81 @@ function renderBoard() {
   const ordered = [...pins].sort(
     (a, b) => (a.repo === "kik" ? -1 : 0) - (b.repo === "kik" ? -1 : 0),
   );
-  window.board.render([talk, ...ordered], pinCard);
+  const extra = [];
+  if (Object.keys(sessions).length)
+    extra.push({ ...talk, id: "agents", kind: "agents", title: "agents", sticky: true });
+  for (const [repo, events] of recentEvents)
+    if (events.length)
+      extra.push({
+        ...talk,
+        id: `events:${repo}`,
+        kind: "events",
+        title: "what happened",
+        repo,
+        sticky: true,
+      });
+  window.board.render([talk, ...extra, ...ordered], pinCard);
+}
+
+/** The agents card: each one, what it is doing, and the buttons when one waits on you. */
+function agentsBody() {
+  const wrap = document.createElement("div");
+  wrap.className = "agents-card";
+  const rank = (s) =>
+    s.status === "waiting" ? 0 : s.status === "working" ? 1 : s.status === "failed" ? 2 : 3;
+  for (const s of Object.values(sessions).sort((a, b) => rank(a) - rank(b))) {
+    const row = document.createElement("div");
+    row.className = "agent-row";
+    row.dataset.status = s.status;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const name = document.createElement("b");
+    name.textContent = s.label;
+    const what = document.createElement("span");
+    what.textContent =
+      s.status === "waiting"
+        ? s.pending_permission || "waiting on you"
+        : s.status === "working"
+          ? `${s.current_tool ? s.current_tool.toLowerCase() : "working"} · ${ago(s.running_for_s)}`
+          : s.status === "failed"
+            ? `failed${s.last_error ? `: ${s.last_error.slice(0, 80)}` : ""}`
+            : `idle · ${ago(s.quiet_for_s)}`;
+    row.append(dot, name, what);
+    if (s.status === "waiting") {
+      const yes = document.createElement("button");
+      yes.className = "primary";
+      yes.textContent = "approve";
+      yes.addEventListener("click", () => window.room.answerWord("yes"));
+      const no = document.createElement("button");
+      no.textContent = "deny";
+      no.addEventListener("click", () => window.room.answerWord("no"));
+      row.append(yes, no);
+    }
+    wrap.append(row);
+  }
+  return wrap;
+}
+
+/** What happened in a repo lately, as the narrator saw it. */
+function eventsBody(repo) {
+  const wrap = document.createElement("div");
+  wrap.className = "events-card";
+  for (const e of recentEvents.get(repo) ?? []) {
+    const row = document.createElement("div");
+    row.className = "event-row";
+    row.dataset.kind = e.kind;
+    const t = document.createElement("span");
+    t.className = "t";
+    t.textContent = new Date(e.ts * 1000).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const m = document.createElement("span");
+    m.textContent = e.text;
+    row.append(t, m);
+    wrap.append(row);
+  }
+  return wrap;
 }
 
 /** The conversation card: what you said, what Kik said, and a way to type to it. */
@@ -520,6 +639,33 @@ function conversationBody() {
       kik.textContent = h.said;
       wrap.append(kik);
     }
+  }
+  if (liveYou) {
+    const you = document.createElement("div");
+    you.className = "chat-you live";
+    you.textContent = liveYou;
+    wrap.append(you);
+  }
+  if (thinking) {
+    const dots = document.createElement("div");
+    dots.className = "chat-thinking";
+    dots.innerHTML = "<i></i><i></i><i></i>";
+    wrap.append(dots);
+  }
+  if (suggestions.length) {
+    const chips = document.createElement("div");
+    chips.className = "chat-chips";
+    for (const s of suggestions) {
+      const c = document.createElement("button");
+      c.type = "button";
+      c.textContent = s;
+      c.addEventListener("click", () => {
+        suggestions = [];
+        window.room.sayToKik(s);
+      });
+      chips.append(c);
+    }
+    wrap.append(chips);
   }
   const form = document.createElement("form");
   form.className = "chat-reply";
@@ -777,6 +923,7 @@ const handlers = {
     window.room.state().then((s) => {
       if (!s) return;
       state = s;
+      applyLook(s.look);
       pins = s.pins ?? [];
       asking = s.asking ?? null;
       pendingPermission = s.pending_permission ? { ...s.pending_permission, text: "" } : null;
@@ -786,8 +933,19 @@ const handlers = {
       rest();
     });
   },
+  focus(f) {
+    if (f.id) window.board.focus(String(f.id));
+  },
+  suggest(f) {
+    suggestions = Array.isArray(f.options) ? f.options.map(String) : [];
+    renderBoard();
+  },
+  look(f) {
+    applyLook(f);
+  },
   sessions(f) {
     sessions = f.sessions ?? {};
+    renderBoard();
     renderAgents();
     if (el.body.dataset.view === "control") showControl();
     if (el.body.dataset.idle === "true") rest();
@@ -797,6 +955,22 @@ const handlers = {
     renderAgents();
   },
   event(f) {
+    if (f.repo) {
+      const list = recentEvents.get(f.repo) ?? [];
+      const text =
+        f.kind === "permission"
+          ? `asked: ${f.text || (f.args?.command ?? "a tool call")}`
+          : f.kind === "error"
+            ? `error: ${(f.text ?? "").slice(0, 80)}`
+            : f.kind === "turn_end"
+              ? `done: ${(f.text ?? "").slice(0, 80) || "turn ended"}`
+              : f.tool
+                ? `${f.tool.toLowerCase()} ${f.status ?? ""}`.trim()
+                : f.kind;
+      list.unshift({ ts: f.ts ?? Date.now() / 1000, kind: f.kind, text });
+      recentEvents.set(f.repo, list.slice(0, 5));
+      renderBoard();
+    }
     if (f.kind === "permission") {
       const args = f.args ?? {};
       pendingPermission = {
@@ -827,6 +1001,8 @@ const handlers = {
   speech(f) {
     if (f.phase === "speaking") {
       speaking = true;
+      thinking = false;
+      renderBoard();
       const isAsk = /shall i\?|apply it\?$/i.test(f.text ?? "");
       const repo = /^In ([\w.-]+), /.exec(f.text ?? "")?.[1] ?? "";
       const text = repo
@@ -853,6 +1029,9 @@ const handlers = {
       return;
     }
     if (f.phase === "addressed") {
+      liveYou = f.text ?? "";
+      thinking = false;
+      renderBoard();
       setOrb("listening", "heard you");
       el.lineRepo.textContent = "you said";
       el.lineText.textContent = `“${f.text}”`;
@@ -867,7 +1046,11 @@ const handlers = {
       }, 2600);
       return;
     }
-    if (f.phase === "thinking") return setOrb("speaking", "thinking");
+    if (f.phase === "thinking") {
+      thinking = true;
+      renderBoard();
+      return setOrb("speaking", "thinking");
+    }
     if (f.phase === "attending") {
       attendingUntil = Number(f.until) || Date.now() + 20000;
       if (!speaking) setOrb("listening", "with you");
@@ -893,8 +1076,8 @@ const handlers = {
     else showRoom();
   },
   heard(f) {
-    if (state) state.heard = [{ ...f, ts: Date.now() / 1000 }, ...(state.heard ?? [])].slice(0, 30);
-    renderBoard(); // the conversation card
+    liveYou = "";
+    thinking = false;
     // the conversation card on the canvas shows it at once
     if (state && f && f.text)
       state.heard = [

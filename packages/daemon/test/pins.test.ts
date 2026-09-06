@@ -91,3 +91,31 @@ describe("artifacts on the canvas", () => {
     expect(again.load(JSON.parse(JSON.stringify(b.toJSON())))).toBe(0);
   });
 });
+
+describe("artboards and stickies", () => {
+  it("sits beside its card, comes back wide, and survives the round trip", () => {
+    const { b } = board(() => 1000);
+    const page = b.add({
+      kind: "html",
+      title: "timer",
+      body: "<p>hi</p>",
+      size: "wide",
+      by: "kik",
+    });
+    const note = b.add({
+      kind: "note",
+      title: "why",
+      body: "a timer for the standup",
+      near: page.id,
+      by: "kik",
+    });
+    expect(note.near).toBe(page.id);
+    expect(page.size).toBe("wide");
+    const { b: again } = board(() => 1000);
+    again.load(JSON.parse(JSON.stringify([...b.toJSON(), { id: "x", body: "loose" }])));
+    expect(again.get(note.id)?.near).toBe(page.id);
+    expect(again.get(page.id)?.size).toBe("wide");
+    expect(again.get("x")?.near).toBe("");
+    expect(again.get("x")?.size).toBe("normal");
+  });
+});

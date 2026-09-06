@@ -43,6 +43,13 @@ export interface Pin {
   ttl_s: number;
   /** no shelf life; survives a restart */
   sticky: boolean;
+  /** placed beside this pin, the way a sticky note sits by an artboard */
+  near: string;
+  /** wide: an artboard for a page, a drawing, an image */
+  size: "normal" | "wide";
+  /** a size the user dragged it to, in canvas pixels; 0 is automatic */
+  w: number;
+  h: number;
   /** the answers offered, when this pin is a question */
   ask: string[];
   answer: string | null;
@@ -66,6 +73,10 @@ export interface PinInit {
   by?: Pin["by"] | undefined;
   ttl_s?: number | undefined;
   sticky?: boolean | undefined;
+  near?: string | undefined;
+  size?: "normal" | "wide" | undefined;
+  w?: number | undefined;
+  h?: number | undefined;
   ask?: string[] | undefined;
   wait_s?: number | undefined;
 }
@@ -75,6 +86,10 @@ export interface PinPatch {
   body?: string | undefined;
   kind?: string | undefined;
   sticky?: boolean | undefined;
+  near?: string | undefined;
+  size?: "normal" | "wide" | undefined;
+  w?: number | undefined;
+  h?: number | undefined;
 }
 
 let counter = 0;
@@ -117,6 +132,10 @@ export class Board {
       updated: this.now(),
       ttl_s: Math.max(10, Math.min(24 * 3600, init.ttl_s ?? DEFAULT_TTL_S)),
       sticky: Boolean(init.sticky),
+      near: init.near ?? "",
+      size: init.size === "wide" ? "wide" : "normal",
+      w: Math.max(0, Math.min(4000, Number(init.w ?? 0))),
+      h: Math.max(0, Math.min(4000, Number(init.h ?? 0))),
       ask: (init.ask ?? [])
         .map((a) => a.trim().toLowerCase())
         .filter(Boolean)
@@ -138,6 +157,10 @@ export class Board {
     if (patch.body !== undefined) pin.body = patch.body.slice(0, MAX_BODY);
     if (patch.kind !== undefined) pin.kind = kindOf(patch.kind);
     if (patch.sticky !== undefined) pin.sticky = Boolean(patch.sticky);
+    if (patch.near !== undefined) pin.near = patch.near;
+    if (patch.size !== undefined) pin.size = patch.size === "wide" ? "wide" : "normal";
+    if (patch.w !== undefined) pin.w = Math.max(0, Math.min(4000, Number(patch.w) || 0));
+    if (patch.h !== undefined) pin.h = Math.max(0, Math.min(4000, Number(patch.h) || 0));
     pin.updated = this.now();
     this.emit({ op: "update", pin, id });
     return pin;
@@ -246,6 +269,10 @@ export class Board {
         updated: Number(p.updated ?? created),
         ttl_s: ttl,
         sticky: Boolean(p.sticky),
+        near: typeof p.near === "string" ? p.near : "",
+        size: p.size === "wide" ? "wide" : "normal",
+        w: Number(p.w ?? 0) || 0,
+        h: Number(p.h ?? 0) || 0,
         ask: Array.isArray(p.ask) ? p.ask.map(String) : [],
         answer: typeof p.answer === "string" ? p.answer : null,
         wait_s: Number(p.wait_s ?? 0),

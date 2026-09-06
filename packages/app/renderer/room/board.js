@@ -188,7 +188,22 @@
     if (positions.has(pin.id)) return positions.get(pin.id);
     const col = columnOf(pin.repo || "");
     const x = col * (FRAME_W + FRAME_GAP);
-    const siblings = lastPins.filter((o) => o.id !== pin.id && (o.repo || "") === (pin.repo || ""));
+    // A sticky beside its card: to the right of it, top aligned, out of the column flow.
+    if (pin.near) {
+      const host = world.querySelector(`.pin[data-id="${CSS.escape(pin.near)}"]`);
+      const hp = positions.get(pin.near);
+      if (host && hp) {
+        const beside = lastPins.filter(
+          (o) => o.near === pin.near && o.id !== pin.id && positions.has(o.id),
+        );
+        const pos = { x: hp.x + host.offsetWidth + 24, y: hp.y + beside.length * 140 };
+        positions.set(pin.id, pos);
+        return pos;
+      }
+    }
+    const siblings = lastPins.filter(
+      (o) => o.id !== pin.id && (o.repo || "") === (pin.repo || "") && !o.near,
+    );
     const asking = pin.ask.length > 0 && pin.answer === null;
     if (asking && siblings.length) {
       const h = el.offsetHeight + PIN_GAP;
@@ -272,7 +287,49 @@
       if (el) el.replaceWith(fresh);
       else world.append(fresh);
       el = fresh;
-      el.style.width = `${FRAME_W - PAD * 2}px`;
+      el.style.width =
+        pin.w > 0
+          ? `${pin.w}px`
+          : pin.size === "wide"
+            ? `${FRAME_W * 2 + FRAME_GAP - PAD * 2}px`
+            : pin.kind === "note"
+              ? "260px"
+              : `${FRAME_W - PAD * 2}px`;
+      if (pin.h > 0) {
+        el.style.height = `${pin.h}px`;
+        el.style.maxHeight = "none";
+      }
+      el.dataset.size = pin.size || "normal";
+      if (!el.querySelector(".grip")) {
+        // canvas freedom: drag the corner to any size; it is remembered
+        const grip = document.createElement("div");
+        grip.className = "grip";
+        grip.title = "resize";
+        grip.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const w0 = el.offsetWidth;
+          const h0 = el.offsetHeight;
+          el.style.maxHeight = "none";
+          const move = (ev) => {
+            const w = Math.max(200, Math.round(w0 + (ev.clientX - startX) / zoom));
+            const h = Math.max(120, Math.round(h0 + (ev.clientY - startY) / zoom));
+            el.style.width = `${w}px`;
+            el.style.height = `${h}px`;
+          };
+          const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+            layoutFrames();
+            window.room.updatePin?.(pin.id, { w: el.offsetWidth, h: el.offsetHeight });
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+        });
+        el.append(grip);
+      }
       const pos = place(pin, el);
       el.style.left = `${pos.x}px`;
       el.style.top = `${pos.y}px`;
@@ -282,9 +339,32 @@
     else apply();
   }
 
+  /** Take the user to a card: pan it to the centre at a readable zoom, and pulse it. */
+  function focus(id) {
+    const el = world.querySelector(`.pin[data-id="${CSS.escape(id)}"]`);
+    if (!el) return false;
+    const k = Math.max(zoom, 1);
+    const rect = canvas.getBoundingClientRect();
+    const x = Number.parseFloat(el.style.left) || 0;
+    const y = Number.parseFloat(el.style.top) || 0;
+    const frame = el.closest(".frame");
+    const fx = frame ? Number.parseFloat(frame.style.left) || 0 : 0;
+    const fy = frame ? Number.parseFloat(frame.style.top) || 0 : 0;
+    zoom = k;
+    panX = rect.width / 2 - (fx + x + el.offsetWidth / 2) * k;
+    panY = rect.height / 2 - (fy + y + Math.min(el.offsetHeight, 300) / 2) * k;
+    apply();
+    el.classList.remove("spot");
+    void el.offsetWidth;
+    el.classList.add("spot");
+    setTimeout(() => el.classList.remove("spot"), 2600);
+    return true;
+  }
+
   window.board = {
     render,
     fit,
+    focus,
     zoomTo: (k) => zoomAt(k, canvas.clientWidth / 2, canvas.clientHeight / 2),
     get zoom() {
       return zoom;

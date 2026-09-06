@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld("room", {
   updatePin: (id: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("room:updatePin", id, patch),
   sayToKik: (text: string) => ipcRenderer.invoke("room:sayToKik", text),
+  native: true,
+  openArtifact: (id: string) => ipcRenderer.invoke("room:openArtifact", id),
+  saveArtifact: (id: string) => ipcRenderer.invoke("room:saveArtifact", id),
   onView: (fn: (v: { view: string; page?: string }) => void) =>
     ipcRenderer.on("room:view", (_e, v: { view: string; page?: string }) => fn(v)),
 });
@@ -77,6 +80,7 @@ contextBridge.exposeInMainWorld("kikoe", {
   openHome: () => ipcRenderer.invoke("settings:openHome"),
   openLogs: () => ipcRenderer.invoke("settings:openLogs"),
   pickClaudeSettings: () => ipcRenderer.invoke("settings:pickClaudeSettings"),
+  pickBackdrop: () => ipcRenderer.invoke("settings:pickBackdrop"),
   onProgress: (fn: (p: unknown) => void) =>
     ipcRenderer.on("settings:progress", (_e, p: unknown) => fn(p)),
 });

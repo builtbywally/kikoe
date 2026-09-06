@@ -63,6 +63,10 @@
     clearBoard: () => post("/pins/clear"),
     updatePin: (id, patch) => post(`/pins/${encodeURIComponent(id)}/update`, patch),
     sayToKik: (text) => post("/say", { text }),
+    native: false,
+    openArtifact: () => ({ error: "open it from the app" }),
+    saveArtifact: () => ({ error: "save it from the app" }),
+    backdropUrl: () => `/backdrop?token=${encodeURIComponent(token)}`,
     openSettings: () => {},
   };
 })();

@@ -9,7 +9,7 @@
  *   └── settings    voice, hooks, sessions, doctor; also the first-run flow
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   Daemon,
@@ -518,6 +518,52 @@ ipcMain.handle("room:answerPin", (_e, id: string, answer: string) => ({
 ipcMain.handle("room:answerWord", (_e, word: string) => ({
   to: daemon?.answerWord(String(word)) ?? null,
 }));
+const ARTIFACT_EXT: Record<string, string> = {
+  html: "html",
+  svg: "svg",
+  markdown: "md",
+  note: "md",
+  checklist: "md",
+  table: "md",
+  diff: "diff",
+  text: "txt",
+  image: "png",
+};
+/** An artboard in its own window: the page as a page, the drawing as a drawing. */
+ipcMain.handle("room:openArtifact", (_e, id: string) => {
+  const p = daemon?.board.get(String(id));
+  if (!p) return { error: "no such pin" };
+  const w = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    title: p.title || p.kind,
+    autoHideMenuBar: true,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+  });
+  const body =
+    p.kind === "html"
+      ? p.body
+      : p.kind === "svg"
+        ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#14100e;color:#f5f1ec">${p.body}</body>`
+        : p.kind === "image"
+          ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#14100e"><img src="${p.body}" style="max-width:100%;max-height:100vh"></body>`
+          : `<!doctype html><body style="margin:0;padding:32px;font:15px/1.6 system-ui;background:#14100e;color:#f5f1ec;white-space:pre-wrap">${p.body.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] ?? c)}</body>`;
+  void w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(body)}`);
+  return { ok: true };
+});
+ipcMain.handle("room:saveArtifact", async (_e, id: string) => {
+  const p = daemon?.board.get(String(id));
+  if (!p) return { error: "no such pin" };
+  const ext = ARTIFACT_EXT[p.kind] ?? "txt";
+  const name = `${(p.title || p.kind).replace(/[^\w.-]+/g, "-").slice(0, 60)}.${ext}`;
+  const r = await dialog.showSaveDialog({ defaultPath: path.join(app.getPath("downloads"), name) });
+  if (r.canceled || !r.filePath) return { ok: false };
+  if (p.kind === "image" && p.body.startsWith("data:")) {
+    const b64 = p.body.slice(p.body.indexOf(",") + 1);
+    writeFileSync(r.filePath, Buffer.from(b64, "base64"));
+  } else writeFileSync(r.filePath, p.body);
+  return { ok: true, file: r.filePath };
+});
 ipcMain.handle("room:removePin", (_e, id: string) => ({
   ok: daemon?.board.remove(String(id)) ?? false,
 }));
@@ -528,6 +574,8 @@ ipcMain.handle("room:updatePin", (_e, id: string, patch: Record<string, unknown>
       title: typeof patch.title === "string" ? patch.title : undefined,
       body: typeof patch.body === "string" ? patch.body : undefined,
       sticky: typeof patch.sticky === "boolean" ? patch.sticky : undefined,
+      w: typeof patch.w === "number" ? patch.w : undefined,
+      h: typeof patch.h === "number" ? patch.h : undefined,
     }),
   ),
 }));
@@ -767,6 +815,26 @@ ipcMain.handle("settings:copyLink", (_e, kind: string) => {
 });
 ipcMain.handle("settings:openHome", () => shell.openPath(HOME));
 ipcMain.handle("settings:openLogs", () => shell.openPath(path.join(HOME, "logs")));
+ipcMain.handle("settings:pickBackdrop", async () => {
+  const r = await dialog.showOpenDialog({
+    title: "Choose a backdrop",
+    properties: ["openFile"],
+    filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
+  });
+  const src = r.filePaths[0];
+  if (r.canceled || !src) return { ok: false };
+  try {
+    mkdirSync(HOME, { recursive: true });
+    const dest = path.join(HOME, `backdrop${path.extname(src).toLowerCase()}`);
+    copyFileSync(src, dest);
+    const next = { ...loadSettings(), backdrop: "custom", backdrop_image: dest };
+    saveSettings(next);
+    daemon?.reconfigure(next, loadElevenKey(), loadAnthropicKey());
+    return { ok: true, file: dest };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+});
 ipcMain.handle("settings:pickClaudeSettings", async () => {
   const r = await dialog.showOpenDialog({
     properties: ["openFile"],

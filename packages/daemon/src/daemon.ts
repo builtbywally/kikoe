@@ -8,7 +8,14 @@
  * calls, so it is never exposed on a network interface.
  */
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import {
@@ -336,6 +343,21 @@ export class Daemon {
     old.close();
     this.narrator.setMode(settings.narrate);
     this.hub.publish("tts", { ladder: this.ladder.names, strict: this.ladder.strict });
+    this.hub.publish("look", this.look());
+  }
+
+  /** The canvas backdrop, as the Room needs it. */
+  look(): { backdrop: string; dim: number; blur: boolean; image: string } {
+    const s = this.settings;
+    return {
+      backdrop: s.backdrop || "grid",
+      dim: Math.max(0, Math.min(0.9, Number(s.backdrop_dim ?? 0.35))),
+      blur: s.backdrop_blur !== false,
+      image:
+        s.backdrop === "custom" && s.backdrop_image && existsSync(s.backdrop_image)
+          ? s.backdrop_image
+          : "",
+    };
   }
 
   /**
@@ -684,14 +706,61 @@ export class Daemon {
   /** The model head, when there is a key and the setting is on. */
   brain(): Brain | null {
     if (!this.settings.brain || !this.anthropicKey) return null;
-    if (!this.brainCache || this.brainCache.model !== this.settings.brain_model)
+    if (!this.brainCache || this.brainCache.model !== this.settings.brain_model) {
       this.brainCache = new Brain({
         key: this.anthropicKey,
         model: this.settings.brain_model,
         fetchImpl: this.fetchImpl,
         log,
       });
+      if (this.persistBoard) this.brainCache.seed(this.conversationFromDisk());
+    }
     return this.brainCache;
+  }
+
+  // --- memory: the conversation on disk, and the notes Kik keeps -------------------------
+  private conversationFile(): string {
+    return path.join(HOME, "conversation.jsonl");
+  }
+  private memoryFile(): string {
+    return path.join(HOME, "memory.md");
+  }
+  /** The last day of exchanges, oldest first. */
+  private conversationFromDisk(): Array<{ at: number; you: string; kik: string }> {
+    try {
+      if (!existsSync(this.conversationFile())) return [];
+      const since = Date.now() - 24 * 3600_000;
+      return readFileSync(this.conversationFile(), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { at: number; you: string; kik: string })
+        .filter((e) => e.at > since)
+        .slice(-40);
+    } catch (e) {
+      log(`memory: could not read the conversation: ${(e as Error).message}`);
+      return [];
+    }
+  }
+  private rememberExchange(you: string, kik: string): void {
+    if (!this.persistBoard || !kik) return;
+    try {
+      mkdirSync(HOME, { recursive: true });
+      appendFileSync(this.conversationFile(), `${JSON.stringify({ at: Date.now(), you, kik })}\n`);
+    } catch (e) {
+      log(`memory: could not write the conversation: ${(e as Error).message}`);
+    }
+  }
+  /** What Kik has chosen to remember: a short markdown list, edited by tools. */
+  memory(): string {
+    try {
+      return existsSync(this.memoryFile()) ? readFileSync(this.memoryFile(), "utf8") : "";
+    } catch {
+      return "";
+    }
+  }
+  private writeMemory(text: string): void {
+    mkdirSync(HOME, { recursive: true });
+    writeFileSync(this.memoryFile(), text.slice(0, 20_000));
   }
 
   private async converse(
@@ -707,9 +776,23 @@ export class Daemon {
       said = await brain.reply(text, {
         system: this.brainSystem(),
         tools: this.brainTools(),
-        onClause: (clause) => this.say(clause, ev.SEV_ATTENTION, "head"),
+        onClause: (clause) => {
+          const next = /^next:\s*(.+)$/i.exec(clause.trim());
+          if (next) {
+            const options = (next[1] ?? "")
+              .split("|")
+              .map((s) => s.trim().replace(/[.]$/, ""))
+              .filter(Boolean)
+              .slice(0, 3);
+            if (options.length) this.hub.publish("suggest", { options });
+            return;
+          }
+          this.say(clause, ev.SEV_ATTENTION, "head");
+        },
       });
+      said = said.replace(/\s*next:\s*[^\n]*$/i, "").trim();
       record("chat", kind, said);
+      this.rememberExchange(text, said);
     } catch (e) {
       log(`brain failed: ${(e as Error).message}; rules answered`);
       said =
@@ -754,8 +837,13 @@ export class Daemon {
       lines.push(
         `Instructions waiting for an agent: ${this.instructions.map((i) => `${i.repo}: ${i.text}`).join("; ")}`,
       );
+    const mem = this.memory().trim();
+    if (mem)
+      lines.push(
+        `What you remember about the user and their work (your notes; use remember to add, forget to drop):\n${mem.slice(0, 4000)}`,
+      );
     lines.push(
-      `Narration mode: ${this.narrator.mode}. Local time ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+      `Narration mode: ${this.narrator.mode}. Local time ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}, ${new Date().toDateString()}.`,
     );
     return lines.join("\n");
   }
@@ -811,26 +899,45 @@ export class Daemon {
             title: str("a few words"),
             body: str("the content"),
             sticky: { type: "boolean", description: "keep it until removed" },
+            near: str("id of a card this belongs beside; a note next to an artboard"),
+            wide: {
+              type: "boolean",
+              description: "an artboard: wide, for a page, a drawing or an image",
+            },
           },
           required: ["kind", "title", "body"],
         },
         run: (i) => {
+          let kind = String(i.kind ?? "note");
+          let body = String(i.body ?? "");
+          if (kind === "diagram") {
+            // boxes and arrows in, vectors out, as the show route does
+            const svg = diagramToSvg(body);
+            if (!svg) return "empty diagram: one 'a -> b' edge per line";
+            kind = "svg";
+            body = svg;
+          }
           const pin = this.board.add({
-            kind: String(i.kind ?? "note"),
+            kind,
             title: String(i.title ?? ""),
-            body: String(i.body ?? ""),
+            body,
             repo: "kik",
             by: "kik",
             sticky: Boolean(i.sticky),
+            near: i.near ? String(i.near) : undefined,
+            size:
+              i.wide || kind === "html" || kind === "svg" || kind === "image" ? "wide" : "normal",
             ttl_s: i.sticky ? undefined : 3600,
           });
+          // anything made is shown: the canvas pans there and the card pulses
+          this.hub.publish("focus", { id: pin.id });
           return `created ${pin.kind} ${pin.id}`;
         },
       },
       {
         name: "update_artifact",
         description:
-          "Change something on the canvas: new body, title, or make it sticky. Use the id from the board listing.",
+          "Change something on the canvas: new body, title, make it sticky, move it beside another card (near), or make it wide. Use the id from the board listing.",
         input_schema: {
           type: "object",
           properties: {
@@ -838,14 +945,25 @@ export class Daemon {
             title: str("new title"),
             body: str("new content, whole"),
             sticky: { type: "boolean" },
+            near: str("id of the card to sit beside"),
+            wide: { type: "boolean" },
           },
           required: ["id"],
         },
         run: (i) => {
+          const target = this.board.get(String(i.id ?? ""));
+          const asSvg = target?.kind === "svg" && i.body !== undefined && /->/.test(String(i.body));
           const p = this.board.update(String(i.id ?? ""), {
             title: i.title === undefined ? undefined : String(i.title),
-            body: i.body === undefined ? undefined : String(i.body),
+            body:
+              i.body === undefined
+                ? undefined
+                : asSvg
+                  ? diagramToSvg(String(i.body)) || String(i.body)
+                  : String(i.body),
             sticky: i.sticky === undefined ? undefined : Boolean(i.sticky),
+            near: i.near === undefined ? undefined : String(i.near),
+            size: i.wide === undefined ? undefined : i.wide ? "wide" : "normal",
           });
           return p ? `updated ${p.id}` : "no such pin";
         },
@@ -860,7 +978,7 @@ export class Daemon {
             .list()
             .map(
               (p) =>
-                `[${p.id}] ${p.kind} "${p.title}" by ${p.by}${p.sticky ? " (sticky)" : ""}:\n${p.body.slice(0, 2000)}`,
+                `[${p.id}] ${p.kind} "${p.title}" by ${p.by}${p.sticky ? " (sticky)" : ""}${p.near ? ` (beside ${p.near})` : ""}:\n${p.body.slice(0, 2000)}`,
             )
             .join("\n\n") || "the board is empty",
       },
@@ -869,6 +987,89 @@ export class Daemon {
         description: "Take one thing off the canvas.",
         input_schema: { type: "object", properties: { id: str("the pin id") }, required: ["id"] },
         run: (i) => (this.board.remove(String(i.id ?? "")) ? "removed" : "no such pin"),
+      },
+      {
+        name: "point_at",
+        description:
+          "Take the user to something on the canvas: it pans there and pulses. Use it whenever you talk about a card.",
+        input_schema: { type: "object", properties: { id: str("the pin id") }, required: ["id"] },
+        run: (i) => {
+          const id = String(i.id ?? "");
+          if (!this.board.get(id)) return "no such pin";
+          this.hub.publish("focus", { id });
+          return "pointed";
+        },
+      },
+      {
+        name: "ask_user",
+        description:
+          "Ask the user to choose. The question is spoken and shown on the canvas with the options as buttons; the user answers by click or voice. Returns their choice, or 'no answer' after two minutes.",
+        input_schema: {
+          type: "object",
+          properties: {
+            question: str("one sentence"),
+            options: {
+              type: "array",
+              items: { type: "string" },
+              description: "two to four short options",
+            },
+          },
+          required: ["question", "options"],
+        },
+        run: async (i) => {
+          const question = String(i.question ?? "").trim();
+          const options = (Array.isArray(i.options) ? i.options : []).map(String).slice(0, 4);
+          if (!question || options.length < 2) return "need a question and at least two options";
+          this.say(question, ev.SEV_ATTENTION, "head");
+          const pin = this.board.add({
+            kind: "markdown",
+            title: "your call",
+            body: question,
+            repo: "kik",
+            by: "kik",
+            ask: options,
+            wait_s: 120,
+            ttl_s: 600,
+          });
+          this.hub.publish("focus", { id: pin.id });
+          const answer = await this.board.wait(pin.id, 120);
+          return answer ? `the user chose: ${answer}` : "no answer";
+        },
+      },
+      {
+        name: "remember",
+        description:
+          "Keep a fact about the user or their work for future sessions: a preference, a decision, a name, a deadline. One short line. Do this whenever the user tells you something you would want tomorrow.",
+        input_schema: { type: "object", properties: { fact: str("one line") }, required: ["fact"] },
+        run: (i) => {
+          const fact = String(i.fact ?? "")
+            .trim()
+            .replace(/\s+/g, " ");
+          if (!fact) return "nothing to remember";
+          const stamp = new Date().toISOString().slice(0, 10);
+          this.writeMemory(`${this.memory().trimEnd()}\n- ${stamp}: ${fact}\n`.trimStart());
+          return "remembered";
+        },
+      },
+      {
+        name: "forget",
+        description:
+          "Drop a remembered line that is wrong or no longer true. Give a few words that appear in it.",
+        input_schema: {
+          type: "object",
+          properties: { about: str("words that appear in the line") },
+          required: ["about"],
+        },
+        run: (i) => {
+          const about = String(i.about ?? "")
+            .trim()
+            .toLowerCase();
+          if (!about) return "say what to forget";
+          const lines = this.memory().split("\n");
+          const kept = lines.filter((l) => !l.toLowerCase().includes(about));
+          this.writeMemory(kept.join("\n"));
+          return `${lines.length - kept.length} line(s) forgotten`;
+        },
       },
       {
         name: "set_mode",
@@ -1059,6 +1260,7 @@ export class Daemon {
         key: Boolean(this.anthropicKey),
       },
       instructions: this.instructions.length,
+      look: this.look(),
       mode: this.narrator.mode,
       tts: {
         ladder: this.ladder.names,
@@ -1152,6 +1354,20 @@ export class Daemon {
       res.end(readFileSync(file));
       return;
     }
+    if (req.method === "GET" && url.pathname.startsWith("/backdrops/") && this.roomDir) {
+      // the bundled backdrops, public assets like the fonts
+      const name = url.pathname
+        .slice("/backdrops/".length)
+        .split("/")
+        .filter((p) => p && p !== "..")
+        .join("/");
+      const file = path.join(this.roomDir, "..", "backdrops", name);
+      if (!existsSync(file) || !name.endsWith(".jpg"))
+        return this.json(res, 404, { error: "no such file" });
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=86400" });
+      res.end(readFileSync(file));
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/room" && this.roomDir) {
       // Without the trailing slash the page's relative assets resolve to the
       // root and hit the token check. Send it to /room/ with the query intact.
@@ -1193,7 +1409,8 @@ export class Daemon {
     if (!grant) return this.json(res, 401, { error: "unauthorized" });
     // A viewer may look and may not touch.
     const reading =
-      req.method === "GET" && ["/state", "/sessions", "/stream", "/pins"].includes(url.pathname);
+      req.method === "GET" &&
+      ["/state", "/sessions", "/stream", "/pins", "/backdrop"].includes(url.pathname);
     if (grant === "viewer" && !reading)
       return this.json(res, 403, { error: "viewer token: read only" });
 
@@ -1213,6 +1430,8 @@ export class Daemon {
         body: typeof b.body === "string" ? b.body : undefined,
         kind: typeof b.kind === "string" ? b.kind : undefined,
         sticky: typeof b.sticky === "boolean" ? b.sticky : undefined,
+        w: typeof b.w === "number" ? b.w : undefined,
+        h: typeof b.h === "number" ? b.h : undefined,
       });
       return this.json(res, p ? 200 : 404, { ok: Boolean(p) });
     }
@@ -1351,6 +1570,20 @@ export class Daemon {
           return;
         }
         return this.json(res, 200, { ok: true, id: pin.id });
+      }
+      case "GET /backdrop": {
+        const file = this.look().image;
+        if (!file) return this.json(res, 404, { error: "no custom backdrop" });
+        const ext = path.extname(file).toLowerCase();
+        const types: Record<string, string> = {
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".png": "image/png",
+          ".webp": "image/webp",
+        };
+        res.writeHead(200, { "content-type": types[ext] ?? "application/octet-stream" });
+        res.end(readFileSync(file));
+        return;
       }
       case "GET /pins":
         return this.json(res, 200, {

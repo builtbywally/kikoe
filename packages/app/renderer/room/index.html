@@ -197,6 +197,23 @@
           <label class="row"><input type="radio" name="theme" value="dark" /><div><b>Dark</b><span>Ink, paper text, one ember.</span></div></label>
           <label class="row"><input type="radio" name="theme" value="light" /><div><b>Light</b><span>Paper, ink text, the same ember.</span></div></label>
         </div>
+        <h3>Backdrop</h3>
+        <p class="dim">What the canvas sits on. The bundled ones are rendered at 3840 by 2160 and follow the theme.</p>
+        <div class="backdrops" id="backdrops">
+          <label class="backdrop" data-name="grid"><input type="radio" name="backdrop" value="grid" /><span class="swatch swatch-grid"></span><b>Grid</b></label>
+          <label class="backdrop" data-name="plain"><input type="radio" name="backdrop" value="plain" /><span class="swatch swatch-plain"></span><b>Plain</b></label>
+          <label class="backdrop" data-name="paper"><input type="radio" name="backdrop" value="paper" /><span class="swatch" style="background-image: url(../backdrops/paper-dark.jpg)"></span><b>Paper</b></label>
+          <label class="backdrop" data-name="ink"><input type="radio" name="backdrop" value="ink" /><span class="swatch" style="background-image: url(../backdrops/ink-dark.jpg)"></span><b>Ink wash</b></label>
+          <label class="backdrop" data-name="aurora"><input type="radio" name="backdrop" value="aurora" /><span class="swatch" style="background-image: url(../backdrops/aurora-dark.jpg)"></span><b>Aurora</b></label>
+          <label class="backdrop" data-name="nebula"><input type="radio" name="backdrop" value="nebula" /><span class="swatch" style="background-image: url(../backdrops/nebula-dark.jpg)"></span><b>Nebula</b></label>
+          <label class="backdrop" data-name="custom"><input type="radio" name="backdrop" value="custom" /><span class="swatch swatch-custom" id="swatch-custom"></span><b>Your image</b></label>
+        </div>
+        <div class="actions">
+          <button id="pick-backdrop" class="quiet">Choose an image…</button>
+          <label class="check" style="margin: 0">dim <input type="range" id="backdrop-dim" min="0" max="0.8" step="0.05" style="width: 140px" /></label>
+          <label class="check" style="margin: 0"><input type="checkbox" id="backdrop-blur" /> frosted cards</label>
+          <span id="backdrop-note" class="note"></span>
+        </div>
         <h3>Startup</h3>
         <label class="check"><input type="checkbox" id="login" /> Start at login, hidden in the tray.</label>
         <div class="actions"><button id="open-home" class="quiet">Open data folder</button> <button id="open-logs" class="quiet">Open logs</button></div>

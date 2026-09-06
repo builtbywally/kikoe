@@ -53,6 +53,12 @@ export interface Settings {
   hear_you: boolean;
   /** talking over Kik stops it (headset only; through speakers it hears itself) */
   barge_in: boolean;
+  /** the canvas backdrop: grid | plain | paper | ink | aurora | nebula | custom */
+  backdrop: string;
+  backdrop_dim: number;
+  backdrop_blur: boolean;
+  /** the user's own image, copied into HOME */
+  backdrop_image: string;
   /** a model in the head: what is addressed to Kik goes to the API */
   brain: boolean;
   brain_model: string;
@@ -84,6 +90,10 @@ export const DEFAULTS: Settings = {
   hear_debug: false,
   hear_you: true,
   barge_in: false,
+  backdrop: "grid",
+  backdrop_dim: 0.35,
+  backdrop_blur: true,
+  backdrop_image: "",
   brain: false,
   brain_model: "claude-haiku-4-5-20251001",
   brain_narrates: true,

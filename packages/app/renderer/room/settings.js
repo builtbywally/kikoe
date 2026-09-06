@@ -51,6 +51,12 @@
     pick("earcons", s.earcons || "cues");
     pick("profile", s.hook_profile);
     pick("theme", s.theme || "system");
+    pick("backdrop", s.backdrop || "grid");
+    $("backdrop-dim").value = String(s.backdrop_dim ?? 0.35);
+    $("backdrop-blur").checked = s.backdrop_blur !== false;
+    if (s.backdrop_image)
+      $("swatch-custom").style.backgroundImage =
+        `url(file:///${s.backdrop_image.replace(/\\/g, "/")})`;
     $("strict").checked = Boolean(s.tts_strict);
     $("login").checked = Boolean(info.loginItem);
     $("mic").checked = Boolean(s.mic);
@@ -429,6 +435,32 @@
     const r = await api.save({ narrate, earcons });
     note("narrate-note", r.error ? r.error : "saved", r.error ? "bad" : "good");
   });
+  for (const r of document.querySelectorAll("input[name=backdrop]"))
+    r.addEventListener("change", async () => {
+      if (r.value === "custom" && !info.settings.backdrop_image) {
+        const p = await api.pickBackdrop();
+        if (!p.ok) return pick("backdrop", info.settings.backdrop || "grid");
+        info = await api.get();
+        $("swatch-custom").style.backgroundImage = `url(file:///${p.file.replace(/\\/g, "/")})`;
+        return note("backdrop-note", "your image", "good");
+      }
+      const res = await api.save({ backdrop: r.value });
+      note("backdrop-note", res.error ? res.error : r.value, res.error ? "bad" : "good");
+    });
+  $("pick-backdrop").addEventListener("click", async () => {
+    const p = await api.pickBackdrop();
+    if (!p.ok) return;
+    info = await api.get();
+    pick("backdrop", "custom");
+    $("swatch-custom").style.backgroundImage = `url(file:///${p.file.replace(/\\/g, "/")})`;
+    note("backdrop-note", "your image", "good");
+  });
+  $("backdrop-dim").addEventListener("change", () =>
+    api.save({ backdrop_dim: Number($("backdrop-dim").value) }),
+  );
+  $("backdrop-blur").addEventListener("change", () =>
+    api.save({ backdrop_blur: $("backdrop-blur").checked }),
+  );
   for (const r of document.querySelectorAll("input[name=theme]"))
     r.addEventListener("change", () => api.save({ theme: r.value }));
   $("login").addEventListener("change", () => api.save({ start_at_login: $("login").checked }));
