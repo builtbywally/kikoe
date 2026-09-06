@@ -1,7 +1,8 @@
 # Kikoe
 
 Read `docs/HANDOVER.md` before doing anything: it holds the state, the
-decisions, and the gotchas the code does not say. Then `docs/ROADMAP.md`.
+decisions, and the gotchas the code does not say. Then `docs/SENTIENCE.md`
+(the goal) and `docs/ROADMAP.md`.
 
 Rules that are not negotiable:
 

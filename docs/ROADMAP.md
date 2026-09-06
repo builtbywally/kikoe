@@ -5,6 +5,11 @@ a mind, and a canvas. This is the whole road, from what runs tonight to what
 ships. Dates are targets from 2026-09-06; each milestone has a bar it must
 clear before the next starts.
 
+## The bar above every milestone
+
+`docs/SENTIENCE.md`: Kik should feel like someone in the room, not a
+program that answers. Every milestone below is measured against it.
+
 ## Where it stands (2026-09-06)
 
 Working on this machine, installed, starts at login:
