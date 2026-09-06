@@ -37,7 +37,7 @@ export type {
   PermissionBinding,
   ArbiterOptions,
 } from "./arbiter.js";
-export { route, gate, normalize, DEFAULT_ALIASES } from "./router.js";
+export { route, gate, nameLike, normalize, DEFAULT_ALIASES } from "./router.js";
 export type { Decision, RouteOptions } from "./router.js";
 export { answer as headAnswer, social as headSocial } from "./head.js";
 export { diagramToSvg, parseDiagram } from "./diagram.js";

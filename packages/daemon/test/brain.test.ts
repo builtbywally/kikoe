@@ -684,3 +684,42 @@ describe("anything on the canvas", () => {
     await d.close();
   });
 });
+
+describe("turn-taking and being wrong well", () => {
+  it("stops talking when spoken to over it, through speakers too", async () => {
+    const d = new Daemon({
+      settings: { ...config.DEFAULTS, tts: "none", mic: false } as typeof config.DEFAULTS,
+      audio: false,
+    });
+    const phases: string[] = [];
+    d.hub.listen((fr) => {
+      if (fr.type === "speech") phases.push(String(fr.phase));
+    });
+    d.say("The build is green and the deploy went out a minute ago.", 2);
+    await new Promise((r) => setTimeout(r, 10));
+    // a voiceless test run finishes a line at once; hold the floor as a real speaker would
+    (d.arbiter as unknown as { pending: () => boolean }).pending = () => true;
+    // its own echo is not a barge-in
+    expect(d.hear("the build is green and the deploy went out").kind).toBe("self");
+    expect(phases).not.toContain("interrupted");
+    d.hear("kik whats waiting on me");
+    expect(phases).toContain("interrupted");
+    await d.close();
+  });
+
+  it("takes a correction: the reply is told, the note is rewritten", async () => {
+    const { f, sent } = fakeFetch([text("Thursdays, got it."), text("note")]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f, reflectMs: 5 });
+    d.hear("kik no that's wrong, we ship on thursdays");
+    await new Promise((r) => setTimeout(r, 60));
+    expect(String(sent[0]?.system)).toContain("The user is correcting you");
+    expect(String(sent[0]?.system)).toContain("with remember");
+    await d.close();
+  });
+});

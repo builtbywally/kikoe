@@ -21,7 +21,7 @@ an empty checkout whose CLAUDE.md now points here.
 cd ~/orca/projects/kikoe
 pnpm install                     # pnpm 10; audify/electron builds allowed in pnpm-workspace.yaml
 pnpm build                       # tsc -b for core, daemon, cli, app
-pnpm test                        # vitest, 124 tests; never touches ~/.claude or the speaker
+pnpm test                        # vitest, 127 tests; never touches ~/.claude or the speaker
 pnpm lint                        # biome; it also reformats after edits
 pnpm typecheck
 pnpm app                         # build + run from source (kills nothing; the installed app holds the port)
@@ -125,6 +125,11 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    each concern is said once (the model phrases it if there is a key) and
    published as a `concern` frame. `register()` adds a never-spoken line
    of tone to the prompt (late night, a bad hour, a turn to green, a wait).
+   The name gate also takes any word shaped like the name (`nameLike` in
+   `router.ts`) so a new Whisper spelling still lands. Talking to Kik
+   while it speaks interrupts it, through speakers too (`hear()`, after
+   the echo check). A correction ("no", "that's wrong", "I said") sets a
+   flag the next prompt reads: take it, fix the notes, don't repeat.
    The goal all of this serves is `docs/SENTIENCE.md`.
 4. The Room renders the daemon's `/stream` frames: `pin`, `heard`, `mic`,
    `speech`, `sessions`, `event`, `focus`, `suggest`, `look`. The board is a
@@ -206,9 +211,13 @@ fact.
 
 Known weak spots:
 
-- The name depends on Whisper's spelling; the follow-up window and the
-  model judgement paper over it. Wake-word model next.
-- No echo cancellation: barge-in is headset-only.
+- The name depends on Whisper's spelling; the shape match, the follow-up
+  window and the model judgement paper over it. A real wake word is still
+  open: see `docs/SENTIENCE.md`, order of work, item 4, for the two routes
+  (openWakeWord trained on the user's voice, or the sherpa-onnx keyword
+  spotter already in the ear's runtime).
+- No echo cancellation: VAD barge-in is headset-only; barge-in by words
+  works through speakers but only once the sentence has been transcribed.
 - Suggestion chips depend on the model ending with `Next:`; usually does.
 - Batch transcription: Kik answers after the sentence ends, not during.
 - The conversation card shows the last eight exchanges only; the

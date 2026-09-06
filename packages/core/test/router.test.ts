@@ -144,3 +144,16 @@ describe("the rules head", () => {
     expect(answer("anything", [])).toContain("Nothing's running");
   });
 });
+
+describe("the name by its shape", () => {
+  it("hears spellings the alias list has never met, and not everyday words", async () => {
+    const { nameLike } = await import("@kikoe/core");
+    for (const w of ["kik", "keek", "kicko", "kikoi", "ceek", "kekoo", "kikk"])
+      expect(nameLike(w), w).toBe(true);
+    for (const w of ["keep", "kid", "cake", "coke", "quick", "click", "kicked", "keys", "check"])
+      expect(nameLike(w), w).toBe(false);
+    expect(gate("hey keeko what's up")).toEqual([true, "whats up"]);
+    expect(gate("kikoi, stop")).toEqual([true, "stop"]);
+    expect(gate("keep going")[0]).toBe(false);
+  });
+});

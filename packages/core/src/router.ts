@@ -131,6 +131,18 @@ export function normalize(text: string): string {
     .trim();
 }
 
+/**
+ * The name by its shape, for the spellings the alias list has not met yet:
+ * a k or c, a short i or ee, a k or ck, and whatever Whisper tacks on
+ * ("kik", "keek", "kicko", "kikoi"). Recall over precision, on purpose;
+ * everyday words with that shape are rare ("kick" is already the name).
+ */
+export function nameLike(word: string): boolean {
+  const w = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (w.length < 3 || w.length > 7) return false;
+  return /^[ck](i|ee|ea|e|ey|ie)[ck]{1,2}(s|o|oe|oh|ou|oi|a|y|i|u|e|ie|oo)?$/.test(w);
+}
+
 /** Strip the name if the utterance starts with it. Returns [addressed, rest]. */
 export function gate(text: string, aliases: string[] = DEFAULT_ALIASES): [boolean, string] {
   const t = normalize(text);
@@ -144,6 +156,11 @@ export function gate(text: string, aliases: string[] = DEFAULT_ALIASES): [boolea
       }
     }
   }
+  // Not a known spelling; maybe a new one with the right shape.
+  const words = t.split(" ");
+  const lead = ["hey", "hi", "ok", "okay", "yo"].includes(words[0] ?? "") ? 1 : 0;
+  const first = words[lead] ?? "";
+  if (first && nameLike(first)) return [true, words.slice(lead + 1).join(" ")];
   return [false, t];
 }
 

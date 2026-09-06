@@ -75,8 +75,22 @@ of work.
 4. **Turn-taking.** Roadmap milestone 1: wake word, echo cancellation,
    streaming transcription. The hosted conversation loop (milestone 2) is
    the alternative if local latency will not get there.
+   Shipped 2026-09-06, the part that needs no new model: the name by its
+   shape (`nameLike`, any k-i-k word Whisper produces), and barge-in by
+   words (talking to Kik over it stops it, through speakers too, because
+   its own echo is dropped by text). Still open, and why: a wake-word
+   model needs either training on the user's voice (openWakeWord) or the
+   sherpa-onnx keyword spotter with a downloaded model and a keywords
+   file, which must be tuned on the real mic; echo cancellation needs the
+   playback signal fed to the ear as a reference, which the speaker does
+   not expose yet; streaming transcription needs the ear to decode
+   partial segments. Each is a session of its own with the headset on.
 5. **Being wrong well.** Corrections into the inner note and memory; no
    repeats.
+   Shipped 2026-09-06: "no", "that's wrong", "I said", "I meant" and the
+   like mark a correction; the reply is told to take it without defence,
+   fix the notes with remember and forget, and not repeat the wrong thing;
+   the inner note is rewritten right after.
 
 ## The canvas: anything, including the live web
 

@@ -30,6 +30,7 @@ import {
   type Utterance,
   diagramToSvg,
   events as ev,
+  gate,
   headAnswer,
   headSocial,
   route,
@@ -109,6 +110,9 @@ export interface SpokenRecord {
 const ATTENTION_MS = 20_000;
 /** away this long, and the next thing the user says is a return */
 const AWAY_MS = 3600_000;
+/** the user putting Kik right; the reply takes it and the note records it */
+const CORRECTION =
+  /^(no|nope|wrong|thats wrong|that is wrong|not that|not what i|i said|i didnt say|i did not say|i meant|you misheard|you got that wrong|thats not)\b/;
 /** what Kik says while the model is still thinking */
 const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
 
@@ -246,6 +250,8 @@ export class Daemon {
   private readonly reflectMs: number;
   private readonly fillerMs: number;
   private lastFiller = "";
+  /** the user is correcting Kik; the next reply takes it, the inner note records it */
+  private corrected = 0;
   private consolidatedAt = 0;
   private consolidating = false;
   /** the watchers' bookkeeping: since when a session has been waiting or red, what was already said */
@@ -547,6 +553,12 @@ export class Daemon {
       return { kind: "deciding", intent: "" };
     }
     this.arrived(addressed);
+    // Barge-in by words: talking to Kik while it talks stops it. This works
+    // through speakers too, because its own echo was dropped above.
+    if (addressed && d.kind !== "control" && this.arbiter.pending()) {
+      log("barge-in: you spoke to Kik over it, Kik stopped");
+      this.interrupt();
+    }
     if (d.kind === "overheard") {
       record("overheard", "");
       this.hub.publish("mic", { phase: "overheard", words });
@@ -1196,6 +1208,10 @@ export class Daemon {
     const brain = this.brain();
     if (!brain) return;
     let said = "";
+    if (CORRECTION.test(gate(text)[1])) {
+      this.corrected = Date.now();
+      log("correction: the user is putting Kik right");
+    }
     // While the model thinks, a person would say "hm". One short sound if
     // the first clause is slow; a hello needs none.
     let filler: NodeJS.Timeout | null =
@@ -1297,6 +1313,10 @@ export class Daemon {
       );
     const register = this.register();
     if (register) lines.push(register);
+    if (Date.now() - this.corrected < 60_000)
+      lines.push(
+        "The user is correcting you. Take it: a few words of acknowledgement, no defence, then do it their way. If it is a fact about them or their work, keep the corrected version with remember and drop the wrong one with forget. Do not repeat the thing you got wrong.",
+      );
     if (this.returned && Date.now() - this.returned.at < 60_000)
       lines.push(
         `The user has just come back after ${describeGap(this.returned.after)} and this is the first thing they have said. Say hello in passing, the way a colleague would, then answer.`,
