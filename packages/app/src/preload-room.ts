@@ -52,9 +52,9 @@ contextBridge.exposeInMainWorld("room", {
   answerPin: (id: string, answer: string) => ipcRenderer.invoke("room:answerPin", id, answer),
   answerWord: (word: string) => ipcRenderer.invoke("room:answerWord", word),
   removePin: (id: string) => ipcRenderer.invoke("room:removePin", id),
-  clearBoard: () => ipcRenderer.invoke("room:clearBoard"),
-  interrupt: () => ipcRenderer.invoke("settings:interrupt"),
-  openSettings: (page?: string) => ipcRenderer.send("island:openSettings", page),
+  updatePin: (id: string, patch: Record<string, unknown>) =>
+    ipcRenderer.invoke("room:updatePin", id, patch),
+  sayToKik: (text: string) => ipcRenderer.invoke("room:sayToKik", text),
   onView: (fn: (v: { view: string; page?: string }) => void) =>
     ipcRenderer.on("room:view", (_e, v: { view: string; page?: string }) => fn(v)),
 });

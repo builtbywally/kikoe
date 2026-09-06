@@ -377,7 +377,7 @@ function pinCard(p) {
   card.dataset.kind = p.kind;
   card.dataset.asking = String(p.ask.length > 0 && p.answer === null);
   // Fade with age: full for the first third of its life, then down to 0.35.
-  const life = Math.max(0, Math.min(1, left / p.ttl_s));
+  const life = p.sticky ? 1 : Math.max(0, Math.min(1, left / p.ttl_s));
   card.style.opacity = String(0.35 + 0.65 * Math.min(1, life * 1.5));
   const head = document.createElement("div");
   head.className = "pin-head";
@@ -409,16 +409,29 @@ function pinCard(p) {
       ? `pinned now · ${ago(Math.max(1, Math.round((p.wait_s || left) - age)))}`
       : p.answer
         ? `answered: ${p.answer}`
-        : age < 60
-          ? "pinned now"
-          : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
+        : p.kind === "conversation"
+          ? "with you"
+          : p.sticky
+            ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
+            : age < 60
+              ? "pinned now"
+              : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
   head.append(title, when);
   const body = document.createElement("div");
   body.className = "pin-body";
-  body.append(renderBody(p));
+  if (p.kind === "conversation") body.append(conversationBody());
+  else if (p.kind === "checklist") body.append(checklistBody(p));
+  else if (p.kind === "note") body.append(noteBody(p));
+  else body.append(renderBody(p));
   card.append(head, body);
+  card.dataset.by = p.by ?? "agent";
+  if (p.sticky) card.dataset.sticky = "1";
   const foot = document.createElement("div");
   foot.className = "pin-foot";
+  if (p.kind === "conversation") {
+    card.append(foot);
+    return card;
+  }
   if (p.ask.length && p.answer === null) {
     p.ask.forEach((a, i) => {
       const b = document.createElement("button");
@@ -432,18 +445,154 @@ function pinCard(p) {
     note.textContent = "nothing here is editable";
     foot.append(note);
   } else {
+    const ask = document.createElement("button");
+    ask.textContent = "ask kik";
+    ask.addEventListener("click", () => {
+      const q = window.prompt(`Ask Kik about “${p.title || p.kind}”`);
+      if (q?.trim())
+        window.room.sayToKik(
+          `About the ${p.kind} "${p.title}" on the canvas (id ${p.id}): ${q.trim()}`,
+        );
+    });
+    const keep = document.createElement("button");
+    keep.textContent = p.sticky ? "unpin" : "keep";
+    keep.title = p.sticky ? "let it fade" : "keep it until removed";
+    keep.addEventListener("click", () => window.room.updatePin(p.id, { sticky: !p.sticky }));
     const x = document.createElement("button");
     x.textContent = "dismiss";
     x.addEventListener("click", () => window.room.removePin(p.id));
-    foot.append(x);
+    foot.append(ask, keep, x);
   }
   card.append(foot);
   return card;
 }
 
 function renderBoard() {
-  el.body.dataset.hasPins = pins.length ? "true" : "false";
-  window.board.render(pins, pinCard);
+  // The canvas is always there: it is how Kik talks to you.
+  el.body.dataset.hasPins = "true";
+  const talk = {
+    id: "conversation",
+    kind: "conversation",
+    title: "kik",
+    body: "",
+    repo: "kik",
+    by: "kik",
+    created: Date.now() / 1000,
+    updated: Date.now() / 1000,
+    ttl_s: 1e9,
+    sticky: true,
+    ask: [],
+    answer: null,
+    wait_s: 0,
+  };
+  const ordered = [...pins].sort(
+    (a, b) => (a.repo === "kik" ? -1 : 0) - (b.repo === "kik" ? -1 : 0),
+  );
+  window.board.render([talk, ...ordered], pinCard);
+}
+
+/** The conversation card: what you said, what Kik said, and a way to type to it. */
+function conversationBody() {
+  const wrap = document.createElement("div");
+  wrap.className = "chat";
+  const rows = [...(state?.heard ?? [])]
+    .reverse()
+    .filter((h) => h.text && h.kind !== "overheard")
+    .slice(-8);
+  if (!rows.length) {
+    const e = document.createElement("div");
+    e.className = "chat-empty";
+    e.textContent = state?.brain?.on
+      ? "Say “kik” and talk, or type below. Ask it to make a checklist, draw a diagram, or explain a diff."
+      : "Turn on “a mind of its own” in settings, then say “kik” and talk.";
+    wrap.append(e);
+  }
+  for (const h of rows) {
+    const you = document.createElement("div");
+    you.className = "chat-you";
+    you.textContent = h.text;
+    wrap.append(you);
+    if (h.said) {
+      const kik = document.createElement("div");
+      kik.className = "chat-kik";
+      kik.textContent = h.said;
+      wrap.append(kik);
+    }
+  }
+  const form = document.createElement("form");
+  form.className = "chat-reply";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "type to kik…";
+  input.autocomplete = "off";
+  const send = document.createElement("button");
+  send.type = "submit";
+  send.textContent = "send";
+  form.append(input, send);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    window.room.sayToKik(text);
+  });
+  wrap.append(form);
+  return wrap;
+}
+
+/** A checklist: '- [ ] item' lines you can tick; the body is the state. */
+function checklistBody(p) {
+  const list = document.createElement("div");
+  list.className = "checklist";
+  const lines = p.body.split(/\r?\n/);
+  lines.forEach((line, i) => {
+    const m = /^\s*(?:[-*]\s*)?\[( |x|X)\]\s*(.*)$/.exec(line);
+    const text = m ? m[2] : line.replace(/^\s*[-*]\s*/, "");
+    if (!text.trim()) return;
+    const row = document.createElement("label");
+    row.className = "check-row";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = Boolean(m && m[1].toLowerCase() === "x");
+    const span = document.createElement("span");
+    span.textContent = text;
+    if (box.checked) row.dataset.done = "1";
+    box.addEventListener("change", () => {
+      lines[i] = `- [${box.checked ? "x" : " "}] ${text}`;
+      window.room.updatePin(p.id, { body: lines.join("\n") });
+    });
+    row.append(box, span);
+    list.append(row);
+  });
+  const add = document.createElement("form");
+  add.className = "check-add";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "add an item…";
+  add.append(input);
+  add.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const t = input.value.trim();
+    if (!t) return;
+    window.room.updatePin(p.id, { body: `${p.body.trimEnd()}\n- [ ] ${t}` });
+  });
+  list.append(add);
+  return list;
+}
+
+/** A note: yours to edit in place. */
+function noteBody(p) {
+  const box = document.createElement("div");
+  box.className = "note-edit";
+  box.contentEditable = "true";
+  box.spellcheck = false;
+  box.textContent = p.body;
+  box.addEventListener("blur", () => {
+    const body = box.textContent ?? "";
+    if (body !== p.body) window.room.updatePin(p.id, { body });
+  });
+  box.addEventListener("keydown", (e) => e.stopPropagation());
+  return box;
 }
 
 // --- the control room -------------------------------------------------------------
@@ -740,7 +889,16 @@ const handlers = {
     if (f.view === "control") showControl();
     else showRoom();
   },
-  heard() {
+  heard(f) {
+    if (state) state.heard = [{ ...f, ts: Date.now() / 1000 }, ...(state.heard ?? [])].slice(0, 30);
+    renderBoard(); // the conversation card
+    // the conversation card on the canvas shows it at once
+    if (state && f && f.text)
+      state.heard = [
+        { text: f.text, kind: f.kind, intent: f.intent, said: f.said, ts: Date.now() / 1000 },
+        ...(state.heard ?? []),
+      ].slice(0, 30);
+    renderBoard();
     if (el.body.dataset.view === "control") showControl();
   },
   pin(f) {
@@ -750,6 +908,8 @@ const handlers = {
     } else if (f.op === "answer" && f.pin) {
       pins = pins.map((p) => (p.id === f.pin.id ? f.pin : p));
       if (asking === f.pin.id) asking = null;
+    } else if (f.op === "update" && f.pin) {
+      pins = pins.map((p) => (p.id === f.pin.id ? f.pin : p));
     } else if (f.op === "remove") {
       pins = pins.filter((p) => p.id !== f.id);
       if (asking === f.id) asking = null;

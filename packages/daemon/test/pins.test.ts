@@ -59,3 +59,35 @@ describe("the board", () => {
     expect(p.ask.length).toBe(4);
   });
 });
+
+describe("artifacts on the canvas", () => {
+  it("edits, keeps, and comes back from disk", () => {
+    let t = 1000;
+    const { b, events } = board(() => t);
+    const list = b.add({
+      kind: "checklist",
+      title: "release",
+      body: "- [ ] tag\n- [ ] notes",
+      by: "kik",
+    });
+    expect(b.update(list.id, { body: "- [x] tag\n- [ ] notes" })?.body).toContain("[x] tag");
+    expect(events.at(-1)?.op).toBe("update");
+    b.update(list.id, { sticky: true });
+    t += DEFAULT_TTL_S * 10;
+    expect(b.list().map((p) => p.id)).toEqual([list.id]);
+    expect(b.clear()).toBe(0);
+    expect(b.list().length).toBe(1);
+    const saved = JSON.parse(JSON.stringify(b.toJSON()));
+    const { b: again } = board(() => t);
+    expect(again.load(saved)).toBe(1);
+    expect(again.get(list.id)?.body).toContain("[x] tag");
+    expect(again.get(list.id)?.by).toBe("kik");
+  });
+
+  it("a question does not come back from disk, its asker is gone", () => {
+    const { b } = board(() => 1000);
+    b.add({ kind: "diff", body: "x", ask: ["apply", "no"], sticky: true });
+    const { b: again } = board(() => 1000);
+    expect(again.load(JSON.parse(JSON.stringify(b.toJSON())))).toBe(0);
+  });
+});

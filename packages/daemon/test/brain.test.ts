@@ -240,3 +240,57 @@ describe("conversation, the way the assistants do it", () => {
     await d.close();
   });
 });
+
+describe("artifacts by voice", () => {
+  it("creates an artifact on the canvas and can read it back", async () => {
+    const { f } = fakeFetch([
+      toolCall("create_artifact", {
+        kind: "checklist",
+        title: "release",
+        body: "- [ ] tag\n- [ ] notes",
+        sticky: true,
+      }),
+      text("It's on the canvas."),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f });
+    d.hear("kik make me a release checklist");
+    await new Promise((r) => setTimeout(r, 60));
+    const pin = d.board.list()[0];
+    expect(pin?.kind).toBe("checklist");
+    expect(pin?.by).toBe("kik");
+    expect(pin?.sticky).toBe(true);
+    expect(d.typed("thanks").kind).toBe("chat");
+    await d.close();
+  });
+
+  it("never starts the model's memory on a tool result", async () => {
+    const { f, sent } = fakeFetch([
+      toolCall("read_board", {}),
+      text("Empty."),
+      text("Still empty."),
+    ]);
+    const b = new Brain({ key: "k", model: "m", fetchImpl: f, memoryMs: 60_000 });
+    const tools = [
+      {
+        name: "read_board",
+        description: "",
+        input_schema: { type: "object", properties: {} },
+        run: () => "nothing",
+      },
+    ];
+    await b.reply("what's on the board", { system: "s", tools });
+    // pretend the first user turn aged out: the memory would start on the tool result
+    (b as unknown as { turns: Array<{ at: number }> }).turns[0]!.at = 0;
+    (b as unknown as { turns: Array<{ at: number }> }).turns[1]!.at = 0;
+    await b.reply("and now", { system: "s", tools });
+    const msgs = sent.at(-1)?.messages as Array<{ role: string; content: unknown }>;
+    expect(msgs[0]?.role).toBe("user");
+    expect(typeof msgs[0]?.content).toBe("string");
+  });
+});

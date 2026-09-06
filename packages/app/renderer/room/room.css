@@ -991,6 +991,105 @@ html[data-readonly="true"] .needs-a {
   display: none;
 }
 
+/* the canvas is the conversation ------------------------------------------ */
+.pin[data-kind="conversation"] .pin-body {
+  padding: 0;
+}
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  font-family: var(--sans);
+}
+.chat-empty {
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.chat-you {
+  align-self: flex-end;
+  max-width: 85%;
+  background: rgba(var(--fg-rgb), 0.08);
+  border-radius: 12px 12px 2px 12px;
+  padding: 7px 11px;
+  font-size: 13px;
+}
+.chat-kik {
+  align-self: flex-start;
+  max-width: 90%;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.35;
+  padding: 2px 4px;
+}
+.chat-reply {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.chat-reply input {
+  flex: 1;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid rgba(var(--fg-rgb), 0.14);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: 13px var(--sans);
+}
+.chat-reply button {
+  font: 12px var(--mono);
+}
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.check-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.check-row[data-done="1"] span {
+  color: var(--dim);
+  text-decoration: line-through;
+}
+.check-row input {
+  accent-color: var(--ember);
+}
+.check-add input {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-top: 1px dashed rgba(var(--fg-rgb), 0.15);
+  color: var(--paper);
+  padding: 8px 2px 2px;
+  font: 13px var(--sans);
+}
+.note-edit {
+  min-height: 60px;
+  white-space: pre-wrap;
+  outline: none;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.note-edit:focus {
+  box-shadow: inset 0 0 0 1px var(--ember);
+  border-radius: 6px;
+}
+.pin[data-sticky="1"] .pin-head .age::before {
+  content: "◆ ";
+  color: var(--ember);
+}
+.pin[data-by="kik"] .pin-head .title {
+  color: var(--ember);
+}
+
 /* the spoken line reads over anything: a veil rises from the bottom, like a
    subtitle over a picture, and dims whatever card drifted under it */
 body[data-has-pins="true"] .line::before {

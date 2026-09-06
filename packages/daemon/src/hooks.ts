@@ -541,7 +541,10 @@ git diff | ${showCommand()} -H "X-Kikoe-Kind: diff" -H "X-Kikoe-Title: token ref
 ${showCommand()} -H "X-Kikoe-Kind: markdown" -H "X-Kikoe-Title: why the retry is bounded" --data-binary @notes.md
 \`\`\`
 
-Kinds: diff, markdown, text, table, image, html, svg, diagram.
+Kinds: diff, markdown, text, table, image, html, svg, diagram, checklist, note.
+A checklist is one item per line, \`- [ ] item\`; the user ticks items on the
+canvas and the body changes with them. A note is editable by the user. Add
+\`-H "X-Kikoe-Sticky: 1"\` for something that should stay until removed.
 
 **Vectors.** A picture beats a paragraph for a flow or a shape. Two ways:
 

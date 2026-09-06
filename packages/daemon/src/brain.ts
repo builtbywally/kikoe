@@ -72,10 +72,51 @@ export class Brain {
     this.turns = [];
   }
 
-  /** Answer one utterance. Resolves to the whole spoken reply. */
-  async reply(text: string, o: ReplyOptions): Promise<string> {
+  private busy: Promise<unknown> = Promise.resolve();
+
+  /** Answer one utterance. Resolves to the whole spoken reply. One at a time. */
+  reply(text: string, o: ReplyOptions): Promise<string> {
+    const run = this.busy.then(() => this.replyNow(text, o));
+    this.busy = run.catch(() => {});
+    return run;
+  }
+
+  /**
+   * Trim the memory so the API accepts it: within the window, at most a
+   * few turns, starting on a plain user message (a tool result whose call
+   * was trimmed away is a 400), roles alternating.
+   */
+  private prune(): void {
     const now = Date.now();
-    this.turns = this.turns.filter((t) => now - t.at < this.memoryMs).slice(-16);
+    let turns = this.turns.filter((t) => now - t.at < this.memoryMs).slice(-16);
+    while (turns.length && !(turns[0]?.role === "user" && typeof turns[0].content === "string"))
+      turns = turns.slice(1);
+    const out: Turn[] = [];
+    for (const t of turns) {
+      const last = out[out.length - 1];
+      if (last && last.role === t.role) {
+        // two in a row: keep the later one whole, the earlier as text
+        const asText = (c: Turn["content"]) =>
+          typeof c === "string"
+            ? c
+            : c
+                .map((b) =>
+                  b.type === "text" ? b.text : b.type === "tool_result" ? b.content : "",
+                )
+                .join(" ");
+        out[out.length - 1] = {
+          at: t.at,
+          role: t.role,
+          content: `${asText(last.content)} ${asText(t.content)}`.trim(),
+        };
+      } else out.push(t);
+    }
+    this.turns = out;
+  }
+
+  private async replyNow(text: string, o: ReplyOptions): Promise<string> {
+    const now = Date.now();
+    this.prune();
     this.turns.push({ at: now, role: "user", content: text });
     const tools = o.tools ?? [];
     let spoken = "";

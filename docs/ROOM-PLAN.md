@@ -185,3 +185,15 @@ query and decides whether the follow-up is for the device). What landed:
   through speakers it would hear itself.
 - Still open: a real wake-word model for "kik", AEC for speaker users,
   streaming ASR partials so the reply can start before the sentence ends.
+
+## The canvas is the conversation (2026-09-06)
+
+The board is always on. Its first card is the conversation: what you said,
+what Kik said, and a box to type to it when you can't talk. Kik can put
+things on the canvas by voice (`create_artifact`, `update_artifact`,
+`read_board`, `remove_artifact`): checklists you tick, notes you edit in
+place, markdown, tables, diagrams, SVG, small sandboxed HTML pages. Every
+card has "ask kik" (a question about that card, with its id as context),
+"keep" (sticky: no shelf life, survives a restart via `~/.kikoe/board.json`),
+and "dismiss". Agents get the same kinds through `kikoe show`, plus
+`X-Kikoe-Sticky`. Pins carry `by` (agent, kik, you) and `updated`.

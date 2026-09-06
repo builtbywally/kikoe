@@ -8,7 +8,7 @@
  * calls, so it is never exposed on a network interface.
  */
 
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import {
@@ -218,7 +218,11 @@ export class Daemon {
       settings: this.settings,
       ...(opts.elevenKey ? { elevenKey: opts.elevenKey } : {}),
     });
-    this.board = new Board((e) => this.hub.publish("pin", { ...e }));
+    this.board = new Board((e) => {
+      this.hub.publish("pin", { ...e });
+      this.saveBoardSoon();
+    });
+    this.loadBoard();
     this.arbiter = new Arbiter(new LadderSink(this), {
       onSpeech: (phase, info) => {
         this.hub.publish("speech", { phase, ...info });
@@ -640,6 +644,39 @@ export class Daemon {
     return this.hear(clean, meta);
   }
 
+  // --- the board on disk: sticky pins survive a restart ---------------------------
+  private boardTimer: NodeJS.Timeout | null = null;
+  private boardFile(): string {
+    return path.join(HOME, "board.json");
+  }
+  private loadBoard(): void {
+    try {
+      if (!existsSync(this.boardFile())) return;
+      const n = this.board.load(JSON.parse(readFileSync(this.boardFile(), "utf8")));
+      if (n) log(`board: ${n} pins back from disk`);
+    } catch (e) {
+      log(`board: could not read ${this.boardFile()}: ${(e as Error).message}`);
+    }
+  }
+  private saveBoardSoon(): void {
+    if (this.boardTimer) return;
+    this.boardTimer = setTimeout(() => {
+      this.boardTimer = null;
+      try {
+        mkdirSync(HOME, { recursive: true });
+        writeFileSync(this.boardFile(), JSON.stringify(this.board.toJSON()));
+      } catch (e) {
+        log(`board: could not write: ${(e as Error).message}`);
+      }
+    }, 300);
+    this.boardTimer.unref();
+  }
+
+  /** The user typed to Kik on the canvas: addressed, no name needed. */
+  typed(text: string): { kind: string; intent: string; said?: string } {
+    return this.hear(text, {}, { force: true, decided: true });
+  }
+
   /** The model head, when there is a key and the setting is on. */
   brain(): Brain | null {
     if (!this.settings.brain || !this.anthropicKey) return null;
@@ -696,11 +733,13 @@ export class Daemon {
       );
     const pins = this.board.list();
     if (pins.length) {
-      lines.push(`On the board (${pins.length} pins):`);
-      for (const p of pins.slice(0, 4)) {
+      lines.push(
+        `On the canvas (${pins.length} pins; the user sees these and can tick, edit and reply on them; read_board gives full bodies):`,
+      );
+      for (const p of pins.slice(0, 8)) {
         const ask = p.ask?.length && !p.answer ? ` [asking: ${p.ask.join("/")}]` : "";
         lines.push(
-          `- ${p.kind} "${p.title}" in ${p.repo}${ask}: ${p.body.slice(0, 600).replace(/\s+/g, " ")}`,
+          `- [${p.id}] ${p.kind} "${p.title}" by ${p.by}${ask}: ${p.body.slice(0, 600).replace(/\s+/g, " ")}`,
         );
       }
     }
@@ -756,6 +795,76 @@ export class Daemon {
           required: ["instruction"],
         },
         run: (i) => this.instruct(String(i.instruction ?? ""), i.repo ? String(i.repo) : undefined),
+      },
+      {
+        name: "create_artifact",
+        description:
+          "Put something on the user's canvas: a checklist (one item per line, '- [ ] item'), a note, a markdown document, a table (markdown table), a diagram (one 'a -> b' edge per line, '*x' marks the current node, 'note: …' adds a note), an SVG you draw, or a small self-contained HTML page (interactive is fine, it runs sandboxed). Returns the id. Use sticky for anything the user will want tomorrow.",
+        input_schema: {
+          type: "object",
+          properties: {
+            kind: str("checklist | note | markdown | table | diagram | svg | html | text"),
+            title: str("a few words"),
+            body: str("the content"),
+            sticky: { type: "boolean", description: "keep it until removed" },
+          },
+          required: ["kind", "title", "body"],
+        },
+        run: (i) => {
+          const pin = this.board.add({
+            kind: String(i.kind ?? "note"),
+            title: String(i.title ?? ""),
+            body: String(i.body ?? ""),
+            repo: "kik",
+            by: "kik",
+            sticky: Boolean(i.sticky),
+            ttl_s: i.sticky ? undefined : 3600,
+          });
+          return `created ${pin.kind} ${pin.id}`;
+        },
+      },
+      {
+        name: "update_artifact",
+        description:
+          "Change something on the canvas: new body, title, or make it sticky. Use the id from the board listing.",
+        input_schema: {
+          type: "object",
+          properties: {
+            id: str("the pin id"),
+            title: str("new title"),
+            body: str("new content, whole"),
+            sticky: { type: "boolean" },
+          },
+          required: ["id"],
+        },
+        run: (i) => {
+          const p = this.board.update(String(i.id ?? ""), {
+            title: i.title === undefined ? undefined : String(i.title),
+            body: i.body === undefined ? undefined : String(i.body),
+            sticky: i.sticky === undefined ? undefined : Boolean(i.sticky),
+          });
+          return p ? `updated ${p.id}` : "no such pin";
+        },
+      },
+      {
+        name: "read_board",
+        description:
+          "Read what is on the canvas: every pin with its id, kind, title, who made it, and body.",
+        input_schema: { type: "object", properties: {} },
+        run: () =>
+          this.board
+            .list()
+            .map(
+              (p) =>
+                `[${p.id}] ${p.kind} "${p.title}" by ${p.by}${p.sticky ? " (sticky)" : ""}:\n${p.body.slice(0, 2000)}`,
+            )
+            .join("\n\n") || "the board is empty",
+      },
+      {
+        name: "remove_artifact",
+        description: "Take one thing off the canvas.",
+        input_schema: { type: "object", properties: { id: str("the pin id") }, required: ["id"] },
+        run: (i) => (this.board.remove(String(i.id ?? "")) ? "removed" : "no such pin"),
       },
       {
         name: "set_mode",
@@ -1092,6 +1201,17 @@ export class Daemon {
     }
     const removeMatch = /^DELETE \/pins\/([A-Za-z0-9_-]+)$/.exec(route);
     if (removeMatch) return this.json(res, 200, { ok: this.board.remove(removeMatch[1]!) });
+    const updateMatch = /^POST \/pins\/([A-Za-z0-9_-]+)\/update$/.exec(route);
+    if (updateMatch) {
+      const b = JSON.parse((await this.body(req)) || "{}");
+      const p = this.board.update(updateMatch[1]!, {
+        title: typeof b.title === "string" ? b.title : undefined,
+        body: typeof b.body === "string" ? b.body : undefined,
+        kind: typeof b.kind === "string" ? b.kind : undefined,
+        sticky: typeof b.sticky === "boolean" ? b.sticky : undefined,
+      });
+      return this.json(res, p ? 200 : 404, { ok: Boolean(p) });
+    }
 
     switch (route) {
       case "GET /state":
@@ -1184,6 +1304,8 @@ export class Daemon {
             body: String(b.body ?? ""),
             repo: b.repo,
             ttl_s: b.ttl_s,
+            sticky: Boolean(b.sticky),
+            by: b.by === "you" || b.by === "kik" ? b.by : "agent",
             ask: Array.isArray(b.ask) ? b.ask.map(String) : undefined,
           };
         } else {
@@ -1193,6 +1315,8 @@ export class Daemon {
             body: raw,
             repo: h("x-kikoe-repo"),
             ttl_s: h("x-kikoe-ttl") ? Number(h("x-kikoe-ttl")) : undefined,
+            sticky: h("x-kikoe-sticky") === "1" || h("x-kikoe-sticky") === "true",
+            by: h("x-kikoe-by") === "you" ? "you" : "agent",
             ask: h("x-kikoe-ask") ? h("x-kikoe-ask").split(",") : undefined,
           };
         }
@@ -1231,6 +1355,13 @@ export class Daemon {
         });
       case "POST /pins/clear":
         return this.json(res, 200, { ok: true, cleared: this.board.clear() });
+      case "POST /say": {
+        // typed to Kik on the canvas
+        const b = JSON.parse((await this.body(req)) || "{}");
+        const text = String(b.text ?? "").trim();
+        if (!text) return this.json(res, 400, { error: "empty" });
+        return this.json(res, 200, this.typed(text));
+      }
       case "POST /answer": {
         const b = JSON.parse((await this.body(req)) || "{}");
         const to = this.answerWord(String(b.word ?? ""));

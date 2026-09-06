@@ -1,9 +1,12 @@
 /**
- * The board: what the agent has pushed to be seen. Pins carry a kind, a
- * title, a body, a repo (their region), and a shelf life. At most a few
- * dozen live at once, the oldest of a repo goes first, and nothing
- * outlives its TTL. A pin can be a question: the `/show` request that
- * made it stays open until an answer arrives or the timeout denies it.
+ * The board: what the agent, Kik, or the user has put up to be seen. Pins
+ * carry a kind, a title, a body, a repo (their region), who made them, and
+ * a shelf life. A sticky pin has no shelf life and survives a restart. At
+ * most a few dozen live at once, the oldest of a repo goes first, and
+ * nothing that is not sticky outlives its TTL. A pin can be a question:
+ * the `/show` request that made it stays open until an answer arrives or
+ * the timeout denies it. A pin can be edited: a checklist ticks, a note is
+ * rewritten, and either side may update a body.
  */
 
 export const KINDS = [
@@ -15,6 +18,8 @@ export const KINDS = [
   "html",
   "svg",
   "diagram",
+  "checklist",
+  "note",
 ] as const;
 export type PinKind = (typeof KINDS)[number];
 
@@ -29,9 +34,15 @@ export interface Pin {
   body: string;
   repo: string;
   session: string;
+  /** who put it up: the agent, Kik itself, or the user */
+  by: "agent" | "kik" | "you";
   /** seconds since epoch */
   created: number;
+  /** seconds since epoch of the last edit */
+  updated: number;
   ttl_s: number;
+  /** no shelf life; survives a restart */
+  sticky: boolean;
   /** the answers offered, when this pin is a question */
   ask: string[];
   answer: string | null;
@@ -40,16 +51,40 @@ export interface Pin {
 }
 
 export interface PinEvent {
-  op: "add" | "answer" | "remove" | "clear";
+  op: "add" | "answer" | "remove" | "clear" | "update";
   pin?: Pin | undefined;
   id?: string | undefined;
   answer?: string | undefined;
+}
+
+export interface PinInit {
+  kind?: string | undefined;
+  title?: string | undefined;
+  body: string;
+  repo?: string | undefined;
+  session?: string | undefined;
+  by?: Pin["by"] | undefined;
+  ttl_s?: number | undefined;
+  sticky?: boolean | undefined;
+  ask?: string[] | undefined;
+  wait_s?: number | undefined;
+}
+
+export interface PinPatch {
+  title?: string | undefined;
+  body?: string | undefined;
+  kind?: string | undefined;
+  sticky?: boolean | undefined;
 }
 
 let counter = 0;
 function newId(): string {
   counter = (counter + 1) % 0xffff;
   return `p${Date.now().toString(36)}${counter.toString(36)}`;
+}
+
+function kindOf(kind: string | undefined): PinKind {
+  return (KINDS as readonly string[]).includes(kind ?? "") ? (kind as PinKind) : "text";
 }
 
 export class Board {
@@ -69,28 +104,19 @@ export class Board {
     return this.pins.find((p) => p.id === id);
   }
 
-  add(init: {
-    kind?: string | undefined;
-    title?: string | undefined;
-    body: string;
-    repo?: string | undefined;
-    session?: string | undefined;
-    ttl_s?: number | undefined;
-    ask?: string[] | undefined;
-    wait_s?: number | undefined;
-  }): Pin {
-    const kind = (KINDS as readonly string[]).includes(init.kind ?? "")
-      ? (init.kind as PinKind)
-      : "text";
+  add(init: PinInit): Pin {
     const pin: Pin = {
       id: newId(),
-      kind,
+      kind: kindOf(init.kind),
       title: (init.title ?? "").slice(0, 120),
       body: init.body.slice(0, MAX_BODY),
       repo: init.repo ?? "",
       session: init.session ?? "",
+      by: init.by ?? "agent",
       created: this.now(),
+      updated: this.now(),
       ttl_s: Math.max(10, Math.min(24 * 3600, init.ttl_s ?? DEFAULT_TTL_S)),
+      sticky: Boolean(init.sticky),
       ask: (init.ask ?? [])
         .map((a) => a.trim().toLowerCase())
         .filter(Boolean)
@@ -101,6 +127,19 @@ export class Board {
     this.pins.push(pin);
     this.evict();
     this.emit({ op: "add", pin });
+    return pin;
+  }
+
+  /** Edit a pin in place: a tick on a checklist, a rewritten note, a new title. */
+  update(id: string, patch: PinPatch): Pin | undefined {
+    const pin = this.get(id);
+    if (!pin) return undefined;
+    if (patch.title !== undefined) pin.title = patch.title.slice(0, 120);
+    if (patch.body !== undefined) pin.body = patch.body.slice(0, MAX_BODY);
+    if (patch.kind !== undefined) pin.kind = kindOf(patch.kind);
+    if (patch.sticky !== undefined) pin.sticky = Boolean(patch.sticky);
+    pin.updated = this.now();
+    this.emit({ op: "update", pin, id });
     return pin;
   }
 
@@ -157,35 +196,77 @@ export class Board {
     return true;
   }
 
+  /** Everything that is not sticky goes. */
   clear(): number {
-    const n = this.pins.length;
-    for (const p of this.pins) {
+    const gone = this.pins.filter((p) => !p.sticky);
+    for (const p of gone) {
       this.waiters.get(p.id)?.("");
       this.waiters.delete(p.id);
     }
-    this.pins = [];
+    this.pins = this.pins.filter((p) => p.sticky);
     this.emit({ op: "clear" });
-    return n;
+    return gone.length;
   }
 
   /** Drop expired pins. Called on every read and on a timer. */
   sweep(): void {
     const now = this.now();
     for (const p of [...this.pins]) {
-      if (now - p.created > p.ttl_s) this.remove(p.id);
+      if (!p.sticky && now - p.created > p.ttl_s) this.remove(p.id);
     }
+  }
+
+  /** For the file on disk: what survives a restart. */
+  toJSON(): Pin[] {
+    return this.pins.filter((p) => p.sticky || this.now() - p.created < p.ttl_s);
+  }
+
+  /** From the file on disk. Questions do not survive: their askers are gone. */
+  load(pins: unknown): number {
+    if (!Array.isArray(pins)) return 0;
+    let n = 0;
+    for (const raw of pins) {
+      if (!raw || typeof raw !== "object") continue;
+      const p = raw as Partial<Pin>;
+      if (typeof p.id !== "string" || typeof p.body !== "string") continue;
+      if (p.ask?.length && p.answer === null) continue;
+      if (this.pins.some((x) => x.id === p.id)) continue;
+      const created = Number(p.created ?? this.now());
+      const ttl = Number(p.ttl_s ?? DEFAULT_TTL_S);
+      if (!p.sticky && this.now() - created > ttl) continue;
+      this.pins.push({
+        id: p.id,
+        kind: kindOf(p.kind),
+        title: String(p.title ?? "").slice(0, 120),
+        body: p.body.slice(0, MAX_BODY),
+        repo: String(p.repo ?? ""),
+        session: String(p.session ?? ""),
+        by: p.by === "kik" || p.by === "you" ? p.by : "agent",
+        created,
+        updated: Number(p.updated ?? created),
+        ttl_s: ttl,
+        sticky: Boolean(p.sticky),
+        ask: Array.isArray(p.ask) ? p.ask.map(String) : [],
+        answer: typeof p.answer === "string" ? p.answer : null,
+        wait_s: Number(p.wait_s ?? 0),
+      });
+      n++;
+    }
+    return n;
   }
 
   private evict(): void {
     while (this.pins.length > MAX_PINS) {
       // The oldest pin of whichever repo has the most, then the oldest overall.
+      const loose = this.pins.filter((p) => !p.sticky);
+      if (!loose.length) return;
       const counts = new Map<string, number>();
-      for (const p of this.pins) counts.set(p.repo, (counts.get(p.repo) ?? 0) + 1);
+      for (const p of loose) counts.set(p.repo, (counts.get(p.repo) ?? 0) + 1);
       const crowded = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
       const victim =
-        this.pins.find((p) => p.repo === crowded && p.answer !== null) ??
-        this.pins.find((p) => p.repo === crowded) ??
-        this.pins[0]!;
+        loose.find((p) => p.repo === crowded && p.answer !== null) ??
+        loose.find((p) => p.repo === crowded) ??
+        loose[0]!;
       this.remove(victim.id);
     }
   }

@@ -521,6 +521,18 @@ ipcMain.handle("room:removePin", (_e, id: string) => ({
   ok: daemon?.board.remove(String(id)) ?? false,
 }));
 ipcMain.handle("room:clearBoard", () => ({ cleared: daemon?.board.clear() ?? 0 }));
+ipcMain.handle("room:updatePin", (_e, id: string, patch: Record<string, unknown>) => ({
+  ok: Boolean(
+    daemon?.board.update(String(id), {
+      title: typeof patch.title === "string" ? patch.title : undefined,
+      body: typeof patch.body === "string" ? patch.body : undefined,
+      sticky: typeof patch.sticky === "boolean" ? patch.sticky : undefined,
+    }),
+  ),
+}));
+ipcMain.handle("room:sayToKik", (_e, text: string) =>
+  daemon ? daemon.typed(String(text)) : { kind: "none", intent: "" },
+);
 ipcMain.on("island:interactive", (_e, on: boolean) =>
   island?.setIgnoreMouseEvents(!on, on ? undefined : { forward: true }),
 );

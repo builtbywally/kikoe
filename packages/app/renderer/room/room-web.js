@@ -61,7 +61,8 @@
         r.json(),
       ),
     clearBoard: () => post("/pins/clear"),
-    interrupt: () => post("/interrupt"),
+    updatePin: (id, patch) => post(`/pins/${encodeURIComponent(id)}/update`, patch),
+    sayToKik: (text) => post("/say", { text }),
     openSettings: () => {},
   };
 })();
