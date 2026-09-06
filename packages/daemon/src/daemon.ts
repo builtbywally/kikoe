@@ -820,7 +820,7 @@ export class Daemon {
       const recent = brain.recent(4);
       const note = await brain.compose(
         [
-          "Rewrite your private inner note. It is for you alone and never spoken: what is going on with the agents right now, what you are waiting for and what you expect to happen next, what you meant to tell the user and have not yet, and what the user seems to be doing. Keep what still holds, drop what is stale, and note anything you got wrong. First person, plain prose, at most a hundred words. Reply with the note only.",
+          "Rewrite your private inner note. It is for you alone and never spoken: what is going on with the agents right now, what you are waiting for and what you expect to happen next, what you meant to tell the user and have not yet, and what the user seems to be doing. Keep what still holds, drop what is stale, and note anything you got wrong. First person, plain and factual, the way an engineer keeps a log, no drama and no reading of motives. At most eighty words. Reply with the note only.",
           recent ? `The last exchanges:\n${recent}` : "",
         ]
           .filter(Boolean)
@@ -829,6 +829,7 @@ export class Daemon {
       );
       if (note) {
         this.innerNote = note.slice(0, 1500);
+        log(`inner note rewritten, ${this.innerNote.split(/\s+/).length} words`);
         if (this.persistBoard) {
           try {
             mkdirSync(HOME, { recursive: true });

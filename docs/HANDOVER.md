@@ -21,7 +21,7 @@ an empty checkout whose CLAUDE.md now points here.
 cd ~/orca/projects/kikoe
 pnpm install                     # pnpm 10; audify/electron builds allowed in pnpm-workspace.yaml
 pnpm build                       # tsc -b for core, daemon, cli, app
-pnpm test                        # vitest, 115 tests; never touches ~/.claude or the speaker
+pnpm test                        # vitest, 120 tests; never touches ~/.claude or the speaker
 pnpm lint                        # biome; it also reformats after edits
 pnpm typecheck
 pnpm app                         # build + run from source (kills nothing; the installed app holds the port)
@@ -172,6 +172,12 @@ text of everything heard; turn off when the name lands reliably),
   (400 from the API); `Brain.prune()` handles it. Replies are one at a time.
 - `pnpm --filter @kikoe/app build` does nothing; the app is built by the
   root `pnpm build`.
+- `pnpm app:dist` can fail with EBUSY on `default_app.asar` or EPERM
+  renaming `win-unpacked.tmp` when something watches the repo (Orca's
+  file watcher does; Defender real-time is on). The locked directory
+  stays locked. Build outside the repo instead, from `packages/app`:
+  `npx electron-builder --config.directories.output=<dir outside the repo>`,
+  then run that installer with `/S`.
 - Whisper writes "kik" as "kick", "Kiko", "a cookie"; aliases live in
   `core/src/router.ts`. A real wake-word model is roadmap item 1.
 
