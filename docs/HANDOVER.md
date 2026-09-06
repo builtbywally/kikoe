@@ -194,9 +194,15 @@ text of everything heard; turn off when the name lands reliably),
 - `pnpm app:dist` can fail with EBUSY on `default_app.asar` or EPERM
   renaming `win-unpacked.tmp` when something watches the repo (Orca's
   file watcher does; Defender real-time is on). The locked directory
-  stays locked. Build outside the repo instead, from `packages/app`:
-  `npx electron-builder --config.directories.output=<dir outside the repo>`,
-  then run that installer with `/S`.
+  stays locked. Build outside the repo instead, from `packages/app`, and
+  under pnpm, never npx: `pnpm exec electron-builder
+  --config.directories.output=<dir outside the repo>`. With npx,
+  electron-builder resolves dependencies as npm and silently drops
+  audify and sherpa-onnx from `app.asar.unpacked`; the app installs and
+  speaks but the ear dies with "Cannot find module 'sherpa-onnx-node'".
+  Check `resources/app.asar.unpacked/node_modules` lists audify,
+  sherpa-onnx-node and sherpa-onnx-win-x64 before installing. Then run
+  the installer with `/S` with the app stopped first, or it hangs.
 - Whisper writes "kik" as "kick", "Kiko", "a cookie"; aliases live in
   `core/src/router.ts`. A real wake-word model is roadmap item 1.
 
