@@ -228,6 +228,9 @@ text of everything heard; turn off when the name lands reliably),
   Check `resources/app.asar.unpacked/node_modules` lists audify,
   sherpa-onnx-node and sherpa-onnx-win-x64 before installing. Then run
   the installer with `/S` with the app stopped first, or it hangs.
+  The Windows icon is pre-rendered (`build/icon.ico`, made with Pillow
+  from icon.png) because electron-builder's WebAssembly icon tool dies
+  with "could not allocate memory" when the machine is low on RAM.
 - Whisper writes "kik" as "kick", "Kiko", "a cookie"; aliases live in
   `core/src/router.ts`. A real wake-word model is roadmap item 1.
 

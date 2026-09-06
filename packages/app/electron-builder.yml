@@ -24,6 +24,7 @@ asarUnpack:
   - "**/node_modules/sherpa-onnx-*/**"
 npmRebuild: false
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64]
