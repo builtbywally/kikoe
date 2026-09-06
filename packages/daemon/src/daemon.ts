@@ -248,11 +248,19 @@ export class Daemon {
   private lastFiller = "";
   private consolidatedAt = 0;
   private consolidating = false;
+  /** the watchers' bookkeeping: since when a session has been waiting or red, what was already said */
+  private waitingSince = new Map<string, number>();
+  private redSince = new Map<string, number>();
+  private concernsSaid: string[] = [];
+  /** timestamps of failures in the last hour; the register reads them */
+  private recentFailures: number[] = [];
+  private greenAt = 0;
 
   constructor(opts: DaemonOptions = {}) {
     this.anthropicKey = opts.anthropicKey ?? "";
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.checkinTimer = setInterval(() => {
+      this.watch();
       void this.checkIn();
       void this.consolidateMaybe();
     }, 60_000);
@@ -323,6 +331,14 @@ export class Daemon {
     this.presence.seen = Date.now();
     this.savePresenceSoon();
     if (e.kind === ev.TURN_END || e.kind === ev.ERROR) this.reflectSoon();
+    if (e.kind === ev.ERROR || (e.kind === ev.TOOL_END && e.status === "error")) {
+      const now = Date.now();
+      this.recentFailures = [...this.recentFailures.filter((t) => now - t < 3600_000), now];
+    }
+    if (e.kind === ev.TOOL_END && this.redSince.has(e.session)) {
+      const verdict = this.tracker.sessions.get(e.session)?.lastTestResult ?? "";
+      if (verdict && !/[1-9]\d* failed/.test(verdict)) this.greenAt = Date.now();
+    }
     let lines = this.narrator.narrate(e);
     // Claude spoke for itself this turn; the hook's summary would say it twice.
     if (e.kind === ev.TURN_END && Date.now() / 1000 - this.agentSpokeAt < SELF_SPOKEN_WINDOW_S) {
@@ -860,6 +876,104 @@ export class Daemon {
     return this.innerNote;
   }
 
+  // --- watchers: reasons to speak, as rules; the model only phrases them ------------
+  /**
+   * Once a minute. Cheap rules over the live picture for the cases a
+   * colleague would mention unprompted: an agent kept waiting, tests red
+   * for a long time, the same error again and again. Each is said once.
+   * Works without a key; with one, the model says it its way.
+   */
+  watch(now = Date.now()): string[] {
+    const said: string[] = [];
+    const snap = this.tracker.snapshot();
+    const live = new Set(Object.keys(snap));
+    for (const id of this.waitingSince.keys()) if (!live.has(id)) this.waitingSince.delete(id);
+    for (const id of this.redSince.keys()) if (!live.has(id)) this.redSince.delete(id);
+    const minutes = (ms: number) => Math.max(1, Math.round(ms / 60_000));
+    for (const [id, s] of Object.entries(snap)) {
+      if (s.status === "waiting") {
+        const since = this.waitingSince.get(id) ?? now;
+        this.waitingSince.set(id, since);
+        if (now - since >= 3 * 60_000) {
+          const key = `wait:${id}:${s.pending_permission_id || since}`;
+          const what = s.pending_permission ? `: ${s.pending_permission.slice(0, 120)}` : "";
+          if (
+            this.concern(
+              key,
+              `${s.label} has been waiting on you for ${minutes(now - since)} minutes${what}.`,
+            )
+          )
+            said.push(key);
+        }
+      } else this.waitingSince.delete(id);
+      if (/[1-9]\d* failed/.test(s.last_test_result)) {
+        const since = this.redSince.get(id) ?? now;
+        this.redSince.set(id, since);
+        if (now - since >= 30 * 60_000) {
+          const key = `red:${id}:${Math.floor((now - since) / 3600_000)}`;
+          if (
+            this.concern(
+              key,
+              `${s.label}'s tests have been red for ${minutes(now - since)} minutes: ${s.last_test_result}.`,
+            )
+          )
+            said.push(key);
+        }
+      } else this.redSince.delete(id);
+      const errors = (this.tracker.sessions.get(id)?.errors ?? []).map((e) =>
+        e.replace(/\s+/g, " ").trim().slice(0, 80),
+      );
+      if (errors.length >= 3) {
+        const last = errors.slice(-3);
+        if (last[0] && last.every((e) => e === last[0])) {
+          const key = `err:${id}:${last[0]}`;
+          if (this.concern(key, `${s.label} has hit the same error three times: ${last[0]}.`))
+            said.push(key);
+        }
+      }
+    }
+    return said;
+  }
+
+  /** Say a concern once. Returns whether it was new. */
+  private concern(key: string, text: string): boolean {
+    if (this.concernsSaid.includes(key)) return false;
+    this.concernsSaid.push(key);
+    if (this.concernsSaid.length > 200) this.concernsSaid.shift();
+    log(`watch: ${text}`);
+    this.hub.publish("concern", { key, text });
+    if (this.narrator.mode === "silent") return true;
+    const brain = this.brain();
+    if (brain && this.settings.brain_checkin) {
+      void brain
+        .compose(
+          `Something you have been watching is now worth saying, unprompted: "${text}". Say it your way, aloud, in one sentence, keeping every fact. No greeting.`,
+          this.brainSystem(),
+        )
+        .then((line) => this.say(line || text, ev.SEV_ATTENTION, "head"))
+        .catch(() => this.say(text, ev.SEV_ATTENTION, "head"))
+        .finally(() => this.reflectSoon());
+    } else this.say(text, ev.SEV_ATTENTION, "head");
+    return true;
+  }
+
+  /** One line of register for the system prompt: never spoken, shows in the words. */
+  private register(now = Date.now()): string {
+    const moods: string[] = [];
+    const hour = new Date(now).getHours();
+    if (hour >= 23 || hour < 5) moods.push("it is late at night: shorter and quieter than usual");
+    const failures = this.recentFailures.filter((t) => now - t < 3600_000).length;
+    if (failures >= 4)
+      moods.push(`the last hour had ${failures} failures: drier and terser, no cheer`);
+    if (this.greenAt && now - this.greenAt < 600_000)
+      moods.push("the tests just went green after being red: quietly pleased, said once at most");
+    if ([...this.waitingSince.values()].some((t) => now - t >= 3 * 60_000))
+      moods.push("an agent has been waiting on the user for a while: a touch more direct");
+    return moods.length
+      ? `Register right now (never mention it; let it show in the words): ${moods.join("; ")}.`
+      : "";
+  }
+
   // --- the journal: yesterday, and the days before, in Kik's own notes ---------------
   private journalFile(): string {
     return path.join(HOME, "journal.md");
@@ -1181,6 +1295,8 @@ export class Daemon {
       lines.push(
         `What you were thinking a moment ago (your private note; nothing in it has been said aloud unless it appears above):\n${this.innerNote}`,
       );
+    const register = this.register();
+    if (register) lines.push(register);
     if (this.returned && Date.now() - this.returned.at < 60_000)
       lines.push(
         `The user has just come back after ${describeGap(this.returned.after)} and this is the first thing they have said. Say hello in passing, the way a colleague would, then answer.`,
@@ -1234,11 +1350,11 @@ export class Daemon {
       {
         name: "create_artifact",
         description:
-          "Put something on the user's canvas: a checklist (one item per line, '- [ ] item'), a note, a markdown document, a table (markdown table), a diagram (one 'a -> b' edge per line, '*x' marks the current node, 'note: …' adds a note), an SVG you draw, or a small self-contained HTML page (interactive is fine, it runs sandboxed). Returns the id. Use sticky for anything the user will want tomorrow.",
+          "Put something on the user's canvas: a checklist (one item per line, '- [ ] item'), a note, a markdown document, a table (markdown table), a diagram (one 'a -> b' edge per line, '*x' marks the current node, 'note: …' adds a note), an SVG you draw, a small self-contained HTML page (interactive is fine, it runs sandboxed), or a live web page (kind web, body is the URL: an app running on localhost, a site, or a search engine to give the user a browser). Returns the id. Use sticky for anything the user will want tomorrow.",
         input_schema: {
           type: "object",
           properties: {
-            kind: str("checklist | note | markdown | table | diagram | svg | html | text"),
+            kind: str("checklist | note | markdown | table | diagram | svg | html | web | text"),
             title: str("a few words"),
             body: str("the content"),
             sticky: { type: "boolean", description: "keep it until removed" },
@@ -1253,6 +1369,13 @@ export class Daemon {
         run: (i) => {
           let kind = String(i.kind ?? "note");
           let body = String(i.body ?? "");
+          if (kind === "web") {
+            body = body.trim();
+            if (/^localhost|^127\.0\.0\.1|^\d+$/.test(body))
+              body = `http://${/^\d+$/.test(body) ? `localhost:${body}` : body}`;
+            if (!/^https?:\/\//i.test(body))
+              return "web needs a URL starting with http:// or https://";
+          }
           if (kind === "diagram") {
             // boxes and arrows in, vectors out, as the show route does
             const svg = diagramToSvg(body);
@@ -1269,7 +1392,9 @@ export class Daemon {
             sticky: Boolean(i.sticky),
             near: i.near ? String(i.near) : undefined,
             size:
-              i.wide || kind === "html" || kind === "svg" || kind === "image" ? "wide" : "normal",
+              i.wide || kind === "html" || kind === "svg" || kind === "image" || kind === "web"
+                ? "wide"
+                : "normal",
             ttl_s: i.sticky ? undefined : 3600,
           });
           // anything made is shown: the canvas pans there and the card pulses

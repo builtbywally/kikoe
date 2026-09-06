@@ -69,11 +69,24 @@ of work.
    Shipped 2026-09-06 (`journal.md`, thirty days).
 3. **Reasons to speak.** Cheap watchers for the known cases; the model only
    phrases them. Mood line.
+   Shipped 2026-09-06: an agent waiting three minutes, tests red for
+   thirty, the same error three times; a register line from the hour,
+   the failures, a turn to green, a wait.
 4. **Turn-taking.** Roadmap milestone 1: wake word, echo cancellation,
    streaming transcription. The hosted conversation loop (milestone 2) is
    the alternative if local latency will not get there.
 5. **Being wrong well.** Corrections into the inner note and memory; no
    repeats.
+
+## The canvas: anything, including the live web
+
+Asked for 2026-09-06: Kik must be able to put anything on the canvas,
+including apps running on localhost and a plain browser. The `web` pin
+kind (shipped the same day) is an iframe with its own origin: "open the
+shop on the canvas" gives a card showing localhost, a URL gives a site, a
+search engine gives a browser. Sites that refuse framing are unframed by
+the app for subframes only. Still to come: a URL bar and back button on
+the card, tabs, and Kik reading what is on the page.
 
 ## What must not change
 

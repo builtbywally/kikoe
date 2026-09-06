@@ -590,3 +590,97 @@ describe("a life in memory", () => {
     await d.close();
   });
 });
+
+describe("reasons to speak", () => {
+  const hook = (d: InstanceType<typeof Daemon>, name: string, extra: Record<string, unknown>) =>
+    d.hook({ hook_event_name: name, session_id: "w", cwd: path.join(HOME, "shop"), ...extra });
+  const quiet = () =>
+    new Daemon({
+      settings: { ...config.DEFAULTS, tts: "none", mic: false } as typeof config.DEFAULTS,
+      audio: false,
+    });
+  // what the watchers raised; the permission question keeps the floor, so
+  // the spoken line itself waits behind it
+  const spoken = (d: InstanceType<typeof Daemon>) => {
+    const out: string[] = [];
+    d.hub.listen((fr) => {
+      if (fr.type === "concern") out.push(String(fr.text));
+    });
+    return out;
+  };
+
+  it("mentions an agent kept waiting, once", async () => {
+    const d = quiet();
+    const said = spoken(d);
+    hook(d, "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" } });
+    // first seen four minutes ago, by the clock the register also reads
+    const now = Date.now();
+    expect(d.watch(now - 4 * 60_000)).toEqual([]);
+    expect(d.watch(now)).toHaveLength(1);
+    expect(d.watch(now + 60_000)).toEqual([]);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(said.some((s) => /waiting on you for \d minutes: .*git push/.test(s))).toBe(true);
+    // the register knows too, and never says so
+    expect(d.brainSystem()).toContain("Register right now");
+    expect(d.brainSystem()).toContain("waiting on the user");
+    await d.close();
+  });
+
+  it("mentions tests red for half an hour, and the same error three times", async () => {
+    const d = quiet();
+    const said = spoken(d);
+    hook(d, "PostToolUse", {
+      tool_name: "Bash",
+      tool_input: { command: "pnpm test" },
+      tool_response: "Tests: 18 passed, 2 failed",
+    });
+    const now = Date.now();
+    expect(d.watch(now)).toEqual([]);
+    expect(d.watch(now + 10 * 60_000)).toEqual([]);
+    expect(d.watch(now + 31 * 60_000)).toHaveLength(1);
+    for (let i = 0; i < 3; i++)
+      hook(d, "PostToolUseFailure", { tool_name: "Bash", error: "ECONNREFUSED 127.0.0.1:5432" });
+    expect(d.watch(now + 32 * 60_000)).toHaveLength(1);
+    expect(d.watch(now + 33 * 60_000)).toEqual([]);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(said.some((s) => /red for 31 minutes/.test(s))).toBe(true);
+    expect(said.some((s) => /same error three times: ECONNREFUSED/.test(s))).toBe(true);
+    // three failures in the hour is not a mood; four is
+    hook(d, "PostToolUseFailure", { tool_name: "Bash", error: "boom" });
+    expect(d.brainSystem()).toContain("failures: drier");
+    // green again after red: quietly pleased
+    hook(d, "PostToolUse", {
+      tool_name: "Bash",
+      tool_input: { command: "pnpm test" },
+      tool_response: "Tests: 20 passed",
+    });
+    expect(d.brainSystem()).toContain("just went green");
+    await d.close();
+  });
+});
+
+describe("anything on the canvas", () => {
+  it("puts a live web page on the canvas from a URL, a host, or a port", async () => {
+    const { f } = fakeFetch([
+      toolCall("create_artifact", { kind: "web", title: "the shop", body: "3000" }),
+      text("It is on the canvas."),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f });
+    d.hear("kik open the shop on the canvas");
+    await new Promise((r) => setTimeout(r, 60));
+    const web = d.board.list().find((p) => p.kind === "web");
+    expect(web?.body).toBe("http://localhost:3000");
+    expect(web?.size).toBe("wide");
+    const tool = d.brainTools().find((t) => t.name === "create_artifact");
+    expect(await tool?.run({ kind: "web", title: "x", body: "ftp://nope" })).toContain("http://");
+    await tool?.run({ kind: "web", title: "docs", body: "https://example.com/docs" });
+    expect(d.board.list().filter((p) => p.kind === "web")).toHaveLength(2);
+    await d.close();
+  });
+});

@@ -340,6 +340,25 @@ function openRoom(): void {
       nodeIntegration: false,
     },
   });
+  // A web card is an iframe. Sites that forbid framing would show a blank
+  // card, so for subframes only, those headers are dropped. The frame is
+  // still sandboxed and cross-origin: it cannot reach the Room.
+  roomWin.webContents.session.webRequest.onHeadersReceived(
+    { urls: ["http://*/*", "https://*/*"] },
+    (details, callback) => {
+      if (details.resourceType !== "subFrame") return callback({});
+      const headers: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(details.responseHeaders ?? {})) {
+        const key = k.toLowerCase();
+        if (key === "x-frame-options") continue;
+        headers[k] =
+          key === "content-security-policy"
+            ? v.map((line) => line.replace(/frame-ancestors[^;]*;?/gi, ""))
+            : v;
+      }
+      callback({ responseHeaders: headers });
+    },
+  );
   applyTheme(loadSettings().theme);
   roomWin.loadFile(path.join(RENDERER, "room", "index.html"));
   roomWin.once("ready-to-show", () => roomWin?.show());
@@ -533,6 +552,11 @@ const ARTIFACT_EXT: Record<string, string> = {
 ipcMain.handle("room:openArtifact", (_e, id: string) => {
   const p = daemon?.board.get(String(id));
   if (!p) return { error: "no such pin" };
+  if (p.kind === "web") {
+    const url = p.body.trim();
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { ok: true };
+  }
   const w = new BrowserWindow({
     width: 1100,
     height: 760,

@@ -21,7 +21,7 @@ an empty checkout whose CLAUDE.md now points here.
 cd ~/orca/projects/kikoe
 pnpm install                     # pnpm 10; audify/electron builds allowed in pnpm-workspace.yaml
 pnpm build                       # tsc -b for core, daemon, cli, app
-pnpm test                        # vitest, 121 tests; never touches ~/.claude or the speaker
+pnpm test                        # vitest, 124 tests; never touches ~/.claude or the speaker
 pnpm lint                        # biome; it also reformats after edits
 pnpm typecheck
 pnpm app                         # build + run from source (kills nothing; the installed app holds the port)
@@ -104,7 +104,9 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    line becomes suggestion chips. Tools: approve, deny, answer_board,
    instruct_agent, create_artifact, update_artifact, read_board,
    remove_artifact, point_at, ask_user, remember, forget, set_mode,
-   clear_board, pin_note.
+   clear_board, pin_note. Pin kind `web` is a live iframe (localhost app,
+   site, or a search engine as a browser); the Room strips X-Frame-Options
+   and frame-ancestors for subframes so sites show.
    Between utterances Kik keeps an inner note (`reflectNow()`, five
    seconds after an exchange, ending or error, at most every thirty):
    what it thinks is going on, what it expects, what it meant to say. The
@@ -118,6 +120,11 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    dated lines in `journal.md`; the last 3000 characters go into the
    system prompt. Facts the user states still go to `memory.md` through
    the remember tool; the journal is what happened.
+   Once a minute `watch()` runs cheap rules over the picture: an agent
+   waiting three minutes, tests red thirty, the same error three times;
+   each concern is said once (the model phrases it if there is a key) and
+   published as a `concern` frame. `register()` adds a never-spoken line
+   of tone to the prompt (late night, a bad hour, a turn to green, a wait).
    The goal all of this serves is `docs/SENTIENCE.md`.
 4. The Room renders the daemon's `/stream` frames: `pin`, `heard`, `mic`,
    `speech`, `sessions`, `event`, `focus`, `suggest`, `look`. The board is a

@@ -20,6 +20,7 @@ export const KINDS = [
   "diagram",
   "checklist",
   "note",
+  "web",
 ] as const;
 export type PinKind = (typeof KINDS)[number];
 

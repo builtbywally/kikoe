@@ -381,6 +381,16 @@ function renderBody(pin) {
       // and sanitised, so it is a picture and not a program.
       return sanitizeSvg(pin.body);
     }
+    case "web": {
+      // A live page: an app on localhost, a site, a browser. Its own origin,
+      // its own scripts; it can never reach the Room.
+      const f = document.createElement("iframe");
+      f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups");
+      f.setAttribute("allow", "clipboard-read; clipboard-write");
+      f.src = pin.body.trim();
+      f.title = pin.title || pin.body;
+      return f;
+    }
     case "html": {
       // Sandboxed: no scripts, no navigation, no same-origin. A page, not a program.
       const f = document.createElement("iframe");
@@ -404,6 +414,7 @@ function pinCard(p) {
   const card = document.createElement("div");
   card.className = "pin";
   card.dataset.kind = p.kind;
+  card.dataset.id = p.id;
   card.dataset.asking = String(p.ask.length > 0 && p.answer === null);
   // Fade with age: full for the first third of its life, then down to 0.35.
   const life = p.sticky ? 1 : Math.max(0, Math.min(1, left / p.ttl_s));
@@ -482,7 +493,19 @@ function pinCard(p) {
     note.textContent = "nothing here is editable";
     foot.append(note);
   } else {
-    if (p.kind === "html" || p.kind === "svg" || p.kind === "image" || p.size === "wide") {
+    if (p.kind === "web") {
+      const addr = document.createElement("span");
+      addr.className = "note";
+      addr.textContent = p.body
+        .trim()
+        .replace(/^https?:\/\//, "")
+        .slice(0, 60);
+      const open = document.createElement("button");
+      open.textContent = "open";
+      open.title = "in your browser";
+      open.addEventListener("click", () => window.room.openArtifact(p.id));
+      foot.append(addr, open);
+    } else if (p.kind === "html" || p.kind === "svg" || p.kind === "image" || p.size === "wide") {
       const open = document.createElement("button");
       open.textContent = "open";
       open.title = "in its own window";
