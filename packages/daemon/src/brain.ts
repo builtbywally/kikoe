@@ -154,7 +154,9 @@ export class Brain {
   async directed(text: string, lastExchange: string): Promise<boolean> {
     const prompt = `You decide whether a sentence overheard by a voice assistant named Kik was addressed to Kik or to someone else in the room. Kik speaks for the user's coding agents and can answer questions about them and take instructions for them.
 
-The last exchange with Kik, a moment ago:
+The user is alone at their desk wearing a headset; Kik is the only other party who can answer. Sentences aimed at someone ("you", "listen", a question with nobody else to ask) are for Kik. Narration of what the user is doing, talk clearly meant for a person on a call, singing, reading aloud, or video audio is not.
+
+The last exchange with Kik:
 ${lastExchange || "(none)"}
 
 The new sentence, as transcribed (may contain recognition errors):

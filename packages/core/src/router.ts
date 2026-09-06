@@ -101,12 +101,14 @@ const CONTROLS: Array<[RegExp, string, (m: RegExpExecArray) => string]> = [
 
 // The normalizer drops apostrophes, so "what's" arrives as "whats".
 /**
- * A question put to "you", with nobody else in the room, is put to us:
- * "what do you think about this", "do you have your brain on", "can you
- * clear the board". Opt-in by the daemon; off while a call is running.
+ * Anything said to "you", with nobody else in the room, is said to us:
+ * "what do you think about this", "I want to ask you a question", "listen
+ * to me when I'm talking to you". Recall over precision, on purpose: a
+ * headset and an empty room make a false hit cheap and a miss maddening.
+ * Opt-in by the daemon; off for a shared room or a call.
  */
 const YOU_QUESTION =
-  /^(what|how|do|did|does|can|could|are|were|will|would|have|should|is|why|where|when|which|who)\b[^?]{0,40}\byou\b|^(you|your)\b.*\?$|^(what|how) (do|would|about) you\b/;
+  /\b(you|your|yours|yourself)\b|^(listen|tell me|talk to me|answer me|say something)\b/;
 
 const QUESTIONS = [
   /^whats? (it|you|they|he|she|everyone|everything) (doing|up to|working on)/,

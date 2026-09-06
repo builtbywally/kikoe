@@ -520,7 +520,10 @@ export class Daemon {
         `Something just happened in ${e.repo || "the agent's repo"}: ${e.kind}${e.tool ? ` (${e.tool})` : ""}${e.status ? `, ${e.status}` : ""}.`,
         e.text ? `Detail: ${String(e.text).slice(0, 500)}` : "",
         `The stock line would be: "${template}".`,
-        "Say it your way, aloud, in one or two sentences and at most twenty-five words. Keep every fact in the stock line. No greeting. If it is not worth interrupting the user for, reply with a single hyphen.",
+        "Say it your way, aloud, in one or two sentences and at most twenty-five words. Keep every fact in the stock line. No greeting.",
+        e.kind === ev.TURN_END || e.kind === ev.ERROR
+          ? "This one is always said."
+          : "If it is not worth interrupting the user for, reply with a single hyphen.",
       ]
         .filter(Boolean)
         .join("\n");
@@ -575,9 +578,9 @@ export class Daemon {
    * to ask, and only with hear_you on.
    */
   private grayZone(): boolean {
-    if (!this.settings.hear_you || !this.brain()) return false;
-    const since = Date.now() - this.lastExchange.at;
-    return since >= 0 && since < 90_000;
+    // Every nameless sentence, while there is a model to ask: with a headset
+    // in an empty room a wrong yes costs one answer, a wrong no costs trust.
+    return this.settings.hear_you && this.brain() !== null;
   }
 
   private async decideDirected(
@@ -587,7 +590,12 @@ export class Daemon {
     const brain = this.brain();
     let yes = false;
     try {
-      const last = `User: ${this.lastExchange.you}\nKik: ${this.lastExchange.kik}`;
+      const ago = this.lastExchange.at
+        ? Math.round((Date.now() - this.lastExchange.at) / 1000)
+        : -1;
+      const last = this.lastExchange.at
+        ? `${ago} seconds ago. User: ${this.lastExchange.you}\nKik: ${this.lastExchange.kik}`
+        : "(no exchange yet)";
       yes = brain ? await brain.directed(text, last) : false;
     } catch (e) {
       log(`directed check failed: ${(e as Error).message}`);

@@ -33,8 +33,10 @@ describe("routing", () => {
     expect(route("do you have your brain on", on).kind).toBe("question");
     expect(route("can you clear the board", on).kind).toBe("control");
     expect(route("what do you think about this?").kind).toBe("overheard");
+    expect(route("I want to ask you a question", on).kind).toBe("work");
+    expect(route("listen to me when I'm talking to you", on).kind).toBe("work");
     expect(route("we should kick this to thursday", on).kind).toBe("overheard");
-    expect(route("I think you should go home", on).kind).toBe("overheard");
+    expect(route("the build is red again", on).kind).toBe("overheard");
   });
 
   it("control words never become work", () => {
