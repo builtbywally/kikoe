@@ -792,6 +792,20 @@ body[data-frosted="1"] .pin[data-kind="note"] {
   border: 1px solid rgba(var(--fg-rgb), 0.2);
   cursor: pointer;
 }
+.pin-foot .viewports {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: auto;
+}
+.pin-foot button.viewport {
+  height: 28px;
+  padding: 0 10px;
+  border-color: transparent;
+}
+.pin-foot button.viewport.active {
+  color: var(--paper);
+  border-color: rgba(var(--fg-rgb), 0.3);
+}
 .pin-foot button.primary {
   color: var(--paper);
   border-color: var(--ember);

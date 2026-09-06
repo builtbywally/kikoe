@@ -66,7 +66,8 @@ The bar: a designer would keep it open.
 - Selection, multi-select, group move, align, distribute.
 - The web card grows up: a URL bar and back button, tabs, Kik reading the
   page it framed. (The card itself shipped 2026-09-06: localhost apps,
-  sites, a browser, by voice.)
+  sites, a browser, by voice; phone, tablet and desktop viewports the
+  same day.)
 - Connectors between cards (arrows), so a sticky can point at a line in a
   diff.
 - Kik draws on the canvas live: strokes, highlights, callouts while it

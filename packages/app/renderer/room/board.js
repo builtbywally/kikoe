@@ -260,12 +260,65 @@
     }
   }
 
+  /** what a card was last built from; unchanged cards are kept, so a live frame never reloads */
+  const built = new Map();
+  const LIVE = new Set(["conversation", "agents", "events"]);
+  function signature(pin) {
+    return JSON.stringify([
+      pin.kind,
+      pin.title,
+      pin.body,
+      pin.ask,
+      pin.answer,
+      pin.sticky,
+      pin.size,
+      pin.near,
+      pin.by,
+      pin.wait_s,
+      pin.updated,
+    ]);
+  }
+
+  /**
+   * Nothing on the canvas may sit on top of anything else. Cards the user
+   * dragged stay put; every other card is walked in reading order and
+   * pushed down until it clears whatever is already placed, including a
+   * wide card reaching into the next column and a card that has grown.
+   */
+  function settle() {
+    const els = [...world.querySelectorAll(".pin")]
+      .map((el) => ({ el, id: el.dataset.id, pos: positions.get(el.dataset.id) }))
+      .filter((c) => c.pos)
+      .sort((a, b) => a.pos.y - b.pos.y || a.pos.x - b.pos.x);
+    const placed = [];
+    const hits = (r) =>
+      placed.find((o) => r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
+    for (const c of els) {
+      const r = { x: c.pos.x, y: c.pos.y, w: c.el.offsetWidth, h: c.el.offsetHeight };
+      const pin = lastPins.find((p) => p.id === c.id);
+      if (!moved.has(c.id) && !pin?.near) {
+        let guard = 0;
+        let o = hits(r);
+        while (o && guard++ < 64) {
+          r.y = o.y + o.h + PIN_GAP;
+          o = hits(r);
+        }
+        if (r.y !== c.pos.y) {
+          c.pos.y = r.y;
+          c.el.style.top = `${r.y}px`;
+        }
+      }
+      placed.push(r);
+    }
+  }
+
   function render(pins, renderPin) {
     const first = lastPins.length === 0 && pins.length > 0;
     lastPins = pins;
     const keep = new Set(pins.map((p) => p.id));
     for (const el of world.querySelectorAll(".pin")) if (!keep.has(el.dataset.id)) el.remove();
     for (const id of [...positions.keys()]) if (!keep.has(id)) positions.delete(id);
+    for (const id of [...built.keys()]) if (!keep.has(id)) built.delete(id);
     const repos = [...new Set(pins.map((p) => p.repo || ""))];
     for (const repo of repos) {
       if (!world.querySelector(`.frame[data-repo="${CSS.escape(repo)}"]`)) {
@@ -281,7 +334,27 @@
     }
     for (const pin of pins) {
       let el = world.querySelector(`.pin[data-id="${pin.id}"]`);
+      const sig = signature(pin);
       const fresh = renderPin(pin);
+      if (el && !LIVE.has(pin.kind) && built.get(pin.id) === sig) {
+        // Same card: keep it (a page or a site inside stays put), refresh
+        // only what time changes, the age and the fade.
+        el.style.opacity = fresh.style.opacity;
+        const age = el.querySelector(".pin-head .age");
+        const freshAge = fresh.querySelector(".pin-head .age");
+        if (age && freshAge) age.textContent = freshAge.textContent;
+        // a new size (the grip, a viewport button) applies without a rebuild
+        if (pin.w > 0) el.style.width = `${pin.w}px`;
+        if (pin.h > 0) {
+          el.style.height = `${pin.h}px`;
+          el.style.maxHeight = "none";
+        }
+        const pos = place(pin, el);
+        el.style.left = `${pos.x}px`;
+        el.style.top = `${pos.y}px`;
+        continue;
+      }
+      built.set(pin.id, sig);
       fresh.dataset.id = pin.id;
       fresh.dataset.repo = pin.repo || "";
       if (el) el.replaceWith(fresh);
@@ -322,6 +395,7 @@
           const up = () => {
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
+            settle();
             layoutFrames();
             window.room.updatePin?.(pin.id, { w: el.offsetWidth, h: el.offsetHeight });
           };
@@ -334,6 +408,7 @@
       el.style.left = `${pos.x}px`;
       el.style.top = `${pos.y}px`;
     }
+    settle();
     layoutFrames();
     if (first) fit();
     else apply();

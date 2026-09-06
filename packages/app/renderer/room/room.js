@@ -407,6 +407,15 @@ function renderBody(pin) {
   }
 }
 
+/** device viewports for a page or a site on the canvas: name, width, height */
+const VIEWPORTS = [
+  ["phone", 390, 700],
+  ["tablet", 820, 700],
+  ["desktop", 1280, 760],
+];
+/** the card's head and foot around the frame */
+const CARD_CHROME = 106;
+
 function pinCard(p) {
   const now = Date.now() / 1000;
   const age = now - p.created;
@@ -493,6 +502,23 @@ function pinCard(p) {
     note.textContent = "nothing here is editable";
     foot.append(note);
   } else {
+    if (p.kind === "web" || p.kind === "html") {
+      // a viewport to look at the page in: the card takes the device's size
+      const views = document.createElement("span");
+      views.className = "viewports";
+      for (const [name, w, h] of VIEWPORTS) {
+        const b = document.createElement("button");
+        b.textContent = name;
+        b.title = `${w} × ${h}`;
+        b.className = "viewport";
+        if (p.w === w + 2) b.classList.add("active");
+        b.addEventListener("click", () =>
+          window.room.updatePin?.(p.id, { w: w + 2, h: h + CARD_CHROME, wide: true }),
+        );
+        views.append(b);
+      }
+      foot.append(views);
+    }
     if (p.kind === "web") {
       const addr = document.createElement("span");
       addr.className = "note";

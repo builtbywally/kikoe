@@ -141,7 +141,12 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    pan/zoom canvas (`board.js`): frames per repo, cards placed in columns,
    dragged cards remembered, `near` cards placed beside their host, `w/h`
    from the corner grip. Synthetic cards (conversation, agents, events) are
-   built in `room.js`, not stored.
+   built in `room.js`, not stored. `render()` keeps a card whose content
+   signature has not changed (so a live frame never reloads on the
+   15-second age tick) and `settle()` pushes auto-placed cards down until
+   nothing overlaps, wide cards and grown cards included; dragged cards
+   and stickies stay put. Web and page cards have phone, tablet and
+   desktop viewport buttons in the footer that set the card's size.
 
 ## Settings that matter (config.local.json)
 
