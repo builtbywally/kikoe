@@ -528,3 +528,65 @@ describe("presence and the inner thread", () => {
     await d2.close();
   });
 });
+
+describe("a life in memory", () => {
+  it("journals the days before today, once, and reads them back into the picture", async () => {
+    const { appendFileSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { dayOf } = await import("../src/daemon.js");
+    const home = HOME;
+    const day = 86_400_000;
+    const yesterday = Date.now() - day;
+    const old = Date.now() - 40 * day;
+    mkdirSync(home, { recursive: true });
+    const conv = path.join(home, "conversation.jsonl");
+    appendFileSync(
+      conv,
+      `${JSON.stringify({ at: yesterday, you: "kik make me a standup timer", kik: "Done, it is on the board." })}\n`,
+    );
+    appendFileSync(
+      conv,
+      `${JSON.stringify({ at: yesterday + 60_000, you: "we ship on fridays", kik: "Noted." })}\n`,
+    );
+    appendFileSync(
+      conv,
+      `${JSON.stringify({ at: Date.now(), you: "kik what's up", kik: "Nothing yet." })}\n`,
+    );
+    writeFileSync(path.join(home, "journal.md"), `- ${dayOf(old)}: something from long ago\n`);
+    const { f, sent } = fakeFetch([
+      text(
+        `- ${dayOf(yesterday)}: made a standup timer page for the user\n- ${dayOf(yesterday)}: they ship on Fridays`,
+      ),
+      text("You made a timer yesterday."),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({
+      settings,
+      audio: false,
+      anthropicKey: "k",
+      fetchImpl: f,
+      persistBoard: true,
+    });
+    expect(await d.consolidate()).toBe(1);
+    const asked = JSON.stringify(sent[0]?.messages);
+    expect(asked).toContain("standup timer");
+    expect(asked).not.toContain("what's up");
+    const journal = d.journal();
+    expect(journal).toContain("made a standup timer page");
+    expect(journal).toContain("ship on Fridays");
+    expect(journal).not.toContain("long ago");
+    // a second pass has nothing new
+    expect(await d.consolidate()).toBe(0);
+    expect(sent.length).toBe(1);
+    d.hear("kik what did we do yesterday");
+    await new Promise((r) => setTimeout(r, 40));
+    expect(String(sent[1]?.system)).toContain("Your journal of earlier days");
+    expect(String(sent[1]?.system)).toContain("made a standup timer page");
+    expect(d.state().journal_days).toBe(2);
+    await d.close();
+  });
+});

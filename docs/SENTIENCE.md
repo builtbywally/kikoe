@@ -63,8 +63,10 @@ of work.
 1. **Presence and the inner thread.** Greeting on arrival and return; the
    inner note; check-in becomes a diff against it; fillers while thinking.
    This is the slice that makes it feel like someone is there.
-2. **A life in memory.** Daily consolidation into `memory.md`; the first
+   Shipped 2026-09-06.
+2. **A life in memory.** Daily consolidation into a journal; the first
    exchange of a day starts with what happened yesterday.
+   Shipped 2026-09-06 (`journal.md`, thirty days).
 3. **Reasons to speak.** Cheap watchers for the known cases; the model only
    phrases them. Mood line.
 4. **Turn-taking.** Roadmap milestone 1: wake word, echo cancellation,

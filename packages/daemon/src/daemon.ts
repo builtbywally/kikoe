@@ -112,6 +112,13 @@ const AWAY_MS = 3600_000;
 /** what Kik says while the model is still thinking */
 const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
 
+/** The local calendar day of a timestamp, as YYYY-MM-DD. */
+export function dayOf(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /** "forty minutes", "three hours", "a night", "two days" */
 export function describeGap(ms: number): string {
   const min = Math.round(ms / 60_000);
@@ -239,11 +246,16 @@ export class Daemon {
   private readonly reflectMs: number;
   private readonly fillerMs: number;
   private lastFiller = "";
+  private consolidatedAt = 0;
+  private consolidating = false;
 
   constructor(opts: DaemonOptions = {}) {
     this.anthropicKey = opts.anthropicKey ?? "";
     this.fetchImpl = opts.fetchImpl ?? fetch;
-    this.checkinTimer = setInterval(() => void this.checkIn(), 60_000);
+    this.checkinTimer = setInterval(() => {
+      void this.checkIn();
+      void this.consolidateMaybe();
+    }, 60_000);
     this.checkinTimer.unref();
     ensureHome();
     this.settings = opts.settings ?? loadSettings();
@@ -848,6 +860,125 @@ export class Daemon {
     return this.innerNote;
   }
 
+  // --- the journal: yesterday, and the days before, in Kik's own notes ---------------
+  private journalFile(): string {
+    return path.join(HOME, "journal.md");
+  }
+  private journalMarkFile(): string {
+    return path.join(HOME, "journal.json");
+  }
+  /** What happened on earlier days: dated lines, oldest first. */
+  journal(): string {
+    try {
+      return existsSync(this.journalFile()) ? readFileSync(this.journalFile(), "utf8") : "";
+    } catch {
+      return "";
+    }
+  }
+  private journalUpTo(): number {
+    try {
+      if (!existsSync(this.journalMarkFile())) return 0;
+      return (
+        Number(
+          (JSON.parse(readFileSync(this.journalMarkFile(), "utf8")) as { upTo?: number }).upTo,
+        ) || 0
+      );
+    } catch {
+      return 0;
+    }
+  }
+  /** Once an hour at most, and only with a model: the days before today into the journal. */
+  private async consolidateMaybe(): Promise<void> {
+    if (Date.now() - this.consolidatedAt < 3600_000) return;
+    await this.consolidate();
+  }
+  /**
+   * Every day of conversation before today that is not yet in the journal
+   * becomes one to three dated lines in it: decisions, requests, what was
+   * made, what went wrong. Days older than thirty are dropped. Returns how
+   * many days were written.
+   */
+  async consolidate(): Promise<number> {
+    const brain = this.brain();
+    if (!brain || !this.persistBoard || this.consolidating) return 0;
+    this.consolidating = true;
+    this.consolidatedAt = Date.now();
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const upTo = this.journalUpTo();
+      let rows: Array<{ at: number; you: string; kik: string }> = [];
+      try {
+        if (existsSync(this.conversationFile()))
+          rows = readFileSync(this.conversationFile(), "utf8")
+            .split("\n")
+            .filter(Boolean)
+            .map((l) => JSON.parse(l) as { at: number; you: string; kik: string })
+            .filter((r) => r.at > upTo && r.at < today.getTime());
+      } catch (e) {
+        log(`journal: could not read the conversation: ${(e as Error).message}`);
+        return 0;
+      }
+      if (!rows.length) return 0;
+      const days = new Map<string, typeof rows>();
+      for (const r of rows) {
+        const key = dayOf(r.at);
+        days.set(key, [...(days.get(key) ?? []), r]);
+      }
+      let written = 0;
+      let last = upTo;
+      // at most a week per pass; an old backlog catches up over a few hours
+      for (const [day, list] of [...days.entries()].slice(0, 7)) {
+        const transcript = list
+          .map((r) => `User: ${r.you.slice(0, 400)}\nKik: ${r.kik.slice(0, 400)}`)
+          .join("\n");
+        const lines = await brain.compose(
+          `Below is one day of conversation between the user and you, ${day}. Write one to three lines for your journal, each starting with "- ${day}:". Keep what you would want a week from now: what the user decided, asked for, told you about themselves or their work, what you made, what went wrong. Facts only, no greetings, no chatter, no praise. If nothing is worth keeping, reply with a single hyphen.\n\n${transcript.slice(0, 12_000)}`,
+          `${PERSONA}\n\nYou are writing your journal, not speaking.`,
+        );
+        const keep = lines
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith("- "))
+          .slice(0, 3);
+        if (keep.length) {
+          this.writeJournal(`${this.journal().trimEnd()}\n${keep.join("\n")}\n`.trimStart());
+          written++;
+        }
+        last = Math.max(last, ...list.map((r) => r.at));
+        try {
+          writeFileSync(this.journalMarkFile(), JSON.stringify({ upTo: last }));
+        } catch (e) {
+          log(`journal: could not write the mark: ${(e as Error).message}`);
+        }
+      }
+      if (written) log(`journal: ${written} day${written === 1 ? "" : "s"} written`);
+      return written;
+    } catch (err) {
+      log(`journal failed: ${(err as Error).message}`);
+      return 0;
+    } finally {
+      this.consolidating = false;
+    }
+  }
+  private writeJournal(text: string): void {
+    // thirty days of life; older lines go, by the date they start with
+    const cutoff = dayOf(Date.now() - 30 * 86_400_000);
+    const kept = text
+      .split("\n")
+      .filter((l) => {
+        const m = /^- (\d{4}-\d{2}-\d{2}):/.exec(l);
+        return !m || (m[1] ?? "") >= cutoff;
+      })
+      .join("\n");
+    try {
+      mkdirSync(HOME, { recursive: true });
+      writeFileSync(this.journalFile(), kept.slice(-12_000));
+    } catch (e) {
+      log(`journal: could not write: ${(e as Error).message}`);
+    }
+  }
+
   // --- the board on disk: sticky pins survive a restart ---------------------------
   private boardTimer: NodeJS.Timeout | null = null;
   private readonly persistBoard: boolean;
@@ -1040,6 +1171,11 @@ export class Daemon {
     if (mem)
       lines.push(
         `What you remember about the user and their work (your notes; use remember to add, forget to drop):\n${mem.slice(0, 4000)}`,
+      );
+    const journal = this.journal().trim();
+    if (journal)
+      lines.push(
+        `Your journal of earlier days (what was decided, asked for, made; refer to it when it helps, without being asked):\n${journal.slice(-3000)}`,
       );
     if (this.innerNote)
       lines.push(
@@ -1469,6 +1605,9 @@ export class Daemon {
       instructions: this.instructions.length,
       inner: this.innerNote,
       presence: this.presence,
+      journal_days: this.journal()
+        .split("\n")
+        .filter((l) => l.startsWith("- ")).length,
       look: this.look(),
       mode: this.narrator.mode,
       tts: {

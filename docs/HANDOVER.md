@@ -21,7 +21,7 @@ an empty checkout whose CLAUDE.md now points here.
 cd ~/orca/projects/kikoe
 pnpm install                     # pnpm 10; audify/electron builds allowed in pnpm-workspace.yaml
 pnpm build                       # tsc -b for core, daemon, cli, app
-pnpm test                        # vitest, 120 tests; never touches ~/.claude or the speaker
+pnpm test                        # vitest, 121 tests; never touches ~/.claude or the speaker
 pnpm lint                        # biome; it also reformats after edits
 pnpm typecheck
 pnpm app                         # build + run from source (kills nothing; the installed app holds the port)
@@ -75,6 +75,8 @@ User data: `~/.kikoe/` — `config.local.json` (settings), `daemon_token.txt`,
 `board.json` (sticky pins), `conversation.jsonl`, `memory.md` (Kik's notes),
 `inner.md` (Kik's private inner note, rewritten after each exchange),
 `presence.json` (when the user was last here and last greeted),
+`journal.md` + `journal.json` (earlier days, one to three lines each,
+thirty days kept; the mark says how far the conversation was journaled),
 `models/` (Piper, Kokoro, Whisper base, Silero VAD), `logs/daemon.log`,
 `metrics.jsonl`.
 
@@ -111,6 +113,11 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    is a return: a hello inside the reply if addressed, a hello of its own
    if overheard (only the gap is used, never the words). If the model's
    first clause takes over 1.5 s, Kik says "hm" or "one sec" first.
+   Once an hour (`consolidateMaybe()`), every day of conversation before
+   today that is not yet in the journal is summarised by the model into
+   dated lines in `journal.md`; the last 3000 characters go into the
+   system prompt. Facts the user states still go to `memory.md` through
+   the remember tool; the journal is what happened.
    The goal all of this serves is `docs/SENTIENCE.md`.
 4. The Room renders the daemon's `/stream` frames: `pin`, `heard`, `mic`,
    `speech`, `sessions`, `event`, `focus`, `suggest`, `look`. The board is a
