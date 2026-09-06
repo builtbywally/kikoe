@@ -20,3 +20,6 @@ verdaccio-storage/
 
 # Build output: installers and unpacked apps, hundreds of megabytes.
 out/
+
+# Screenshot runs from packages/app
+packages/app/out*.png
