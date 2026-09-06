@@ -21,6 +21,7 @@ export const KINDS = [
   "checklist",
   "note",
   "web",
+  "react",
 ] as const;
 export type PinKind = (typeof KINDS)[number];
 

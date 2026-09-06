@@ -64,6 +64,7 @@
     updatePin: (id, patch) => post(`/pins/${encodeURIComponent(id)}/update`, patch),
     sayToKik: (text) => post("/say", { text }),
     native: false,
+    artifactBase: base,
     openArtifact: (id) => {
       const p = document.querySelector(`[data-id="${id}"][data-kind="web"] iframe`);
       if (p?.src) {

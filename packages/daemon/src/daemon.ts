@@ -50,6 +50,7 @@ import {
 import { Hub } from "./hub.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
 import { Board } from "./pins.js";
+import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
 import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
 
@@ -1370,11 +1371,13 @@ export class Daemon {
       },
       {
         name: "create_artifact",
-        description: `Put something on the user's canvas: a checklist (one item per line, '- [ ] item'), a note, a markdown document, a table (markdown table), a diagram (one 'a -> b' edge per line, '*x' marks the current node, 'note: …' adds a note), an SVG you draw, a small self-contained HTML page (interactive is fine, it runs sandboxed), or a live web page (kind web, body is the URL: an app running on localhost, a site, or a search engine to give the user a browser). Returns the id. Use sticky for anything the user will want tomorrow. ${KIT_GUIDE}`,
+        description: `Put something on the user's canvas: a checklist (one item per line, '- [ ] item'), a note, a markdown document, a table (markdown table), a diagram (one 'a -> b' edge per line, '*x' marks the current node, 'note: …' adds a note), an SVG you draw, a small self-contained HTML page (interactive is fine, it runs sandboxed), or a live web page (kind web, body is the URL: an app running on localhost, a site, or a search engine to give the user a browser). Returns the id. Use sticky for anything the user will want tomorrow. For any page, app, dashboard, mockup, comparison or tool, do not write the code yourself: call design_artifact with a brief instead; a designer model builds it as a React app. Kind react is for code you already have (a component file with export default). ${KIT_GUIDE}`,
         input_schema: {
           type: "object",
           properties: {
-            kind: str("checklist | note | markdown | table | diagram | svg | html | web | text"),
+            kind: str(
+              "checklist | note | markdown | table | diagram | svg | html | react | web | text",
+            ),
             title: str("a few words"),
             body: str("the content"),
             sticky: { type: "boolean", description: "keep it until removed" },
@@ -1413,7 +1416,12 @@ export class Daemon {
             sticky: Boolean(i.sticky),
             near: i.near ? String(i.near) : undefined,
             size:
-              i.wide || kind === "html" || kind === "svg" || kind === "image" || kind === "web"
+              i.wide ||
+              kind === "html" ||
+              kind === "svg" ||
+              kind === "image" ||
+              kind === "web" ||
+              kind === "react"
                 ? "wide"
                 : "normal",
             ttl_s: i.sticky ? undefined : 3600,
@@ -1421,6 +1429,53 @@ export class Daemon {
           // anything made is shown: the canvas pans there and the card pulses
           this.hub.publish("focus", { id: pin.id });
           return `created ${pin.kind} ${pin.id}`;
+        },
+      },
+      {
+        name: "design_artifact",
+        description:
+          "Have a page, app, dashboard, mockup, visual comparison or small tool designed and built for the canvas as a working React app with real UI. Give a brief in a few sentences: what it is for, what it shows, what the user can do on it, any data or facts to include. Takes a few seconds; say so aloud before calling it. Returns the id; then point_at it. Use this, not create_artifact with html, for anything a designer would make.",
+        input_schema: {
+          type: "object",
+          properties: {
+            title: str("a few words"),
+            brief: str("what to build, in a few sentences, with the facts it needs"),
+            sticky: { type: "boolean", description: "keep it until removed" },
+            near: str("id of a card this belongs beside"),
+          },
+          required: ["title", "brief"],
+        },
+        run: async (i) => {
+          const brain = this.brain();
+          if (!brain) return "no model available";
+          const brief = String(i.brief ?? "").trim();
+          if (!brief) return "the brief is empty";
+          const picture = this.tracker.brief();
+          const t0 = Date.now();
+          const code = stripFences(
+            await brain.generate(
+              `Brief: ${brief}\n\nTitle: ${String(i.title ?? "")}${picture ? `\n\nContext, in case it helps: ${picture}` : ""}`,
+              DESIGN_BRIEF,
+              this.settings.artifact_model ? { model: this.settings.artifact_model } : {},
+            ),
+          );
+          if (!/export\s+default/.test(code) && !/function\s+App\b/.test(code))
+            return "the designer returned no component";
+          const pin = this.board.add({
+            kind: "react",
+            title: String(i.title ?? ""),
+            body: code,
+            repo: "kik",
+            by: "kik",
+            sticky: Boolean(i.sticky),
+            near: i.near ? String(i.near) : undefined,
+            size: "wide",
+            ttl_s: i.sticky ? undefined : 3600,
+          });
+          log(`designed ${pin.id} "${pin.title}" in ${Date.now() - t0} ms, ${code.length} chars`);
+          this.hub.publish("focus", { id: pin.id });
+          this.reflectSoon();
+          return `built ${pin.id}`;
         },
       },
       {
@@ -1862,6 +1917,22 @@ export class Daemon {
         return this.json(res, 404, { error: "no such file" });
       res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=86400" });
       res.end(readFileSync(file));
+      return;
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/artifact/")) {
+      // A page a card frames. The id is the only key: it opens this one
+      // page and nothing else, and the page gets its own content policy.
+      const id = url.pathname.slice("/artifact/".length).replace(/\/.*$/, "");
+      const pin = this.board.get(id);
+      const doc = pin ? renderArtifact(pin) : null;
+      if (!pin || doc === null) return this.json(res, 404, { error: "no such artifact" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "content-security-policy": ARTIFACT_CSP,
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+      });
+      res.end(doc);
       return;
     }
     if (req.method === "GET" && url.pathname === "/room" && this.roomDir) {

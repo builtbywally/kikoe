@@ -548,6 +548,7 @@ const ARTIFACT_EXT: Record<string, string> = {
   diff: "diff",
   text: "txt",
   image: "png",
+  react: "jsx",
 };
 /** An artboard in its own window: the page as a page, the drawing as a drawing. */
 ipcMain.handle("room:openArtifact", (_e, id: string) => {
@@ -558,6 +559,18 @@ ipcMain.handle("room:openArtifact", (_e, id: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
     return { ok: true };
   }
+  if (p.kind === "html" || p.kind === "react") {
+    // the served page, in its own window, with the runtime it needs
+    const w = new BrowserWindow({
+      width: 1100,
+      height: 760,
+      title: p.title || p.kind,
+      autoHideMenuBar: true,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    });
+    void w.loadURL(`http://127.0.0.1:${loadSettings().port}/artifact/${p.id}`);
+    return { ok: true };
+  }
   const w = new BrowserWindow({
     width: 1100,
     height: 760,
@@ -566,13 +579,11 @@ ipcMain.handle("room:openArtifact", (_e, id: string) => {
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
   const body =
-    p.kind === "html"
-      ? p.body
-      : p.kind === "svg"
-        ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#14100e;color:#f5f1ec">${p.body}</body>`
-        : p.kind === "image"
-          ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#14100e"><img src="${p.body}" style="max-width:100%;max-height:100vh"></body>`
-          : `<!doctype html><body style="margin:0;padding:32px;font:15px/1.6 system-ui;background:#14100e;color:#f5f1ec;white-space:pre-wrap">${p.body.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] ?? c)}</body>`;
+    p.kind === "svg"
+      ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#14100e;color:#f5f1ec">${p.body}</body>`
+      : p.kind === "image"
+        ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#14100e"><img src="${p.body}" style="max-width:100%;max-height:100vh"></body>`
+        : `<!doctype html><body style="margin:0;padding:32px;font:15px/1.6 system-ui;background:#14100e;color:#f5f1ec;white-space:pre-wrap">${p.body.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] ?? c)}</body>`;
   void w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(body)}`);
   return { ok: true };
 });
@@ -593,6 +604,9 @@ ipcMain.handle("room:removePin", (_e, id: string) => ({
   ok: daemon?.board.remove(String(id)) ?? false,
 }));
 ipcMain.handle("room:clearBoard", () => ({ cleared: daemon?.board.clear() ?? 0 }));
+ipcMain.on("room:artifactBase", (e) => {
+  e.returnValue = `http://127.0.0.1:${loadSettings().port}`;
+});
 ipcMain.handle("room:updatePin", (_e, id: string, patch: Record<string, unknown>) => ({
   ok: Boolean(
     daemon?.board.update(String(id), {

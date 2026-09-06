@@ -723,3 +723,36 @@ describe("turn-taking and being wrong well", () => {
     await d.close();
   });
 });
+
+describe("the designer", () => {
+  it("builds a page from a brief with the designer model and the design brief", async () => {
+    const { f, sent } = fakeFetch([
+      toolCall("design_artifact", {
+        title: "Cats vs dogs",
+        brief: "a visual comparison of cats and dogs as pets",
+      }),
+      text(
+        '```jsx\nimport { useState } from "react";\nexport default function App() { return <h1 className="text-2xl">Cats vs dogs</h1>; }\n```',
+      ),
+      text("It is on the canvas."),
+    ]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+    } as typeof config.DEFAULTS;
+    const d = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f });
+    d.hear("kik compare cats and dogs visually");
+    await new Promise((r) => setTimeout(r, 80));
+    const design = sent[1];
+    expect(design?.model).toBe("claude-sonnet-5");
+    expect(String(design?.system)).toContain("You design and build screens");
+    expect(JSON.stringify(design?.messages)).toContain("cats and dogs");
+    const pin = d.board.list().find((p) => p.kind === "react");
+    expect(pin?.body.startsWith("import { useState }")).toBe(true);
+    expect(pin?.body).not.toContain("```");
+    expect(pin?.size).toBe("wide");
+    await d.close();
+  });
+});

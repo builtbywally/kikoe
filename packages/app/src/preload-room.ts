@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld("room", {
     ipcRenderer.invoke("room:updatePin", id, patch),
   sayToKik: (text: string) => ipcRenderer.invoke("room:sayToKik", text),
   native: true,
+  /** where the daemon serves pages: a card frames `${base}/artifact/<id>` */
+  artifactBase: ipcRenderer.sendSync("room:artifactBase") as string,
   openArtifact: (id: string) => ipcRenderer.invoke("room:openArtifact", id),
   saveArtifact: (id: string) => ipcRenderer.invoke("room:saveArtifact", id),
   onView: (fn: (v: { view: string; page?: string }) => void) =>

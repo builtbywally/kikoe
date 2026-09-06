@@ -411,6 +411,7 @@ body[data-frosted="1"] .pin {
 }
 /* a page or a site fills its card edge to edge, and grows with it when resized */
 .pin[data-kind="html"] .pin-body,
+.pin[data-kind="react"] .pin-body,
 .pin[data-kind="web"] .pin-body {
   display: flex;
   flex-direction: column;
@@ -418,6 +419,7 @@ body[data-frosted="1"] .pin {
   overflow: hidden;
 }
 .pin[data-kind="html"] .pin-body iframe,
+.pin[data-kind="react"] .pin-body iframe,
 .pin[data-kind="web"] .pin-body iframe {
   flex: 1 1 auto;
   height: 100%;

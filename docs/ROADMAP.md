@@ -64,6 +64,10 @@ The bar: you forget it is a program for a whole session.
 The bar: a designer would keep it open.
 
 - Selection, multi-select, group move, align, distribute.
+- The artifact runtime grows up: a bundled offline copy of React and
+  Tailwind so designed pages work without the network; version history
+  per artifact. (The runtime shipped 2026-09-06: served pages, a react
+  kind, a designer model.)
 - The web card grows up: a URL bar and back button, tabs, Kik reading the
   page it framed. (The card itself shipped 2026-09-06: localhost apps,
   sites, a browser, by voice; phone, tablet and desktop viewports the

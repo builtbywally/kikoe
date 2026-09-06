@@ -21,7 +21,7 @@ an empty checkout whose CLAUDE.md now points here.
 cd ~/orca/projects/kikoe
 pnpm install                     # pnpm 10; audify/electron builds allowed in pnpm-workspace.yaml
 pnpm build                       # tsc -b for core, daemon, cli, app
-pnpm test                        # vitest, 128 tests; never touches ~/.claude or the speaker
+pnpm test                        # vitest, 132 tests; never touches ~/.claude or the speaker
 pnpm lint                        # biome; it also reformats after edits
 pnpm typecheck
 pnpm app                         # build + run from source (kills nothing; the installed app holds the port)
@@ -108,8 +108,18 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    (`daemon/src/kit.ts`) inlined once: the Room's tokens, good defaults
    for bare elements, and classes for product UI; the tool description
    tells the model the classes. The frame is opaque-origin under the
-   Room's CSP, so nothing external loads; the kit is why pages look
-   designed. Pin kind `web` is a live iframe (localhost app,
+   Room's CSP, so nothing external loads; the kit is the offline floor.
+   The real runtime (`daemon/src/runtime.ts`): a page or react artifact
+   is served by the daemon at `GET /artifact/<id>` (no token; the id is
+   the key and opens one page only) with its own CSP allowing cdnjs,
+   jsdelivr, unpkg and Tailwind's CDN; the Room frames that URL. Kind
+   `react` is a component file: imports become globals (React, ReactDOM,
+   LucideReact, Recharts), `export default` is the root, Babel compiles
+   the JSX in the frame, Tailwind is the play CDN. `design_artifact`
+   takes a brief and asks `artifact_model` (Sonnet 5 by default, a
+   setting) with `DESIGN_BRIEF`; Kik is told to use it for any page, app
+   or comparison instead of writing html itself. Needs the network;
+   offline, the kit-html path still works. Pin kind `web` is a live iframe (localhost app,
    site, or a search engine as a browser); the Room strips X-Frame-Options
    and frame-ancestors for subframes so sites show.
    Between utterances Kik keeps an inner note (`reflectNow()`, five
@@ -156,7 +166,8 @@ Flight": the desk mic M8 hears the room), `wake_name` ("kik"),
 text of everything heard; turn off when the name lands reliably),
 `hear_you` (true), `barge_in` (true, headset only), `brain` (true),
 `brain_model` (Haiku 4.5; Sonnet 5 option), `brain_narrates`,
-`brain_checkin`, `brain_greets` (hello after an hour away), `backdrop`
+`brain_checkin`, `brain_greets` (hello after an hour away),
+`artifact_model` (Sonnet 5: designs pages), `backdrop`
 ("aurora"), `backdrop_dim`, `backdrop_blur`,
 `backdrop_image`, `start_at_login`, `theme`.
 

@@ -225,6 +225,31 @@ export class Brain {
   }
 
   /**
+   * One long answer from a chosen model, off the conversation: a page, a
+   * component, a document. Nothing is kept.
+   */
+  async generate(
+    prompt: string,
+    system: string,
+    o: { model?: string; maxTokens?: number; signal?: AbortSignal } = {},
+  ): Promise<string> {
+    const { blocks } = await this.stream(
+      system,
+      [],
+      o.signal,
+      () => {},
+      [{ at: Date.now(), role: "user", content: prompt }],
+      o.maxTokens ?? 12_000,
+      o.model,
+    );
+    return blocks
+      .filter((b): b is Extract<Block, { type: "text" }> => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+  }
+
+  /**
    * Follow-up detection the way the assistants do it now: given the last
    * exchange, was this next sentence said to us or to someone else? A
    * yes/no from the model, nothing kept.
@@ -261,9 +286,10 @@ Answer with exactly one word: yes if it was addressed to Kik, no if not.`;
     emit: (chunk: string) => void,
     messages: Turn[] = this.turns,
     maxTokens = 4000,
+    model?: string,
   ): Promise<{ blocks: Block[]; stop: string }> {
     const body = {
-      model: this.opts.model,
+      model: model || this.opts.model,
       // a page or a long checklist is a tool call with a big input
       max_tokens: maxTokens,
       stream: true,

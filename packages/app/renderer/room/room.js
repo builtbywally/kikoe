@@ -391,12 +391,24 @@ function renderBody(pin) {
       f.title = pin.title || pin.body;
       return f;
     }
+    case "react":
     case "html": {
-      // Sandboxed: no scripts, no navigation, no same-origin. A page, not a program.
+      // A page Kik made, served by the daemon with the runtime it needs
+      // (React, Tailwind, icons, charts from the allowlist). Its own
+      // origin; it can never reach the Room.
       const f = document.createElement("iframe");
-      // scripts yes, so a page can tick; same-origin no, so it stays a page
-      f.setAttribute("sandbox", "allow-scripts");
-      f.srcdoc = pin.body;
+      const base = window.room.artifactBase;
+      if (base) {
+        f.setAttribute(
+          "sandbox",
+          "allow-scripts allow-same-origin allow-forms allow-popups allow-modals",
+        );
+        f.src = `${base}/artifact/${encodeURIComponent(pin.id)}?v=${pin.updated}`;
+      } else {
+        f.setAttribute("sandbox", "allow-scripts");
+        f.srcdoc = pin.body;
+      }
+      f.title = pin.title || pin.kind;
       return f;
     }
     default: {
@@ -502,7 +514,7 @@ function pinCard(p) {
     note.textContent = "nothing here is editable";
     foot.append(note);
   } else {
-    if (p.kind === "web" || p.kind === "html") {
+    if (p.kind === "web" || p.kind === "html" || p.kind === "react") {
       // a viewport to look at the page in: the card takes the device's size
       const views = document.createElement("span");
       views.className = "viewports";
@@ -531,7 +543,13 @@ function pinCard(p) {
       open.title = "in your browser";
       open.addEventListener("click", () => window.room.openArtifact(p.id));
       foot.append(addr, open);
-    } else if (p.kind === "html" || p.kind === "svg" || p.kind === "image" || p.size === "wide") {
+    } else if (
+      p.kind === "html" ||
+      p.kind === "react" ||
+      p.kind === "svg" ||
+      p.kind === "image" ||
+      p.size === "wide"
+    ) {
       const open = document.createElement("button");
       open.textContent = "open";
       open.title = "in its own window";

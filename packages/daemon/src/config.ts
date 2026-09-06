@@ -68,6 +68,8 @@ export interface Settings {
   brain_checkin: boolean;
   /** it says hello when the user comes back after a while away */
   brain_greets: boolean;
+  /** the model that designs pages and apps for the canvas; sharper than the voice */
+  artifact_model: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -101,6 +103,7 @@ export const DEFAULTS: Settings = {
   brain_narrates: true,
   brain_checkin: true,
   brain_greets: true,
+  artifact_model: "claude-sonnet-5",
 };
 
 const FILE = () => path.join(HOME, "config.local.json");
