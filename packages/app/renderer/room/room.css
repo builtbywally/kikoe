@@ -409,6 +409,27 @@ body[data-frosted="1"] .pin {
   min-height: 420px;
   width: 100%;
 }
+/* a page or a site fills its card edge to edge, and grows with it when resized */
+.pin[data-kind="html"] .pin-body,
+.pin[data-kind="web"] .pin-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.pin[data-kind="html"] .pin-body iframe,
+.pin[data-kind="web"] .pin-body iframe {
+  flex: 1 1 auto;
+  height: 100%;
+  border: 0;
+  background: #14100e;
+}
+.pin[data-size="wide"] .pin-body svg,
+.pin[data-size="wide"] .pin-body img {
+  height: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 /* stickies: a yellow note beside an artboard, the designer's annotation */
 .pin[data-kind="note"] {
   background: #f6e7a2;

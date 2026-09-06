@@ -102,6 +102,14 @@ search engine gives a browser. Sites that refuse framing are unframed by
 the app for subframes only. Still to come: a URL bar and back button on
 the card, tabs, and Kik reading what is on the page.
 
+Pages Kik writes itself get the artboard kit (2026-09-06): the frame can
+load nothing external, so a stylesheet with the Room's tokens, defaults
+for bare elements and product-UI classes is inlined into every html
+artifact, and the tool tells the model how to use it. The other routes,
+if the kit is not enough: let the frame load Tailwind and React from a
+CDN (needs the network and a wider content policy), or bundle those
+libraries with the app and inject them the same way as the kit.
+
 ## What must not change
 
 - The rulebook stays the floor: without a key, everything still works,

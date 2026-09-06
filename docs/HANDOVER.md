@@ -21,7 +21,7 @@ an empty checkout whose CLAUDE.md now points here.
 cd ~/orca/projects/kikoe
 pnpm install                     # pnpm 10; audify/electron builds allowed in pnpm-workspace.yaml
 pnpm build                       # tsc -b for core, daemon, cli, app
-pnpm test                        # vitest, 127 tests; never touches ~/.claude or the speaker
+pnpm test                        # vitest, 128 tests; never touches ~/.claude or the speaker
 pnpm lint                        # biome; it also reformats after edits
 pnpm typecheck
 pnpm app                         # build + run from source (kills nothing; the installed app holds the port)
@@ -104,7 +104,12 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    line becomes suggestion chips. Tools: approve, deny, answer_board,
    instruct_agent, create_artifact, update_artifact, read_board,
    remove_artifact, point_at, ask_user, remember, forget, set_mode,
-   clear_board, pin_note. Pin kind `web` is a live iframe (localhost app,
+   clear_board, pin_note. Every html artifact gets the artboard kit
+   (`daemon/src/kit.ts`) inlined once: the Room's tokens, good defaults
+   for bare elements, and classes for product UI; the tool description
+   tells the model the classes. The frame is opaque-origin under the
+   Room's CSP, so nothing external loads; the kit is why pages look
+   designed. Pin kind `web` is a live iframe (localhost app,
    site, or a search engine as a browser); the Room strips X-Frame-Options
    and frame-ancestors for subframes so sites show.
    Between utterances Kik keeps an inner note (`reflectNow()`, five

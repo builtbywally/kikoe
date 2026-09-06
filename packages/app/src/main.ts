@@ -36,6 +36,7 @@ import {
   saveSettings,
   settingsPath,
   uninstallHooks,
+  withKit,
 } from "@kikoe/daemon";
 import {
   BrowserWindow,
@@ -983,6 +984,18 @@ if (!app.requestSingleInstanceLock()) {
         repo: "storefront",
         ask: ["apply", "no"],
         wait_s: 90,
+      });
+      // a page Kik wrote, with the kit: the shot shows what a designed artboard looks like
+      daemon?.board.add({
+        kind: "html",
+        title: "Sign in",
+        body: withKit(
+          '<!doctype html><html><head><title>Sign in</title></head><body><div class="narrow"><div class="card stack"><div class="row center"><span class="avatar big">W</span></div><h1 class="center">Welcome back</h1><p class="muted center">Sign in to reach your wallet from any device.</p><div class="field"><label>Email</label><input placeholder="you@example.com"></div><div class="field"><label>Password</label><input type="password" placeholder="Your password"></div><label class="check"><input type="checkbox"> Keep me signed in</label><button class="primary block big">Sign in</button><p class="dim center"><small>No account? <a href="#">Create one</a></small></p></div></div></body></html>',
+        ),
+        repo: "kik",
+        by: "kik",
+        size: "wide",
+        h: 620,
       });
       // a live web card, framing the daemon itself so the shot needs no network
       daemon?.board.add({

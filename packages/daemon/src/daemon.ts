@@ -48,6 +48,7 @@ import {
   viewerToken,
 } from "./config.js";
 import { Hub } from "./hub.js";
+import { KIT_GUIDE, withKit } from "./kit.js";
 import { Board } from "./pins.js";
 import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
@@ -1369,8 +1370,7 @@ export class Daemon {
       },
       {
         name: "create_artifact",
-        description:
-          "Put something on the user's canvas: a checklist (one item per line, '- [ ] item'), a note, a markdown document, a table (markdown table), a diagram (one 'a -> b' edge per line, '*x' marks the current node, 'note: …' adds a note), an SVG you draw, a small self-contained HTML page (interactive is fine, it runs sandboxed), or a live web page (kind web, body is the URL: an app running on localhost, a site, or a search engine to give the user a browser). Returns the id. Use sticky for anything the user will want tomorrow.",
+        description: `Put something on the user's canvas: a checklist (one item per line, '- [ ] item'), a note, a markdown document, a table (markdown table), a diagram (one 'a -> b' edge per line, '*x' marks the current node, 'note: …' adds a note), an SVG you draw, a small self-contained HTML page (interactive is fine, it runs sandboxed), or a live web page (kind web, body is the URL: an app running on localhost, a site, or a search engine to give the user a browser). Returns the id. Use sticky for anything the user will want tomorrow. ${KIT_GUIDE}`,
         input_schema: {
           type: "object",
           properties: {
@@ -1396,6 +1396,7 @@ export class Daemon {
             if (!/^https?:\/\//i.test(body))
               return "web needs a URL starting with http:// or https://";
           }
+          if (kind === "html") body = withKit(body);
           if (kind === "diagram") {
             // boxes and arrows in, vectors out, as the show route does
             const svg = diagramToSvg(body);
@@ -1448,7 +1449,9 @@ export class Daemon {
                 ? undefined
                 : asSvg
                   ? diagramToSvg(String(i.body)) || String(i.body)
-                  : String(i.body),
+                  : target?.kind === "html"
+                    ? withKit(String(i.body))
+                    : String(i.body),
             sticky: i.sticky === undefined ? undefined : Boolean(i.sticky),
             near: i.near === undefined ? undefined : String(i.near),
             size: i.wide === undefined ? undefined : i.wide ? "wide" : "normal",

@@ -119,3 +119,17 @@ describe("artboards and stickies", () => {
     expect(again.get("x")?.size).toBe("normal");
   });
 });
+
+describe("the artboard kit", () => {
+  it("is inlined once into every html page, wherever the head is", async () => {
+    const { withKit, KIT_MARK } = await import("../src/kit.js");
+    const page = withKit(
+      "<!doctype html><html><head><title>t</title></head><body><button>Go</button></body></html>",
+    );
+    expect(page.indexOf(KIT_MARK)).toBeGreaterThan(page.indexOf("<head>"));
+    expect(page.indexOf(KIT_MARK)).toBeLessThan(page.indexOf("<title>"));
+    expect(withKit(page)).toBe(page);
+    expect(withKit("<div>bare</div>").startsWith(`<style ${KIT_MARK}>`)).toBe(true);
+    expect(withKit("<html><body>x</body></html>")).toContain(`<head><style ${KIT_MARK}>`);
+  });
+});
