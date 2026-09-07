@@ -204,10 +204,24 @@ function renderAgents() {
     hint.textContent = `${pins.length} pin${pins.length === 1 ? "" : "s"} · drag to look around`;
     el.agents.append(hint);
   }
+  renderProject(rows.length);
+}
+
+/**
+ * Which board you are on, in the corner beside the mode.
+ *
+ * With thirteen projects the answer to "why is my canvas empty" has to be
+ * visible without asking, and saying the name is how you get back.
+ */
+function renderProject(agents) {
+  const n = agents ?? Object.keys(state?.sessions ?? {}).length;
+  const name = state?.project?.name || "";
   el.cornerLeft.textContent = "";
-  for (const t of [mode, `${rows.length} agent${rows.length === 1 ? "" : "s"}`]) {
+  for (const t of [name, mode, `${n} agent${n === 1 ? "" : "s"}`]) {
+    if (!t) continue;
     const s = document.createElement("span");
     s.textContent = t;
+    if (t === name) s.className = "project";
     el.cornerLeft.append(s);
   }
 }
@@ -1190,7 +1204,26 @@ const handlers = {
     renderBoard();
     if (el.body.dataset.view === "control") showControl();
   },
+  /**
+   * Another project's board, whole, in one frame so the swap is one render
+   * rather than a flicker of cards arriving.
+   */
+  project(f) {
+    state.project = { id: f.id, name: f.name, all: f.projects ?? [] };
+    pins = Array.isArray(f.pins) ? f.pins : [];
+    asking = pins.find((p) => p.ask?.length && p.answer === null)?.id ?? null;
+    window.board?.reset();
+    renderBoard();
+    renderAgents();
+    renderProject();
+  },
   pin(f) {
+    // A card for a project you are not looking at still exists; it is just
+    // not on this screen. You see it when you open that project.
+    const here = state.project?.id;
+    if (f.op === "add" && here !== undefined && f.project !== undefined && f.project !== here) {
+      return;
+    }
     if (f.op === "add" && f.pin) {
       pins = [...pins.filter((p) => p.id !== f.pin.id), f.pin];
       if (f.pin.ask.length) asking = f.pin.id;

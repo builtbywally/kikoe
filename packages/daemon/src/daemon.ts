@@ -13,6 +13,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -50,6 +51,7 @@ import {
 import { Hub } from "./hub.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
 import { Board } from "./pins.js";
+import { Projects, slug } from "./projects.js";
 import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
 import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
@@ -212,6 +214,8 @@ export class Daemon {
   readonly adapter: ClaudeCodeAdapter;
   readonly history: SpokenRecord[] = [];
   readonly board: Board;
+  /** a name, some folders, a board; the Room shows one at a time */
+  readonly projects = new Projects();
   /** the agent's work, as cards: diffs, commands, results, replies */
   readonly work: Work;
   /** what is left of each assistant's limit; the island's rings read this */
@@ -304,13 +308,23 @@ export class Daemon {
       this.presence = this.presenceFromDisk();
       this.innerNote = this.innerFromDisk();
     }
-    this.board = new Board((e) => {
-      this.hub.publish("pin", { ...e });
-      if (this.persistBoard) this.saveBoardSoon();
-    });
-    if (this.persistBoard) this.loadBoard();
+    this.board = new Board(
+      (e) => {
+        // Every pin says whose board it is on, so the Room can ignore one
+        // that belongs to a project you are not looking at.
+        this.hub.publish("pin", { ...e, project: e.pin?.project ?? "" });
+        if (this.persistBoard) this.saveBoardSoon(e.pin?.project);
+      },
+      undefined,
+      () => this.projects.current.id,
+    );
+    if (this.persistBoard) {
+      this.loadProjects();
+      this.loadBoard();
+    }
     this.work = new Work({
       board: this.board,
+      projectOf: (e) => this.projects.of(e.cwd, e.repo).id,
       focus: (id) => this.hub.publish("focus", { id }),
       log,
     });
@@ -360,6 +374,7 @@ export class Daemon {
   /** One agent event through the whole pipe. Returns how many lines were queued. */
   ingest(e: ev.AgentEvent): number {
     this.eventsSeen++;
+    if (this.persistBoard) this.rememberProject(e.cwd, e.repo);
     this.tracker.apply(e);
     // Hooks mean the user is at the desk driving agents, even if silent.
     this.presence.seen = Date.now();
@@ -1175,33 +1190,198 @@ export class Daemon {
     }
   }
 
-  // --- the board on disk: sticky pins survive a restart ---------------------------
+  // --- boards on disk: one per project, back the way it was left ------------------
+  //
+  // A board used to be one file and the renderer's own note said it was "as
+  // ephemeral as speech": positions lived in a Map and died on reload. That
+  // was right for a whiteboard and wrong for a workspace, so pins now carry
+  // x and y and each project keeps its own file.
   private boardTimer: NodeJS.Timeout | null = null;
   private readonly persistBoard: boolean;
-  private boardFile(): string {
+  private readonly dirtyBoards = new Set<string>();
+  /** the single board from before projects; read once, then left alone */
+  private legacyBoardFile(): string {
     return path.join(HOME, "board.json");
   }
-  private loadBoard(): void {
+  private boardsDir(): string {
+    return path.join(HOME, "boards");
+  }
+  private boardFile(project: string): string {
+    return path.join(this.boardsDir(), `${project || "kik"}.json`);
+  }
+  private projectsFile(): string {
+    return path.join(HOME, "projects.json");
+  }
+
+  private loadProjects(): void {
     try {
-      if (!existsSync(this.boardFile())) return;
-      const n = this.board.load(JSON.parse(readFileSync(this.boardFile(), "utf8")));
-      if (n) log(`board: ${n} pins back from disk`);
+      if (!existsSync(this.projectsFile())) return;
+      const n = this.projects.load(JSON.parse(readFileSync(this.projectsFile(), "utf8")));
+      if (n) log(`projects: ${n} back from disk, current ${this.projects.current.id}`);
     } catch (e) {
-      log(`board: could not read ${this.boardFile()}: ${(e as Error).message}`);
+      log(`projects: could not read: ${(e as Error).message}`);
     }
   }
-  private saveBoardSoon(): void {
+
+  /**
+   * The projects sitting beside the ones we already know.
+   *
+   * A project registers itself the first time a hook arrives from it, which
+   * is fine except that "open Marine" then fails until an agent has run in
+   * Marine — and the whole point is to open a board before there is anything
+   * on it. So when a folder becomes a project, its siblings become projects
+   * too: one directory listing, no file is read, and only folders that are
+   * repos count. Nothing is scanned that is not next door to somewhere the
+   * user has already run an agent.
+   */
+  discoverSiblings(root: string): number {
+    if (!root) return 0;
+    const parent = path.dirname(root);
+    if (!parent || parent === root) return 0;
+    let found = 0;
+    try {
+      for (const entry of readdirSync(parent, { withFileTypes: true }).slice(0, 60)) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+        const dir = path.join(parent, entry.name);
+        if (!existsSync(path.join(dir, ".git"))) continue;
+        const known = this.projects.get(slug(entry.name));
+        this.projects.of(dir, entry.name);
+        if (!known) found++;
+      }
+    } catch (e) {
+      log(`projects: could not look beside ${parent}: ${(e as Error).message}`);
+    }
+    return found;
+  }
+
+  private readonly scanned = new Set<string>();
+
+  /** A hook came from somewhere; make sure that place, and its neighbours, exist. */
+  private rememberProject(cwd: string, repo: string): void {
+    if (!cwd) return;
+    const p = this.projects.of(cwd, repo);
+    const root = p.roots[0] ?? cwd;
+    if (this.scanned.has(root)) return;
+    this.scanned.add(root);
+    const n = this.discoverSiblings(root);
+    if (n) log(`projects: found ${n} beside ${p.id}`);
+    this.saveProjects();
+  }
+
+  private saveProjects(): void {
+    if (!this.persistBoard) return;
+    try {
+      mkdirSync(HOME, { recursive: true });
+      writeFileSync(this.projectsFile(), JSON.stringify(this.projects.toJSON()));
+    } catch (e) {
+      log(`projects: could not write: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Every project's board, and the old single board once.
+   *
+   * The migration is deliberately non-destructive: `board.json` is read and
+   * left where it is, so a downgrade still finds its pins.
+   */
+  private loadBoard(): void {
+    try {
+      if (existsSync(this.boardsDir())) {
+        let n = 0;
+        for (const f of readdirSync(this.boardsDir())) {
+          if (!f.endsWith(".json")) continue;
+          const id = f.slice(0, -5);
+          this.projects.ensure(id, "");
+          n += this.board.load(JSON.parse(readFileSync(path.join(this.boardsDir(), f), "utf8")));
+        }
+        if (n) log(`boards: ${n} pins back from disk`);
+        return;
+      }
+      if (!existsSync(this.legacyBoardFile())) return;
+      const raw = JSON.parse(readFileSync(this.legacyBoardFile(), "utf8"));
+      const n = this.board.load(raw);
+      if (n) {
+        // Pins from before projects have no project; they belong to whatever
+        // is current, which on a first run is the only one there is.
+        const here = this.projects.current.id;
+        for (const p of this.board.list()) if (!p.project) p.project = here;
+        for (const id of this.board.projects()) this.dirtyBoards.add(id);
+        this.saveBoardSoon();
+        log(`boards: migrated ${n} pins from board.json into ${here}`);
+      }
+    } catch (e) {
+      log(`boards: could not read: ${(e as Error).message}`);
+    }
+  }
+
+  private saveBoardSoon(project?: string): void {
+    if (project !== undefined) this.dirtyBoards.add(project);
+    else for (const id of this.board.projects()) this.dirtyBoards.add(id);
     if (this.boardTimer) return;
     this.boardTimer = setTimeout(() => {
       this.boardTimer = null;
+      const todo = [...this.dirtyBoards];
+      this.dirtyBoards.clear();
       try {
-        mkdirSync(HOME, { recursive: true });
-        writeFileSync(this.boardFile(), JSON.stringify(this.board.toJSON()));
+        mkdirSync(this.boardsDir(), { recursive: true });
+        for (const id of todo) {
+          writeFileSync(this.boardFile(id), JSON.stringify(this.board.toJSON(id)));
+        }
       } catch (e) {
-        log(`board: could not write: ${(e as Error).message}`);
+        log(`boards: could not write: ${(e as Error).message}`);
       }
     }, 300);
     this.boardTimer.unref();
+  }
+
+  /**
+   * Whose board a new pin belongs on.
+   *
+   * Kik's own artifacts go on the board you are looking at — it made them for
+   * this conversation. An agent's pin goes to the project its repo names, if
+   * that is a project, and otherwise keeps you company on the current one.
+   */
+  projectFor(repo?: string): string {
+    if (repo && repo !== "kik") {
+      const p = this.projects.resolve(repo);
+      if (p) return p.id;
+    }
+    return this.projects.current.id;
+  }
+
+  /**
+   * Look at another project: the whole Room swaps. Everything else keeps
+   * running — an agent in a project you are not watching still works, still
+   * makes cards, and can still interrupt you for a permission.
+   */
+  openProject(spoken: string): string {
+    const found = this.projects.resolve(spoken);
+    if (!found) {
+      const names = this.projects
+        .all()
+        .slice(0, 4)
+        .map((p) => p.name)
+        .join(", ");
+      return names ? `no project by that name; there is ${names}` : "no projects yet";
+    }
+    this.projects.open(found.id);
+    // What the ear called it, so the next time is direct rather than fuzzy.
+    this.projects.learn(found.id, spoken);
+    this.saveProjects();
+    this.publishProject();
+    log(`project: opened ${found.id}`);
+    return `opened ${found.name}`;
+  }
+
+  /** The whole board for the current project, in one frame, so a swap is one render. */
+  publishProject(): void {
+    const p = this.projects.current;
+    this.hub.publish("project", {
+      id: p.id,
+      name: p.name,
+      pins: this.board.list(p.id),
+      projects: this.projects.all().map((x) => ({ id: x.id, name: x.name })),
+    });
   }
 
   /** The user typed to Kik on the canvas: addressed, no name needed. */
@@ -1499,6 +1679,7 @@ export class Daemon {
             kind,
             title: String(i.title ?? ""),
             body,
+            project: this.projects.current.id,
             repo: "kik",
             by: "kik",
             sticky: Boolean(i.sticky),
@@ -1585,6 +1766,7 @@ export class Daemon {
             kind: "react",
             title: String(i.title ?? ""),
             body: code,
+            project: this.projects.current.id,
             repo: "kik",
             by: "kik",
             sticky: Boolean(i.sticky),
@@ -1657,6 +1839,17 @@ export class Daemon {
         run: (i) => (this.board.remove(String(i.id ?? "")) ? "removed" : "no such pin"),
       },
       {
+        name: "open_project",
+        description:
+          "Show another project's board. Each project keeps its own canvas, arranged the way the user left it. Use it when they ask to switch, open, or go to a project by name, or when what they want is clearly about another one. The agents in other projects keep running either way.",
+        input_schema: {
+          type: "object",
+          properties: { name: str("the project, as the user said it") },
+          required: ["name"],
+        },
+        run: (i) => this.openProject(String(i.name ?? "")),
+      },
+      {
         name: "point_at",
         description:
           "Take the user to something on the canvas: it pans there and pulses. Use it whenever you talk about a card.",
@@ -1693,6 +1886,7 @@ export class Daemon {
             kind: "markdown",
             title: "your call",
             body: question,
+            project: this.projects.current.id,
             repo: "kik",
             by: "kik",
             ask: options,
@@ -1774,6 +1968,7 @@ export class Daemon {
             kind: "text",
             title: String(i.title ?? "note"),
             body: String(i.body ?? ""),
+            project: this.projects.current.id,
             repo: "kikoe",
           });
           return "pinned";
@@ -1850,9 +2045,14 @@ export class Daemon {
         return undefined;
       case "repeat":
         return this.lastRepeatable || "I haven't said anything yet.";
-      case "focus":
+      case "focus": {
+        // "switch to marine" has routed here since the beginning and only ever
+        // published a frame the Room ignored. Now it moves the whole board,
+        // and it does it in the rulebook, so it works with no key.
+        const said = this.openProject(arg);
         this.hub.publish("view", { view: "room", focus: arg });
-        return `${arg}.`;
+        return `${said}.`;
+      }
       case "shutdown":
         this.hub.publish("control", { intent: "shutdown" });
         return "Goodbye.";
@@ -1952,7 +2152,13 @@ export class Daemon {
       hub_subscribers: this.hub.count,
       history: [...this.history].reverse(),
       latency: this.latency(),
-      pins: this.board.list(),
+      // The Room shows one project, so the state it starts from is that one.
+      pins: this.board.list(this.projects.current.id),
+      project: {
+        id: this.projects.current.id,
+        name: this.projects.current.name,
+        all: this.projects.all().map((p) => ({ id: p.id, name: p.name })),
+      },
       asking: this.board.asking()?.id ?? null,
       mic: { phase: this.micPhase, device: this.micDevice, enabled: this.settings.mic },
       heard: [...this.heardLog].reverse(),
@@ -2126,6 +2332,8 @@ export class Daemon {
         size: b.wide === true ? "wide" : b.wide === false ? "normal" : undefined,
         w: typeof b.w === "number" ? b.w : undefined,
         h: typeof b.h === "number" ? b.h : undefined,
+        x: typeof b.x === "number" ? b.x : undefined,
+        y: typeof b.y === "number" ? b.y : undefined,
       });
       return this.json(res, p ? 200 : 404, { ok: Boolean(p) });
     }
@@ -2252,6 +2460,9 @@ export class Daemon {
         if (!init.body.trim() && init.kind !== "image")
           return this.json(res, 400, { error: "nothing to show" });
         if (!init.repo) init.repo = this.lastSpokeRepo;
+        // A pusher names a repo, not a project. If that repo is a project, the
+        // card goes to its board; otherwise it lands where you are looking.
+        if (!init.project) init.project = this.projectFor(init.repo);
         if (init.kind === "diagram") {
           // The agent writes boxes and arrows; the board gets vectors.
           const svg = diagramToSvg(init.body);
@@ -2293,7 +2504,13 @@ export class Daemon {
       }
       case "GET /pins":
         return this.json(res, 200, {
-          pins: this.board.list(),
+          // ?project=all for every board; by default, the one on screen
+          pins: this.board.list(
+            url.searchParams.get("project") === "all"
+              ? undefined
+              : url.searchParams.get("project") || this.projects.current.id,
+          ),
+          project: this.projects.current.id,
           asking: this.board.asking()?.id ?? null,
         });
       case "POST /pins/clear":

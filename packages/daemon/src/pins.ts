@@ -50,6 +50,9 @@ export interface Pin {
   kind: PinKind;
   title: string;
   body: string;
+  /** whose board it belongs to; the Room shows one project at a time */
+  project: string;
+  /** the frame it sits in, within that project */
   repo: string;
   session: string;
   /** which budget it lives in: Kik's whiteboard, or the agent's work feed */
@@ -72,6 +75,13 @@ export interface Pin {
   /** a size the user dragged it to, in canvas pixels; 0 is automatic */
   w: number;
   h: number;
+  /**
+   * Where the user put it, in canvas pixels. 0,0 means "you decide" and the
+   * board lays it out; anything else is an arrangement it must not undo.
+   * This is what makes a board come back the way it was left.
+   */
+  x: number;
+  y: number;
   /** the answers offered, when this pin is a question */
   ask: string[];
   answer: string | null;
@@ -90,6 +100,7 @@ export interface PinInit {
   kind?: string | undefined;
   title?: string | undefined;
   body: string;
+  project?: string | undefined;
   repo?: string | undefined;
   session?: string | undefined;
   stream?: PinStream | undefined;
@@ -101,6 +112,8 @@ export interface PinInit {
   size?: "normal" | "wide" | undefined;
   w?: number | undefined;
   h?: number | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
   ask?: string[] | undefined;
   wait_s?: number | undefined;
 }
@@ -114,6 +127,8 @@ export interface PinPatch {
   size?: "normal" | "wide" | undefined;
   w?: number | undefined;
   h?: number | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
 }
 
 let counter = 0;
@@ -126,17 +141,40 @@ function kindOf(kind: string | undefined): PinKind {
   return (KINDS as readonly string[]).includes(kind ?? "") ? (kind as PinKind) : "text";
 }
 
+/** The canvas runs in every direction, so a position may be negative. */
+const MAX_POS = 200_000;
+function clampPos(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(Math.max(-MAX_POS, Math.min(MAX_POS, n)));
+}
+
 export class Board {
   private pins: Pin[] = [];
   private waiters = new Map<string, (answer: string) => void>();
   constructor(
     private emit: (e: PinEvent) => void,
     private now: () => number = () => Date.now() / 1000,
+    /**
+     * Whose board a pin belongs to when the caller does not say.
+     *
+     * Without this a pin added with no project sits on a board nobody is
+     * looking at and is simply invisible, which is a horrible way to find
+     * out you forgot a field. Silence means "the board in front of me".
+     */
+    private defaultProject: () => string = () => "",
   ) {}
 
-  list(): Pin[] {
+  /** Everything, or one project's board. */
+  list(project?: string): Pin[] {
     this.sweep();
-    return [...this.pins];
+    const all = [...this.pins];
+    return project === undefined ? all : all.filter((p) => p.project === project);
+  }
+
+  /** Which projects have anything on them right now. */
+  projects(): string[] {
+    return [...new Set(this.pins.map((p) => p.project))];
   }
 
   get(id: string): Pin | undefined {
@@ -149,6 +187,7 @@ export class Board {
       kind: kindOf(init.kind),
       title: (init.title ?? "").slice(0, 120),
       body: init.body.slice(0, MAX_BODY),
+      project: init.project || this.defaultProject(),
       repo: init.repo ?? "",
       session: init.session ?? "",
       stream: init.stream === "work" ? "work" : "board",
@@ -162,6 +201,8 @@ export class Board {
       size: init.size === "wide" ? "wide" : "normal",
       w: Math.max(0, Math.min(4000, Number(init.w ?? 0))),
       h: Math.max(0, Math.min(4000, Number(init.h ?? 0))),
+      x: Number(init.x ?? 0) || 0,
+      y: Number(init.y ?? 0) || 0,
       ask: (init.ask ?? [])
         .map((a) => a.trim().toLowerCase())
         .filter(Boolean)
@@ -171,7 +212,7 @@ export class Board {
     };
     this.pins.push(pin);
     if (pin.stream === "work") this.evictWork(pin.session);
-    else this.evict();
+    else this.evict(pin.project);
     this.emit({ op: "add", pin });
     return pin;
   }
@@ -188,6 +229,9 @@ export class Board {
     if (patch.size !== undefined) pin.size = patch.size === "wide" ? "wide" : "normal";
     if (patch.w !== undefined) pin.w = Math.max(0, Math.min(4000, Number(patch.w) || 0));
     if (patch.h !== undefined) pin.h = Math.max(0, Math.min(4000, Number(patch.h) || 0));
+    // A position can be negative: the canvas runs in every direction.
+    if (patch.x !== undefined) pin.x = clampPos(patch.x);
+    if (patch.y !== undefined) pin.y = clampPos(patch.y);
     pin.updated = this.now();
     this.emit({ op: "update", pin, id });
     return pin;
@@ -276,9 +320,12 @@ export class Board {
    * For the file on disk: what survives a restart. The work feed does not
    * yet — it belongs to a session that is over by the time we come back.
    */
-  toJSON(): Pin[] {
+  toJSON(project?: string): Pin[] {
     return this.pins.filter(
-      (p) => p.stream !== "work" && (p.sticky || this.now() - p.created < p.ttl_s),
+      (p) =>
+        p.stream !== "work" &&
+        (project === undefined || p.project === project) &&
+        (p.sticky || this.now() - p.created < p.ttl_s),
     );
   }
 
@@ -300,6 +347,7 @@ export class Board {
         kind: kindOf(p.kind),
         title: String(p.title ?? "").slice(0, 120),
         body: p.body.slice(0, MAX_BODY),
+        project: String(p.project ?? ""),
         repo: String(p.repo ?? ""),
         session: String(p.session ?? ""),
         stream: p.stream === "work" ? "work" : "board",
@@ -313,6 +361,8 @@ export class Board {
         size: p.size === "wide" ? "wide" : "normal",
         w: Number(p.w ?? 0) || 0,
         h: Number(p.h ?? 0) || 0,
+        x: clampPos(p.x),
+        y: clampPos(p.y),
         ask: Array.isArray(p.ask) ? p.ask.map(String) : [],
         answer: typeof p.answer === "string" ? p.answer : null,
         wait_s: Number(p.wait_s ?? 0),
@@ -342,11 +392,17 @@ export class Board {
     }
   }
 
-  private evict(): void {
-    while (this.pins.filter((p) => p.stream === "board").length > MAX_PINS) {
+  /**
+   * The whiteboard, trimmed. Per project: twenty-four is a board a person can
+   * hold in their head, and with thirteen projects a single limit across all
+   * of them would mean opening one board emptied another.
+   */
+  private evict(project: string): void {
+    const mine = () => this.pins.filter((p) => p.stream === "board" && p.project === project);
+    while (mine().length > MAX_PINS) {
       // The oldest pin of whichever repo has the most, then the oldest overall.
       // Work pins are a separate budget and are never taken to make room here.
-      const loose = this.pins.filter((p) => !p.sticky && p.stream === "board");
+      const loose = mine().filter((p) => !p.sticky);
       if (!loose.length) return;
       const counts = new Map<string, number>();
       for (const p of loose) counts.set(p.repo, (counts.get(p.repo) ?? 0) + 1);

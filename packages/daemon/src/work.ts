@@ -55,6 +55,8 @@ export const MAX_DIFF = 60_000;
 
 export interface WorkOptions {
   board: Board;
+  /** whose board this event's work belongs on */
+  projectOf?: (e: AgentEvent) => string;
   /** told when a card is worth pulling the canvas to */
   focus?: (id: string) => void;
   log?: (line: string) => void;
@@ -138,6 +140,7 @@ export function worthShowing(cmd: string, failed: boolean): boolean {
 
 export class Work {
   private readonly board: Board;
+  private readonly projectOf: (e: AgentEvent) => string;
   private readonly focus: (id: string) => void;
   private readonly log: (line: string) => void;
   /** session -> where we are in it */
@@ -145,6 +148,7 @@ export class Work {
 
   constructor(o: WorkOptions) {
     this.board = o.board;
+    this.projectOf = o.projectOf ?? ((e) => e.repo);
     this.focus = o.focus ?? (() => {});
     this.log = o.log ?? (() => {});
   }
@@ -165,6 +169,7 @@ export class Work {
       kind: init.kind,
       title: init.title,
       body: init.body,
+      project: this.projectOf(e),
       repo: e.repo,
       session: e.session,
       stream: "work",

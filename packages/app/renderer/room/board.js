@@ -1,9 +1,16 @@
 // The board as a canvas: an infinite surface you pan and zoom, with one
 // labelled frame per repo and pins you can drag. It is the agent's
 // whiteboard, so nothing on it is editable; moving a pin is arranging, not
-// editing. Nothing here is persisted: the board is as ephemeral as speech.
+// editing.
 //
-// Exposes window.board = { render(pins), fit(), zoomTo(k), zoom }.
+// This file used to end that paragraph with "nothing here is persisted: the
+// board is as ephemeral as speech", and that was true and deliberate. It
+// stopped being true on 2026-09-07, when boards became per project: where you
+// drag a card is now saved with it, so opening a project gives you back the
+// arrangement you left. Layout is still derived for anything you have not
+// touched — the difference is that a decision you made by hand survives.
+//
+// Exposes window.board = { render(pins), fit(), focus(id), reset(), zoomTo(k), zoom }.
 
 (() => {
   const FRAME_W = 560;
@@ -132,7 +139,16 @@
     }
   });
   const endDrag = () => {
-    if (dragging?.kind === "pin") dragging.pin.classList.remove("dragging");
+    if (dragging?.kind === "pin") {
+      dragging.pin.classList.remove("dragging");
+      // Where you put it is part of the board now. The grip has always saved
+      // a size this way; a position is the same promise.
+      const id = dragging.pin.dataset.id;
+      const pos = positions.get(id);
+      if (pos && !String(id).startsWith("conversation") && !LIVE.has(dragging.pin.dataset.kind)) {
+        window.room.updatePin?.(id, { x: Math.round(pos.x), y: Math.round(pos.y) });
+      }
+    }
     canvas.classList.remove("panning");
     dragging = null;
   };
@@ -186,6 +202,15 @@
    */
   function place(pin, el) {
     if (positions.has(pin.id)) return positions.get(pin.id);
+    // A pin that remembers where it was put goes back there, and is never
+    // laid out or settled again. This is what makes a board a workspace
+    // rather than a whiteboard that forgets overnight.
+    if (pin.x || pin.y) {
+      const pos = { x: pin.x, y: pin.y };
+      positions.set(pin.id, pos);
+      moved.add(pin.id);
+      return pos;
+    }
     const col = columnOf(pin.repo || "");
     const x = col * (FRAME_W + FRAME_GAP);
     // A sticky beside its card: to the right of it, top aligned, out of the column flow.
@@ -436,10 +461,32 @@
     return true;
   }
 
+  /**
+   * Another project's board. Everything the canvas remembers about this one
+   * goes — positions, which cards the user arranged, the column each repo
+   * was given — because none of it means anything on the next board, and a
+   * stale column would put a new project's cards in a gap.
+   */
+  function reset() {
+    positions.clear();
+    moved.clear();
+    columns.clear();
+    built.clear();
+    // `first` is derived from an empty lastPins, so clearing it is what makes
+    // the next render fit the new board rather than keeping this one's view.
+    lastPins = [];
+    panX = 0;
+    panY = 0;
+    zoom = 1;
+    for (const el of world.querySelectorAll(".pin, .frame")) el.remove();
+    apply();
+  }
+
   window.board = {
     render,
     fit,
     focus,
+    reset,
     zoomTo: (k) => zoomAt(k, canvas.clientWidth / 2, canvas.clientHeight / 2),
     get zoom() {
       return zoom;

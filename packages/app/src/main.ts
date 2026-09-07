@@ -618,6 +618,8 @@ ipcMain.handle("room:updatePin", (_e, id: string, patch: Record<string, unknown>
       size: patch.wide === true ? "wide" : patch.wide === false ? "normal" : undefined,
       w: typeof patch.w === "number" ? patch.w : undefined,
       h: typeof patch.h === "number" ? patch.h : undefined,
+      x: typeof patch.x === "number" ? patch.x : undefined,
+      y: typeof patch.y === "number" ? patch.y : undefined,
     }),
   ),
 }));
@@ -1081,6 +1083,9 @@ if (!app.requestSingleInstanceLock()) {
         by: "kik",
         size: "wide",
       });
+      // The work above arrived from this repo, so it is on this repo's board.
+      // Open it, the way saying its name would, so the shot is of a project.
+      daemon?.openProject("kikoe");
       await new Promise((r) => setTimeout(r, 2500));
       const img = await roomWin?.webContents.capturePage();
       if (img) writeFileSync(shotPath, img.toPNG());

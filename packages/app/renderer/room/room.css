@@ -316,6 +316,12 @@ body[data-idle="true"] .line-text {
   left: 28px;
   gap: 18px;
 }
+/* Which board you are on. Brighter than the mode beside it, because with
+   thirteen projects this is the answer to "why is my canvas empty". */
+.corner.left .project {
+  color: rgba(var(--fg-rgb), 0.72);
+  letter-spacing: 0.04em;
+}
 
 /* the board: E on the canvas. A dot-grid surface you pan and zoom, region
    labels faint at the top-left of each repo's frame, cards floating where

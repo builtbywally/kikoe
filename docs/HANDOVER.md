@@ -205,6 +205,55 @@ a terminal.
   line 20 from the same change at line 900, and multi-hunk diffs ran
   together.
 
+## Projects: a board each, switched by voice (2026-09-07)
+
+The second slice of the ADE work. `docs/REVIEW-2026-09-05.md:126-130` asked
+for it in the user's own words — *"a project is a name, a set of repos, a
+voice, a board. 'Switch to storefront' by voice or click moves the whole
+Room."*
+
+- **`daemon/src/projects.ts`.** A project is an id, a name, aliases, and
+  folders. `of(cwd, repo)` finds the one a working directory belongs to,
+  longest root first, and makes it if it is new. `resolve(spoken)` goes
+  exact, then alias, then prefix, then within one edit — the ear will not
+  spell "Marine" the way the folder does, and a refused right answer costs
+  more than a wrong one. `learn()` keeps what the ear called it, so the
+  second time is direct.
+- **They find themselves.** Nobody is going to register thirteen folders by
+  hand, so when a hook arrives from a folder, `discoverSiblings()` lists
+  its parent **once** and registers every sibling that is a git repo. One
+  directory listing, no file is read, and nothing is looked at that is not
+  next door to somewhere an agent has already run. Without this, "open
+  Marine" failed until you had run an agent in Marine, which is backwards.
+- **`Pin` gained `project`, `x` and `y`.** Boards live in
+  `~/.kikoe/boards/<project>.json`, one file each, written only when that
+  project changed. `board.json` is read once and **left in place** — a
+  downgrade still finds its pins.
+- **Eviction is per project.** `MAX_PINS = 24` across thirteen projects
+  would mean opening one board emptied another; `evict(project)` only ever
+  looks at one board's own pins.
+- **The switch works without a key.** `"switch to marine"` has routed to a
+  `focus` control since the beginning and only ever published a frame the
+  Room ignored; it now moves the board, in the rulebook, so it works with
+  the model off. `open_project` is the same thing as a brain tool.
+- **A `project` frame** carries the whole board in one message, so a swap is
+  one render rather than cards trickling in. `board.reset()` drops
+  positions, columns and the arranged-by-hand set, because none of it means
+  anything on the next board.
+- **The rules for a project you are not looking at**, which are the ones to
+  get right: the daemon never stops ingesting, Kik still speaks about every
+  project, a permission from anywhere still takes the line, and switching
+  destroys nothing — the other board is on disk exactly as you left it.
+- `board.js`'s header used to end "nothing here is persisted: the board is
+  as ephemeral as speech". That was deliberate and it is now false; the
+  comment says so and says why.
+
+Storage is JSON per project, **not** SQLite as the plan said. The data is a
+few dozen pins per board, `board.json` already proved the shape, and
+`node:sqlite` does not exist on Node 20 — which CI still builds. SQLite
+earns its place when the heard log and history arrive, which are the things
+JSON would actually be bad at.
+
 ## The artifact runtime, actually running real artifacts (2026-09-07)
 
 Two bugs that made any ordinary artifact fail, found by pasting one in:
