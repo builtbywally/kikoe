@@ -71,6 +71,18 @@ const IDLE_HINTS = ["waiting for your input", "is idle", "idle for"];
 
 export const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
 export const MAX_TEXT = 4000;
+/**
+ * A turn's final reply gets more room than any other text.
+ *
+ * 4000 characters is plenty for something that will be spoken — the narrator
+ * takes the first sentences of it. It is not plenty for something that will
+ * be read on a card, where the whole answer is the point.
+ */
+export const MAX_REPLY = 20_000;
+/** a command's output, kept whole enough to read on a card, not whole enough to hurt */
+export const MAX_OUTPUT = 20_000;
+/** an edit with more hunks than this is a rewrite; show the first of them */
+export const MAX_HUNKS = 200;
 
 /** tool_response / content can be a string, an object, or a list of blocks. */
 export function asText(value: unknown): string {
@@ -90,6 +102,51 @@ export function asText(value: unknown): string {
     return "";
   }
   return String(value);
+}
+
+/**
+ * The same tool response, projected instead of flattened.
+ *
+ * `asText` answers "what should be said about this", and for an Edit the
+ * answer is nothing: none of the keys it looks for exist, so it returns "".
+ * That is correct for the voice and wrong for the canvas, because the very
+ * thing worth showing — the patch Claude Code already computed — is sitting
+ * in `structuredPatch`. This keeps the parts that can be drawn, bounded, and
+ * leaves `asText` alone so narration does not change.
+ */
+export function toolResult(value: unknown): ev.ToolResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const o = value as Record<string, unknown>;
+  const out: ev.ToolResult = {};
+
+  // Bash. stderr has never been read before now, so a failing command showed
+  // as an empty card; it is the half of the output you actually want.
+  if (typeof o.stdout === "string") out.stdout = o.stdout.slice(0, MAX_OUTPUT);
+  if (typeof o.stderr === "string" && o.stderr) out.stderr = o.stderr.slice(0, MAX_OUTPUT);
+  if (o.interrupted) out.interrupted = true;
+
+  // Edit / Write / NotebookEdit.
+  const file = o.filePath ?? o.file_path;
+  if (typeof file === "string" && file) out.filePath = file;
+  if (Array.isArray(o.structuredPatch)) {
+    const hunks: ev.Hunk[] = [];
+    for (const raw of o.structuredPatch.slice(0, MAX_HUNKS)) {
+      if (!raw || typeof raw !== "object") continue;
+      const h = raw as Record<string, unknown>;
+      if (!Array.isArray(h.lines)) continue;
+      hunks.push({
+        oldStart: Number(h.oldStart) || 0,
+        oldLines: Number(h.oldLines) || 0,
+        newStart: Number(h.newStart) || 0,
+        newLines: Number(h.newLines) || 0,
+        lines: h.lines.map((l) => String(l)),
+      });
+    }
+    if (hunks.length) out.structuredPatch = hunks;
+  }
+  if (o.userModified) out.userModified = true;
+
+  return out;
 }
 
 /**
@@ -177,6 +234,7 @@ export class ClaudeCodeAdapter {
     let text = "";
     let tool = "";
     let args: Record<string, unknown> = {};
+    let result: ev.ToolResult = {};
     let status = "";
     let severity = -1;
 
@@ -190,11 +248,15 @@ export class ClaudeCodeAdapter {
       if (kind === ev.TOOL_END) {
         const resp = payload.tool_response ?? payload.toolResponse;
         text = asText(resp).slice(0, MAX_TEXT);
+        result = toolResult(resp);
         if (resp && typeof resp === "object" && !Array.isArray(resp)) {
           status = resp.is_error || resp.error ? "error" : "ok";
         } else if (text) {
           status = "ok";
         }
+        // An edit says nothing through asText, so "did it work" has to come
+        // from the shape of the response rather than from its prose.
+        if (!status && (result.structuredPatch || result.filePath)) status = "ok";
       }
       if (hook === "PostToolUseFailure") {
         // Fires only on failure, so trust it over the response's shape.
@@ -251,7 +313,7 @@ export class ClaudeCodeAdapter {
       // for older versions and payloads that omit the field.
       text = (asText(payload.last_assistant_message) || this.transcriptText(transcript)).slice(
         0,
-        MAX_TEXT,
+        MAX_REPLY,
       );
       if (payload.stop_hook_active) severity = ev.SEV_DEBUG; // re-entrant Stop
     } else if (kind === ev.IDLE) {
@@ -267,6 +329,7 @@ export class ClaudeCodeAdapter {
         text,
         tool,
         args,
+        result,
         status,
         severity,
         meta: { hook, transcript },

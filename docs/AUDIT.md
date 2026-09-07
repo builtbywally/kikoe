@@ -199,6 +199,22 @@ Gaps:
 - The contract is documented in ROOM-PLAN, not in a public page. **later**
   (M5).
 
+## Closed since this was written (2026-09-07)
+
+- **The agent's work is on the canvas.** Diffs per edited file, run cards,
+  test results and the turn's full reply, as a `work` stream beside the
+  whiteboard. See `docs/HANDOVER.md`, "The work feed". This is most of
+  flows 3 and 4 below, minus the voice verbs ("read me the diff", "apply
+  hunks two and four") and the re-run button, which need the project's
+  test command and so wait for per-project boards.
+- **`clearBoard` was broken in the app.** The titlebar and Settings both
+  called it, the IPC handler and the browser shim both had it, and only
+  `preload-room.ts` was missing the line — so it threw in the installed app
+  and worked on the second screen.
+- **The viewport buttons did nothing but resize.** They send `wide: true`;
+  neither update path mapped it to `size`, so a page never became an
+  artboard. Both paths now do.
+
 ## Flows that do not exist yet
 
 1. **Starting an agent from Kik.** "Start a session in the wallet repo"

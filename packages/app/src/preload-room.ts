@@ -54,6 +54,10 @@ contextBridge.exposeInMainWorld("room", {
   removePin: (id: string) => ipcRenderer.invoke("room:removePin", id),
   updatePin: (id: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("room:updatePin", id, patch),
+  // The titlebar and Settings have always called this; the handler and the
+  // browser shim have always had it. Only this line was missing, so the
+  // button threw in the app and worked on the second screen.
+  clearBoard: () => ipcRenderer.invoke("room:clearBoard"),
   sayToKik: (text: string) => ipcRenderer.invoke("room:sayToKik", text),
   native: true,
   /** where the daemon serves pages: a card frames `${base}/artifact/<id>` */

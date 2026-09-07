@@ -54,6 +54,7 @@ import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runti
 import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
 import { UsageStore, defaultProviders } from "./usage.js";
+import { Work } from "./work.js";
 
 const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
 const HISTORY = 50;
@@ -211,6 +212,8 @@ export class Daemon {
   readonly adapter: ClaudeCodeAdapter;
   readonly history: SpokenRecord[] = [];
   readonly board: Board;
+  /** the agent's work, as cards: diffs, commands, results, replies */
+  readonly work: Work;
   /** what is left of each assistant's limit; the island's rings read this */
   readonly usage: UsageStore;
   private lastSpokeRepo = "";
@@ -306,6 +309,11 @@ export class Daemon {
       if (this.persistBoard) this.saveBoardSoon();
     });
     if (this.persistBoard) this.loadBoard();
+    this.work = new Work({
+      board: this.board,
+      focus: (id) => this.hub.publish("focus", { id }),
+      log,
+    });
     this.arbiter = new Arbiter(new LadderSink(this), {
       onSpeech: (phase, info) => {
         this.hub.publish("speech", { phase, ...info });
@@ -398,6 +406,10 @@ export class Daemon {
     // the number has just changed and someone is most likely looking at it.
     this.usage.busy = [...this.tracker.sessions.values()].some((s) => s.status === "working");
     if (e.kind === ev.TURN_END) this.usageSoon();
+    // The work feed last, and on the next tick: a hook is a subprocess sitting
+    // in front of the agent with a three second budget, and it has already
+    // been answered by the time we get here. Cards are never worth a stall.
+    queueMicrotask(() => this.work.ingest(e));
     return queued;
   }
 
@@ -2109,6 +2121,9 @@ export class Daemon {
         body: typeof b.body === "string" ? b.body : undefined,
         kind: typeof b.kind === "string" ? b.kind : undefined,
         sticky: typeof b.sticky === "boolean" ? b.sticky : undefined,
+        // The card's viewport buttons have always sent `wide`; nothing has
+        // ever read it, so a phone-sized page stayed a normal card.
+        size: b.wide === true ? "wide" : b.wide === false ? "normal" : undefined,
         w: typeof b.w === "number" ? b.w : undefined,
         h: typeof b.h === "number" ? b.h : undefined,
       });

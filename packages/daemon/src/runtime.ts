@@ -51,6 +51,17 @@ const HOOKS =
   "useState, useEffect, useMemo, useRef, useCallback, useReducer, useContext, useLayoutEffect, useId, createContext, Fragment, memo, forwardRef";
 
 /**
+ * The names the page already destructures from React before the code runs.
+ *
+ * This matters more than it looks: every artifact written anywhere begins
+ * `import React, { useState } from "react"`, and rewriting that to a second
+ * `const { useState } = React` in the same scope is a redeclaration — a
+ * SyntaxError that blanks the whole card. The pre-destructure wins; a name
+ * already in it is simply dropped from the rewritten import.
+ */
+const PRE_DECLARED: ReadonlySet<string> = new Set(HOOKS.split(",").map((n) => n.trim()));
+
+/**
  * A component file becomes a page: imports become globals, the default
  * export becomes the root, and Babel compiles the JSX in the frame.
  */
@@ -72,7 +83,10 @@ export function wrapReact(source: string, title: string): string {
           .split(",")
           .map((n) => n.trim())
           .filter(Boolean)
-          .map((n) => n.replace(/\s+as\s+/, ": "));
+          .map((n) => n.replace(/\s+as\s+/, ": "))
+          // React's hooks are already destructured above; declaring them a
+          // second time in the same scope is a SyntaxError, not a shadow.
+          .filter((n) => !(g === "React" && PRE_DECLARED.has(n.split(":")[0]!.trim())));
         if (names.length) parts.push(`const { ${names.join(", ")} } = ${g};`);
       }
       return parts.join(" ");
@@ -100,15 +114,18 @@ export function wrapReact(source: string, title: string): string {
     /\bRecharts\b|<(Line|Bar|Area|Pie|Radar|Scatter|Composed)Chart\b/.test(code)
   )
     needs.recharts = true;
+  // lucide's UMD reads `window.react`, lower case, while React's UMD only
+  // ever defines `window.React`. Without this alias every icon in an artifact
+  // takes the whole card down with "cannot read forwardRef of undefined",
+  // which looks like the artifact's fault and is not.
+  const shim = `<script>window.react=window.React;window["react-dom"]=window.ReactDOM;</script>`;
   const scripts = [
-    CDN.react,
-    CDN.reactDom,
-    CDN.babel,
-    ...(needs.recharts ? [CDN.propTypes, CDN.recharts] : []),
-    ...(needs.lucide ? [CDN.lucide] : []),
-  ]
-    .map((s) => `<script crossorigin src="${s}"></script>`)
-    .join("\n");
+    ...[CDN.react, CDN.reactDom, CDN.babel].map((s) => `<script crossorigin src="${s}"></script>`),
+    shim,
+    ...(needs.recharts ? [CDN.propTypes, CDN.recharts] : [])
+      .concat(needs.lucide ? [CDN.lucide] : [])
+      .map((s) => `<script crossorigin src="${s}"></script>`),
+  ].join("\n");
   return `<!doctype html>
 <html lang="en" class="dark">
 <head>

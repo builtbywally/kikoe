@@ -22,10 +22,26 @@ export const KINDS = [
   "note",
   "web",
   "react",
+  // what an agent did, rather than what Kik made
+  "run",
+  "result",
 ] as const;
 export type PinKind = (typeof KINDS)[number];
 
+/**
+ * Two budgets on one canvas.
+ *
+ * `board` is the whiteboard it always was: a few things, they fade, the
+ * oldest of the crowded repo goes first. `work` is a feed of what the agent
+ * did, which arrives far faster and must never evict an artifact Kik made to
+ * explain something. Same model, same renderer, same surface — separate caps.
+ */
+export const STREAMS = ["board", "work"] as const;
+export type PinStream = (typeof STREAMS)[number];
+
 export const MAX_PINS = 24;
+/** the work feed is per session, and generous: it is a feed, not a whiteboard */
+export const MAX_WORK = 40;
 export const DEFAULT_TTL_S = 900;
 export const MAX_BODY = 200_000;
 
@@ -36,6 +52,10 @@ export interface Pin {
   body: string;
   repo: string;
   session: string;
+  /** which budget it lives in: Kik's whiteboard, or the agent's work feed */
+  stream: PinStream;
+  /** the agent turn this belongs to, for work pins; groups and evicts them */
+  turn: number;
   /** who put it up: the agent, Kik itself, or the user */
   by: "agent" | "kik" | "you";
   /** seconds since epoch */
@@ -72,6 +92,8 @@ export interface PinInit {
   body: string;
   repo?: string | undefined;
   session?: string | undefined;
+  stream?: PinStream | undefined;
+  turn?: number | undefined;
   by?: Pin["by"] | undefined;
   ttl_s?: number | undefined;
   sticky?: boolean | undefined;
@@ -129,6 +151,8 @@ export class Board {
       body: init.body.slice(0, MAX_BODY),
       repo: init.repo ?? "",
       session: init.session ?? "",
+      stream: init.stream === "work" ? "work" : "board",
+      turn: Math.max(0, Number(init.turn ?? 0)),
       by: init.by ?? "agent",
       created: this.now(),
       updated: this.now(),
@@ -146,7 +170,8 @@ export class Board {
       wait_s: init.wait_s ?? 0,
     };
     this.pins.push(pin);
-    this.evict();
+    if (pin.stream === "work") this.evictWork(pin.session);
+    else this.evict();
     this.emit({ op: "add", pin });
     return pin;
   }
@@ -233,17 +258,28 @@ export class Board {
     return gone.length;
   }
 
-  /** Drop expired pins. Called on every read and on a timer. */
+  /**
+   * Drop expired pins. Called on every read and on a timer.
+   *
+   * Work pins keep no clock: a diff from an hour ago is still the diff you
+   * are reading. They leave when their turn is evicted, not when time passes.
+   */
   sweep(): void {
     const now = this.now();
     for (const p of [...this.pins]) {
-      if (!p.sticky && now - p.created > p.ttl_s) this.remove(p.id);
+      if (p.stream === "work" || p.sticky) continue;
+      if (now - p.created > p.ttl_s) this.remove(p.id);
     }
   }
 
-  /** For the file on disk: what survives a restart. */
+  /**
+   * For the file on disk: what survives a restart. The work feed does not
+   * yet — it belongs to a session that is over by the time we come back.
+   */
   toJSON(): Pin[] {
-    return this.pins.filter((p) => p.sticky || this.now() - p.created < p.ttl_s);
+    return this.pins.filter(
+      (p) => p.stream !== "work" && (p.sticky || this.now() - p.created < p.ttl_s),
+    );
   }
 
   /** From the file on disk. Questions do not survive: their askers are gone. */
@@ -266,6 +302,8 @@ export class Board {
         body: p.body.slice(0, MAX_BODY),
         repo: String(p.repo ?? ""),
         session: String(p.session ?? ""),
+        stream: p.stream === "work" ? "work" : "board",
+        turn: Number(p.turn ?? 0) || 0,
         by: p.by === "kik" || p.by === "you" ? p.by : "agent",
         created,
         updated: Number(p.updated ?? created),
@@ -284,10 +322,31 @@ export class Board {
     return n;
   }
 
+  /**
+   * The work feed, trimmed per session and by whole turns.
+   *
+   * A turn is the unit a person thinks in — "what did that last change do" —
+   * so half a turn is worse than none. Oldest turns go first, entire.
+   */
+  private evictWork(session: string): void {
+    const mine = this.pins.filter((p) => p.stream === "work" && p.session === session);
+    if (mine.length <= MAX_WORK) return;
+    const turns = [...new Set(mine.map((p) => p.turn))].sort((a, b) => a - b);
+    let count = mine.length;
+    for (const turn of turns) {
+      if (count <= MAX_WORK) break;
+      const doomed = mine.filter((p) => p.turn === turn && !p.sticky);
+      if (!doomed.length) continue;
+      for (const p of doomed) this.remove(p.id);
+      count -= doomed.length;
+    }
+  }
+
   private evict(): void {
-    while (this.pins.length > MAX_PINS) {
+    while (this.pins.filter((p) => p.stream === "board").length > MAX_PINS) {
       // The oldest pin of whichever repo has the most, then the oldest overall.
-      const loose = this.pins.filter((p) => !p.sticky);
+      // Work pins are a separate budget and are never taken to make room here.
+      const loose = this.pins.filter((p) => !p.sticky && p.stream === "board");
       if (!loose.length) return;
       const counts = new Map<string, number>();
       for (const p of loose) counts.set(p.repo, (counts.get(p.repo) ?? 0) + 1);

@@ -1,5 +1,13 @@
 export * as events from "./events.js";
-export type { AgentEvent, EventInit, Clock, Kind, RepoResolver } from "./events.js";
+export type {
+  AgentEvent,
+  EventInit,
+  Clock,
+  Kind,
+  RepoResolver,
+  Hunk,
+  ToolResult,
+} from "./events.js";
 export { scrub, firstSentences, spokenFilename, spokenIdentifier } from "./scrub.js";
 export { normalizeForSpeech, splitClauses } from "./speak.js";
 export type { SpeakOptions } from "./speak.js";
@@ -24,6 +32,7 @@ export {
   ClaudeCodeAdapter,
   HOOK_KINDS,
   asText,
+  toolResult,
   lastAssistantText,
 } from "./adapters/claude-code.js";
 export type { ClaudeCodeAdapterOptions } from "./adapters/claude-code.js";

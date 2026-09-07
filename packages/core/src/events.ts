@@ -78,6 +78,37 @@ export const DEFAULT_SEVERITY: Readonly<Record<Kind, number>> = {
 
 export type Status = "" | "ok" | "error" | "denied" | "pending";
 
+/** One hunk of a patch, as Claude Code hands it to us. */
+export interface Hunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  /** each line prefixed with " ", "+" or "-" */
+  lines: string[];
+}
+
+/**
+ * What a tool actually returned, kept as structure rather than prose.
+ *
+ * `asText()` flattens a tool response into one string for the narrator, which
+ * is right for speech and useless for a canvas: an Edit's response has none of
+ * the keys it looks for, so the patch Claude Code already computed was thrown
+ * away. This is the same response, projected instead of flattened, so the work
+ * can be shown as well as said. Everything here is optional; a tool we do not
+ * recognise leaves it empty and nothing downstream changes.
+ */
+export interface ToolResult {
+  /** Bash */
+  stdout?: string;
+  stderr?: string;
+  interrupted?: boolean;
+  /** Edit, Write, NotebookEdit */
+  filePath?: string;
+  structuredPatch?: Hunk[];
+  userModified?: boolean;
+}
+
 export interface AgentEvent {
   kind: Kind;
   /** claude_code | codex | headless | manual ... */
@@ -91,6 +122,8 @@ export interface AgentEvent {
   /** tool name for tool_start / tool_end */
   tool: string;
   args: Record<string, unknown>;
+  /** what the tool returned, kept whole; empty for tools we do not project */
+  result: ToolResult;
   status: Status | string;
   severity: number;
   id: string;
@@ -154,6 +187,7 @@ export function make(init: EventInit, now: Clock = wallClock): AgentEvent {
     text: init.text ?? "",
     tool: init.tool ?? "",
     args: init.args ?? {},
+    result: init.result ?? {},
     status: init.status ?? "",
     severity,
     id: init.id || newId(),

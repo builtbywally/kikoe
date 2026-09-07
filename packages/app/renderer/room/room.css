@@ -724,9 +724,33 @@ body[data-frosted="1"] .pin[data-kind="note"] {
   color: var(--dimmer);
   display: block;
 }
+/* Where one hunk ends and the next begins, and where stdout becomes stderr.
+   A quiet rule with a label, so a multi-hunk diff reads as separate changes
+   rather than one continuous file. */
 .pin-body .hunk {
-  color: var(--dim);
+  color: var(--dimmer);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  margin: 10px 0 4px;
+}
+.pin-body .hunk::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(var(--fg-rgb), 0.12);
+}
+.pin-body .hunk:first-child {
+  margin-top: 0;
+}
+/* The command itself: the one ember thing on the card. */
+.pin-body .cmd {
+  color: var(--ember);
   display: block;
+  margin: 0 -16px 4px;
+  padding: 0 16px;
 }
 .pin-body h1,
 .pin-body h2,

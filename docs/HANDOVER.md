@@ -162,6 +162,68 @@ are installed by the app with the marker `<!-- installed by kikoe -->`.
    and stickies stay put. Web and page cards have phone, tablet and
    desktop viewport buttons in the footer that set the card's size.
 
+## The work feed (2026-09-07)
+
+The canvas used to hold only what Kik *made*. Now it also holds what the
+agent *did*: a diff per file it edited, a run card for a command that
+matters, a result card for a test run, and the turn's reply in full. This
+is the first slice of using Kikoe as the ADE rather than as a voice beside
+a terminal.
+
+- **The data was already arriving and was being thrown away.** Claude Code
+  POSTs the whole hook payload, and a PostToolUse for an Edit carries
+  `structuredPatch` — a finished unified diff. `asText()` returns the first
+  of `text/content/output/stdout/result/message`, an Edit response has none
+  of them, so it returned `""`. `stderr` was never read at all.
+  `core/src/adapters/claude-code.ts` now has `toolResult()` beside
+  `asText()`: the same response projected rather than flattened, onto a new
+  `AgentEvent.result`. **Do not "fix" `asText` instead** — it feeds the
+  narrator and, through the tracker, the brain's prompt, so widening it
+  would start speaking diffs and put file bodies in the system prompt.
+  `packages/core/test/tool-result.test.ts` keeps that as a test.
+- **Two budgets, one canvas.** `Pin` gained `stream: "board" | "work"` and
+  `turn`. `board` is the whiteboard it always was (`MAX_PINS = 24`, TTL,
+  oldest-of-the-crowded-repo). `work` is per session (`MAX_WORK = 40`),
+  has no TTL, and is evicted by whole turns, oldest first. `evict()` only
+  ever looks at board pins, so a busy turn can never take down an artifact
+  Kik made; `evictWork()` never touches the whiteboard. Both directions
+  have a test.
+- **`daemon/src/work.ts`** turns events into cards. A turn's cards share
+  `near`, so the canvas groups them with placement it already had. Editing
+  one file five times is **one card that grows**, not five — without that a
+  single refactor buries the board. Not every command earns a card: a
+  failure always does, and so does work with a result (tests, build,
+  install, commit, deploy); `ls` and `cat` never do.
+- **It runs after the hook is answered.** `ingest()` ends with
+  `queueMicrotask(() => this.work.ingest(e))`. Hooks are subprocesses in
+  front of the agent with a three second budget; nothing here is worth a
+  stall.
+- Work cards do not persist yet — `toJSON()` excludes them. Per-project
+  boards and positions are the next slice.
+- `renderDiff` used to strip `@@` along with the file header. It now draws
+  a rule reading "line 118" instead: without it you cannot tell a change at
+  line 20 from the same change at line 900, and multi-hunk diffs ran
+  together.
+
+## The artifact runtime, actually running real artifacts (2026-09-07)
+
+Two bugs that made any ordinary artifact fail, found by pasting one in:
+
+- **Every artifact opens `import React, { useState } from "react"`.** The
+  runtime pre-destructures the hooks, so rewriting that import produced a
+  second `const { useState } = React` in the same scope — a SyntaxError
+  that blanked the card. `PRE_DECLARED` in `runtime.ts` now drops names the
+  page already declares. The existing test used that very import line and
+  never checked for it.
+- **lucide's UMD reads `window.react`, lower case**; React's UMD only ever
+  defines `window.React`. So every artifact with an icon died on "cannot
+  read forwardRef of undefined". A one-line alias is emitted before the
+  bundles that need it.
+
+Verified by serving a component that uses hooks, a lucide icon, a Recharts
+chart and Tailwind, and looking at it in Chrome: it renders and the button
+works.
+
 ## Settings that matter (config.local.json)
 
 `tts`, `narrate`, `hook_profile`, `mic` + `mic_device` ("HyperX Cloud

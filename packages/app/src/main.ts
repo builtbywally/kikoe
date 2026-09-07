@@ -615,6 +615,7 @@ ipcMain.handle("room:updatePin", (_e, id: string, patch: Record<string, unknown>
       title: typeof patch.title === "string" ? patch.title : undefined,
       body: typeof patch.body === "string" ? patch.body : undefined,
       sticky: typeof patch.sticky === "boolean" ? patch.sticky : undefined,
+      size: patch.wide === true ? "wide" : patch.wide === false ? "normal" : undefined,
       w: typeof patch.w === "number" ? patch.w : undefined,
       h: typeof patch.h === "number" ? patch.h : undefined,
     }),
@@ -1002,6 +1003,42 @@ if (!app.requestSingleInstanceLock()) {
         cwd: process.cwd(),
         tool_name: "Bash",
         tool_input: { command: "pnpm test" },
+      });
+      // A real turn through the real hook path, so the shot proves the work
+      // feed rather than posing for it: an edit becomes a diff, a failing
+      // command becomes a run with its stderr, a test run becomes a verdict.
+      daemon?.hook({
+        hook_event_name: "PostToolUse",
+        session_id: "shot",
+        cwd: process.cwd(),
+        tool_name: "Edit",
+        tool_input: { file_path: "packages/daemon/src/tts.ts" },
+        tool_response: {
+          filePath: "packages/daemon/src/tts.ts",
+          structuredPatch: [
+            {
+              oldStart: 118,
+              oldLines: 4,
+              newStart: 118,
+              newLines: 5,
+              lines: [
+                "   async speak(line: string) {",
+                "-    return this.eleven(line);",
+                "+    const voice = this.pick(line);",
+                "+    return voice ? this.eleven(line, voice) : this.piper(line);",
+                "   }",
+              ],
+            },
+          ],
+        },
+      });
+      daemon?.hook({
+        hook_event_name: "PostToolUse",
+        session_id: "shot",
+        cwd: process.cwd(),
+        tool_name: "Bash",
+        tool_input: { command: "pnpm test" },
+        tool_response: { stdout: "Test Files  16 passed (16)\nTests  189 passed (189)" },
       });
       daemon?.board.add({
         kind: "markdown",

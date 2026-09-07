@@ -70,6 +70,48 @@ export default function App() {
     expect(page).toContain("<title>counter</title>");
   });
 
+  it("never declares a React hook twice, however the artifact imports it", () => {
+    // Every artifact ever written opens with this line. The runtime already
+    // destructures the hooks before the code runs, so rewriting the import
+    // into a second `const { useState } = React` is a redeclaration: a
+    // SyntaxError that blanks the card with no clue why.
+    const page = rt.wrapReact(
+      `import React, { useState, useMemo, useCallback } from "react";
+export default function App() {
+  const [n] = useState(0);
+  return <p>{n}</p>;
+}`,
+      "hooks",
+    );
+    const declared = [...page.matchAll(/const\s*\{([^}]*)\}\s*=\s*React;/g)].flatMap((m) =>
+      m[1]!.split(",").map((s) => s.trim().split(":")[0]!.trim()),
+    );
+    expect(declared).toContain("useState");
+    expect(new Set(declared).size).toBe(declared.length);
+  });
+
+  it("gives lucide the lower-case React global its UMD actually reads", () => {
+    // lucide's bundle ends `i(a.LucideReact={}, a.react)` — lower case. React's
+    // UMD only defines `window.React`, so without the alias every artifact with
+    // an icon dies on "cannot read forwardRef of undefined" and the card is
+    // blank for a reason that looks like the artifact's fault.
+    const page = rt.wrapReact(
+      'import { Activity } from "lucide-react";\nexport default function App(){return <Activity/>}',
+      "icons",
+    );
+    expect(page).toContain("window.react=window.React");
+    // and the alias has to be in place before the bundle that needs it
+    expect(page.indexOf("window.react=window.React")).toBeLessThan(page.indexOf("lucide-react@"));
+  });
+
+  it("still takes a React name the runtime does not pre-declare", () => {
+    const page = rt.wrapReact(
+      'import React, { useTransition } from "react";\nexport default function App(){return <p/>}',
+      "t",
+    );
+    expect(page).toContain("const { useTransition } = React;");
+  });
+
   it("handles an arrow default export, a fence, and an unknown import", () => {
     const page = rt.wrapReact(
       '```jsx\nimport x from "nowhere";\nconst Card = () => <div/>;\nexport default () => <Card/>;\n```',

@@ -217,8 +217,19 @@ function renderAgents() {
 function renderDiff(body) {
   const pre = document.createElement("pre");
   for (const raw of body.split(/\r?\n/)) {
-    // The patch header is for git, not for a person across the room.
-    if (/^(\+\+\+|---|diff |index |@@)/.test(raw)) continue;
+    // The file header is for git, not for a person across the room.
+    if (/^(\+\+\+|---|diff |index )/.test(raw)) continue;
+    // A hunk header is different: without it you cannot tell a change at
+    // line 20 from the same change at line 900, and that is usually the
+    // whole question. Shown as a rule with the line number, not as `@@`.
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(raw);
+    if (hunk) {
+      const rule = document.createElement("span");
+      rule.className = "hunk";
+      rule.textContent = `line ${hunk[1]}`;
+      pre.append(rule, "\n");
+      continue;
+    }
     const line = document.createElement("span");
     if (raw.startsWith("+")) line.className = "add";
     else if (raw.startsWith("-")) line.className = "del";
@@ -359,10 +370,35 @@ function sanitizeSvg(markup) {
   return out;
 }
 
+// A command and what it printed. The command reads as a command — ember, with
+// its prompt — and stderr is set apart, because a failing run is the one you
+// are looking at and its useful half has never been shown before now.
+function renderRun(body) {
+  const pre = document.createElement("pre");
+  let stream = "out";
+  for (const raw of body.split(/\r?\n/)) {
+    const line = document.createElement("span");
+    if (raw.startsWith("$ ")) line.className = "cmd";
+    else if (raw === "--- stderr ---") {
+      stream = "err";
+      line.className = "hunk";
+      line.textContent = "stderr";
+      pre.append(line, "\n");
+      continue;
+    } else line.className = stream === "err" ? "del" : "ctx";
+    line.textContent = raw;
+    pre.append(line, "\n");
+  }
+  return pre;
+}
+
 function renderBody(pin) {
   switch (pin.kind) {
     case "diff":
       return renderDiff(pin.body);
+    case "run":
+    case "result":
+      return renderRun(pin.body);
     case "markdown":
       return renderMarkdown(pin.body);
     case "table":
