@@ -365,9 +365,43 @@ function openRoom(): void {
   applyTheme(loadSettings().theme);
   roomWin.loadFile(path.join(RENDERER, "room", "index.html"));
   roomWin.once("ready-to-show", () => roomWin?.show());
+  // The island is presence for when the Room is not in front of you. When the
+  // Room fills the screen it is the same orb twice, and the pill sits on top
+  // of the thing it is reporting on, so it stands down until you look away.
+  const sync = () => syncIsland();
+  roomWin.on("focus", sync);
+  roomWin.on("blur", sync);
+  roomWin.on("maximize", sync);
+  roomWin.on("unmaximize", sync);
+  roomWin.on("enter-full-screen", sync);
+  roomWin.on("leave-full-screen", sync);
+  roomWin.on("minimize", sync);
+  roomWin.on("restore", sync);
+  roomWin.on("show", sync);
+  roomWin.on("hide", sync);
   roomWin.on("closed", () => {
     roomWin = null;
+    syncIsland();
   });
+  syncIsland();
+}
+
+/** The user said "hide the island" in the tray; nothing automatic overrules that. */
+let islandHiddenByHand = false;
+
+/** Is the Room in front of you and filling the screen? */
+function roomOwnsTheScreen(): boolean {
+  if (!roomWin || roomWin.isDestroyed()) return false;
+  if (!roomWin.isVisible() || roomWin.isMinimized()) return false;
+  if (!roomWin.isFocused()) return false;
+  return roomWin.isMaximized() || roomWin.isFullScreen();
+}
+
+function syncIsland(): void {
+  if (!island || island.isDestroyed()) return;
+  const shouldShow = !islandHiddenByHand && !roomOwnsTheScreen();
+  if (shouldShow && !island.isVisible()) island.showInactive();
+  else if (!shouldShow && island.isVisible()) island.hide();
 }
 
 // --- tray -------------------------------------------------------------------
@@ -456,8 +490,14 @@ function buildTrayMenu(): void {
     { label: "Settings…", click: () => openSettings() },
     { label: "Doctor…", click: () => openSettings("doctor") },
     {
-      label: island?.isVisible() ? "Hide island" : "Show island",
-      click: () => (island?.isVisible() ? island.hide() : island?.show()),
+      // A choice made here is a standing one: the Room filling the screen
+      // hides the island by itself, but it must never un-hide one you put
+      // away on purpose.
+      label: islandHiddenByHand ? "Show island" : "Hide island",
+      click: () => {
+        islandHiddenByHand = !islandHiddenByHand;
+        syncIsland();
+      },
     },
     { type: "separator" },
     { label: "Quit", click: () => quit() },
