@@ -524,7 +524,7 @@ function pinCard(p) {
           ? thinking
             ? "thinking"
             : "with you"
-          : p.kind === "agents" || p.kind === "events"
+          : p.kind === "agents" || p.kind === "events" || p.kind === "session"
             ? "live"
             : p.sticky
               ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
@@ -535,6 +535,7 @@ function pinCard(p) {
   const body = document.createElement("div");
   body.className = "pin-body";
   if (p.kind === "conversation") body.append(conversationBody());
+  else if (p.kind === "session") body.append(sessionBody());
   else if (p.kind === "agents") body.append(agentsBody());
   else if (p.kind === "events") body.append(eventsBody(p.repo));
   else if (p.kind === "checklist") body.append(checklistBody(p));
@@ -545,7 +546,12 @@ function pinCard(p) {
   if (p.sticky) card.dataset.sticky = "1";
   const foot = document.createElement("div");
   foot.className = "pin-foot";
-  if (p.kind === "conversation" || p.kind === "agents" || p.kind === "events") {
+  if (
+    p.kind === "conversation" ||
+    p.kind === "session" ||
+    p.kind === "agents" ||
+    p.kind === "events"
+  ) {
     card.dataset.live = "1";
     if (p.kind === "conversation" && speaking) card.dataset.speaking = "1";
     card.append(foot);
@@ -682,6 +688,14 @@ function renderBoard() {
   const extra = [];
   if (Object.keys(sessions).length)
     extra.push({ ...talk, id: "agents", kind: "agents", title: "agents", sticky: true });
+  // The thread: the one place that says what has been happening, in order.
+  extra.push({
+    ...talk,
+    id: "session",
+    kind: "session",
+    title: state?.project?.name ? `the session · ${state.project.name}` : "the session",
+    sticky: true,
+  });
   for (const [repo, events] of recentEvents)
     if (events.length)
       extra.push({
@@ -693,6 +707,132 @@ function renderBoard() {
         sticky: true,
       });
   window.board.render([talk, ...extra, ...ordered], pinCard);
+}
+
+/** The one place you can type instead of talk; both threads carry it. */
+function replyBox(placeholder) {
+  const form = document.createElement("form");
+  form.className = "chat-reply";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = placeholder;
+  input.autocomplete = "off";
+  const send = document.createElement("button");
+  send.type = "submit";
+  send.textContent = "send";
+  form.append(input, send);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    window.room.sayToKik(text);
+  });
+  return form;
+}
+
+/**
+ * The session: you, Kik, and the agent, in one place and in order.
+ *
+ * The work has been on the canvas for a while, but scattered — a diff here,
+ * a test run there, and nothing saying which came after which or why. This
+ * is the thread: what you asked for, what Kik said back, and every move the
+ * agent made between them. It is built here rather than stored, from the
+ * heard log and the work cards that already exist, so it costs no state.
+ *
+ * Every agent line points at its card. The thread is the index; the cards
+ * are the detail.
+ */
+function sessionBody() {
+  const wrap = document.createElement("div");
+  wrap.className = "thread";
+
+  // What you said and what Kik said, with the time each happened.
+  const said = [...(state?.heard ?? [])]
+    .reverse()
+    .filter((h) => h.text && h.kind !== "overheard")
+    .map((h) => ({ at: Number(h.ts ?? 0), who: "you", text: h.text, said: h.said || "" }));
+
+  // What the agent did, read off the work cards rather than kept twice.
+  const work = pins
+    .filter((p) => p.stream === "work")
+    .map((p) => ({
+      at: Number(p.created ?? 0),
+      who: "agent",
+      id: p.id,
+      text:
+        p.kind === "diff"
+          ? `edited ${p.title}`
+          : p.kind === "result"
+            ? `tests: ${p.title}`
+            : p.kind === "run"
+              ? `ran ${p.title}`
+              : p.title || "replied",
+      body: p.kind === "markdown" ? p.body : "",
+    }));
+
+  const rows = [...said, ...work].sort((a, b) => a.at - b.at).slice(-14);
+  if (!rows.length) {
+    const e = document.createElement("div");
+    e.className = "chat-empty";
+    e.textContent = "Nothing yet. Say what you want done and it starts here.";
+    wrap.append(e);
+  }
+
+  for (const r of rows) {
+    if (r.who === "you") {
+      const you = document.createElement("div");
+      you.className = "chat-you";
+      you.textContent = r.text;
+      wrap.append(you);
+      if (r.said) {
+        const kik = document.createElement("div");
+        kik.className = "chat-kik";
+        kik.textContent = r.said;
+        wrap.append(kik);
+      }
+      continue;
+    }
+    const line = document.createElement("div");
+    line.className = "thread-agent";
+    if (r.body) {
+      // The agent's own words are worth reading, not just referring to.
+      line.classList.add("says");
+      line.textContent = firstLines(r.body, 3);
+    } else {
+      line.textContent = r.text;
+    }
+    if (r.id) {
+      line.dataset.id = r.id;
+      line.title = "show me";
+      line.addEventListener("click", () => window.board.focus(r.id));
+    }
+    wrap.append(line);
+  }
+
+  // What it is doing right now, so the thread has a live end.
+  const busy = Object.values(sessions).filter((s) => s.status === "working");
+  if (busy.length) {
+    const now = document.createElement("div");
+    now.className = "thread-now";
+    now.textContent = busy
+      .map((s) => `${s.label} · ${s.current_tool ? s.current_tool.toLowerCase() : "working"}`)
+      .join(" · ");
+    wrap.append(now);
+  }
+
+  wrap.append(replyBox("say what you want done…"));
+  return wrap;
+}
+
+/** The first few lines of something long, for a thread that stays readable. */
+function firstLines(text, n) {
+  const lines = String(text)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const head = lines.slice(0, n).join(" ");
+  return head.length > 260 ? `${head.slice(0, 259)}…` : head;
 }
 
 /** The agents card: each one, what it is doing, and the buttons when one waits on you. */
@@ -811,24 +951,7 @@ function conversationBody() {
     }
     wrap.append(chips);
   }
-  const form = document.createElement("form");
-  form.className = "chat-reply";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = "type to kik…";
-  input.autocomplete = "off";
-  const send = document.createElement("button");
-  send.type = "submit";
-  send.textContent = "send";
-  form.append(input, send);
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = "";
-    window.room.sayToKik(text);
-  });
-  wrap.append(form);
+  wrap.append(replyBox("type to kik…"));
   return wrap;
 }
 

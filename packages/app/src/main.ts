@@ -1105,6 +1105,11 @@ if (!app.requestSingleInstanceLock()) {
         tool_name: "Bash",
         tool_input: { command: "pnpm test" },
       });
+      // Open the board the staged work will land on *first*: hooks from this
+      // repo make cards on this repo's project, and a board that is showing
+      // somewhere else is correctly empty.
+      daemon?.projects.ensure("kikoe", process.cwd());
+      daemon?.openProject("kikoe");
       // A real turn through the real hook path, so the shot proves the work
       // feed rather than posing for it: an edit becomes a diff, a failing
       // command becomes a run with its stderr, a test run becomes a verdict.
@@ -1141,6 +1146,7 @@ if (!app.requestSingleInstanceLock()) {
         tool_input: { command: "pnpm test" },
         tool_response: { stdout: "Test Files  16 passed (16)\nTests  189 passed (189)" },
       });
+      daemon?.typed("add a retry to the token refresh");
       daemon?.board.add({
         kind: "markdown",
         title: "why the retry is bounded",
@@ -1182,9 +1188,6 @@ if (!app.requestSingleInstanceLock()) {
         by: "kik",
         size: "wide",
       });
-      // The work above arrived from this repo, so it is on this repo's board.
-      // Open it, the way saying its name would, so the shot is of a project.
-      daemon?.openProject("kikoe");
       await new Promise((r) => setTimeout(r, 2500));
       const img = await roomWin?.webContents.capturePage();
       if (img) writeFileSync(shotPath, img.toPNG());

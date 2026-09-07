@@ -27,6 +27,25 @@ export interface Project {
   created: number;
   /** when it was last looked at */
   opened: number;
+  /**
+   * The one conversation this project has with its agent.
+   *
+   * Not a process — `claude -p --resume` starts and exits per turn, so the
+   * session is a file on disk and an id we chose. That is what makes "a
+   * session is already there when you open Kikoe" free: there is nothing to
+   * keep running, only something to remember.
+   */
+  session: string;
+}
+
+/** A v4 UUID, which is the only shape `--session-id` accepts. */
+export function newSessionId(): string {
+  const b = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+  b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
 export interface ProjectsFile {
@@ -139,7 +158,7 @@ export class Projects {
     const id = slug(name) || "kik";
     let p = this.items.get(id);
     if (!p) {
-      p = { id, name, aliases: [], roots: [], created: this.now(), opened: 0 };
+      p = { id, name, aliases: [], roots: [], created: this.now(), opened: 0, session: "" };
       this.items.set(id, p);
     }
     if (root && !p.roots.some((r) => norm(r) === norm(root))) p.roots.push(root);
@@ -187,6 +206,25 @@ export class Projects {
     return p;
   }
 
+  /**
+   * The id of this project's conversation, made the first time it is needed.
+   *
+   * Kept for good: the point of it is that tomorrow's first sentence lands
+   * in the same conversation as today's last one.
+   */
+  sessionFor(id: string): string {
+    const p = this.items.get(id);
+    if (!p) return "";
+    if (!p.session) p.session = newSessionId();
+    return p.session;
+  }
+
+  /** Start this project's conversation over. */
+  forget(id: string): void {
+    const p = this.items.get(id);
+    if (p) p.session = "";
+  }
+
   /** Teach it what the ear called this project, so next time is direct. */
   learn(id: string, heard: string): void {
     const p = this.items.get(id);
@@ -216,6 +254,7 @@ export class Projects {
         roots: Array.isArray(p.roots) ? p.roots.map(String).slice(0, 12) : [],
         created: Number(p.created ?? this.now()) || this.now(),
         opened: Number(p.opened ?? 0) || 0,
+        session: typeof p.session === "string" ? p.session : "",
       });
       n++;
     }

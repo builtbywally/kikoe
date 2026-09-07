@@ -62,7 +62,7 @@ describe("Agents", () => {
   it("says so rather than failing quietly when there is no binary", () => {
     const a = new mod.Agents({ bin: path.join(HOME, "absent") });
     // an empty PATH entry cannot match, so this is the "not installed" case
-    const r = a.start("marine", HOME, "do a thing");
+    const r = a.start("marine", HOME, "do a thing", "", true);
     if (!a.bin()) {
       expect(r.ok).toBe(false);
       expect(r.said).toMatch(/can't find Claude Code/);
@@ -71,16 +71,24 @@ describe("Agents", () => {
 
   it("refuses a folder that is not there", () => {
     const a = new mod.Agents({ bin: path.join(HOME, "my-claude.exe") });
-    const r = a.start("ghost", path.join(HOME, "nowhere"), "do a thing");
+    const r = a.start("ghost", path.join(HOME, "nowhere"), "do a thing", "", true);
     expect(r.ok).toBe(false);
     expect(r.said).toMatch(/where ghost is/);
   });
 
-  it("matches a session to the run it started, by folder", () => {
-    const a = new mod.Agents({});
-    // no process is spawned here; claim() is pure bookkeeping
-    expect(() => a.claim("C:/repo", "s1")).not.toThrow();
-    expect(a.running).toHaveLength(0);
+  it("chooses the session id up front, so nothing has to be matched after", async () => {
+    // --session-id is why claim()-by-cwd could be deleted: we know which
+    // conversation this is before the process exists.
+    const projects = await import("../src/projects.js");
+    const id = projects.newSessionId();
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    const p = new projects.Projects();
+    p.ensure("marine", "C:/repo");
+    const first = p.sessionFor("marine");
+    // the same conversation tomorrow, not a new one
+    expect(p.sessionFor("marine")).toBe(first);
+    p.forget("marine");
+    expect(p.sessionFor("marine")).not.toBe(first);
   });
 });
 
@@ -154,6 +162,21 @@ describe("acting on a card", () => {
     expect(d.actOnPin(note.id, "revert").ok).toBe(false);
     expect(d.actOnPin("gone", "again").ok).toBe(false);
     expect(d.actOnPin(note.id, "detonate").ok).toBe(false);
+    await d.close();
+  });
+
+  it("does not pass on a fragment the ear misheard", async () => {
+    // Found in the wild: the word "time" arrived classified as work and was
+    // queued to a real agent as a one-word instruction. A scrap is far more
+    // likely to be a mishearing than a job, and the cost of ignoring a real
+    // short one is saying it twice.
+    const d = daemon();
+    expect(d.instruct("time")).toMatch(/didn't catch enough/);
+    expect(d.instruct("so")).toMatch(/didn't catch enough/);
+    expect(d.instructions).toHaveLength(0);
+    // and a real job gets past the guard — it fails later for want of a
+    // folder in this fixture, which is a different answer entirely
+    expect(d.instruct("add a retry to the fetch in brain")).not.toMatch(/didn't catch enough/);
     await d.close();
   });
 

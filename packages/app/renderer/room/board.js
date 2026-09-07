@@ -287,7 +287,7 @@
 
   /** what a card was last built from; unchanged cards are kept, so a live frame never reloads */
   const built = new Map();
-  const LIVE = new Set(["conversation", "agents", "events"]);
+  const LIVE = new Set(["conversation", "session", "agents", "events"]);
   function signature(pin) {
     return JSON.stringify([
       pin.kind,

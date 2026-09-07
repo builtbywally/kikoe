@@ -536,3 +536,35 @@ half. They dislike being asked to confirm ordinary work. They want to hear
 Kik speak at milestones: use `curl -K ~/.kikoe/speak.curlrc --data-binary
 "..."` (the `speak` skill). Commit only when the work is verified; they do
 not want to be asked before each commit once they've said go.
+
+## The standing session, and the thread (2026-09-07)
+
+The user's own simplification, and it was right: *"when I open Kikoe there
+should be a Claude Code terminal that I am speaking to."*
+
+- **A session is a file, not a process.** `claude -p` starts and exits every
+  turn, so "always there" costs an id and nothing else. Each project keeps
+  one (`Project.session`, a v4 UUID in `projects.json`): `--session-id`
+  opens it the first time, `--resume` continues it after. Verified across
+  separate processes — told one turn to remember 91, a later turn wrote 91
+  to a file.
+- **That deleted `claim()`.** Matching a spawned run to a session by cwd was
+  only ever needed because the id was discovered rather than chosen. It is
+  gone.
+- **Idle goes straight in; busy still queues.** A second `-p` cannot
+  interrupt a turn already running, so mid-turn the Stop-hook queue is still
+  the only way in and remains. Idle, there is nothing to wait for.
+- **The thread card** (`sessionBody()` in `room.js`) is the answer to "I
+  can't see what it's doing": you, Kik and the agent in one place and in
+  order, with every agent line clicking through to its card. It is built in
+  the renderer from the heard log and the work pins, so it stores nothing.
+
+**A guard worth keeping.** Making the rulebook instruct meant a misheard
+fragment could reach a real agent — the word "time" was queued as a job
+once. `instruct()` now wants four words before it passes anything on.
+
+**The tension this exposed, unresolved.** The router sends *questions* to
+Kik and *work* to the agent. So "what number did you remember?" goes to Kik,
+who has no idea, while "write it to a file" reaches the agent. If the goal
+is really to talk to the agent, that split needs revisiting — some
+questions are for the agent, and only it can answer them.

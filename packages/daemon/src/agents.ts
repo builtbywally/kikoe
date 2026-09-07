@@ -17,9 +17,11 @@
  *
  *  - **Permissions are never skipped.** Answering them by voice is the
  *    product; an agent that cannot ask is not faster, it is unsupervised.
- *  - **The session is identified by its hooks, not by its output.** The
- *    spawned process announces itself with SessionStart carrying its cwd,
- *    and that is how a run is matched to a session. No stream parsing.
+ *  - **The session id is ours, chosen before anything runs.** `--session-id`
+ *    opens a conversation the first time and `--resume` continues it after,
+ *    so there is nothing to match afterwards and nothing to parse from the
+ *    output. It also means "a session is already there when you open Kikoe"
+ *    costs an id and no process: `-p` starts and exits every turn.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -82,7 +84,7 @@ export interface Run {
   cwd: string;
   prompt: string;
   started: number;
-  /** filled in when the spawned session announces itself through a hook */
+  /** the conversation this turn belongs to; chosen by us, not discovered */
   session: string;
   pid: number;
   child: ChildProcess;
@@ -118,7 +120,13 @@ export class Agents {
    * Returns a line to say. The work itself appears the usual way: the hooks
    * fire, the tracker sees a session, and the canvas fills with what it does.
    */
-  start(project: string, cwd: string, prompt: string): { ok: boolean; said: string } {
+  start(
+    project: string,
+    cwd: string,
+    prompt: string,
+    session: string,
+    fresh: boolean,
+  ): { ok: boolean; said: string } {
     const bin = this.bin();
     if (!bin) {
       return {
@@ -146,7 +154,16 @@ export class Agents {
 
     // Never --dangerously-skip-permissions: being asked, and answering by
     // voice, is the whole point.
-    const args = ["-p", prompt];
+    //
+    // The session id is ours, chosen before anything runs, so there is
+    // nothing to match afterwards: --session-id opens it the first time and
+    // --resume continues it every time after. That is what makes yesterday's
+    // conversation still be there this morning.
+    const args = session
+      ? fresh
+        ? ["-p", "--session-id", session, prompt]
+        : ["-p", "--resume", session, prompt]
+      : ["-p", prompt];
     const child = spawn(bin, args, {
       cwd,
       windowsHide: true,
@@ -174,32 +191,14 @@ export class Agents {
       cwd,
       prompt,
       started: Date.now(),
-      session: "",
+      session,
       pid: child.pid ?? 0,
       child,
     });
-    this.log(`agent ${project}: started ${bin} in ${cwd} (pid ${child.pid})`);
-    return { ok: true, said: `started an agent in ${project}` };
-  }
-
-  /**
-   * A session announced itself; match it to whichever run we started in that
-   * folder. Identity comes from the hooks rather than from parsing stdout.
-   */
-  claim(cwd: string, session: string): void {
-    if (!cwd || !session) return;
-    const norm = (p: string) =>
-      p
-        .replace(/[\\/]+$/, "")
-        .replace(/\\/g, "/")
-        .toLowerCase();
-    for (const r of this.runs.values()) {
-      if (!r.session && norm(r.cwd) === norm(cwd)) {
-        r.session = session;
-        this.log(`agent ${r.project}: is session ${session.slice(0, 8)}`);
-        return;
-      }
-    }
+    this.log(
+      `agent ${project}: ${fresh ? "started" : "continued"} ${session.slice(0, 8)} in ${cwd} (pid ${child.pid})`,
+    );
+    return { ok: true, said: fresh ? `started an agent in ${project}` : `passed it to ${project}` };
   }
 
   /** Stop one run, or every run. Returns how many were stopped. */

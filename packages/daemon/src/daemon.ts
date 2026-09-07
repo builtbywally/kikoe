@@ -388,9 +388,6 @@ export class Daemon {
   ingest(e: ev.AgentEvent): number {
     this.eventsSeen++;
     if (this.persistBoard) this.rememberProject(e.cwd, e.repo);
-    // An agent Kik started announces itself like any other; that is how a
-    // run is matched to a session, rather than by parsing its output.
-    if (e.kind === ev.SESSION_START) this.agents.claim(e.cwd, e.session);
     this.tracker.apply(e);
     // Hooks mean the user is at the desk driving agents, even if silent.
     this.presence.seen = Date.now();
@@ -2076,7 +2073,21 @@ export class Daemon {
   }
 
   /** Queue an instruction for an agent; says what will happen to it. */
+  /**
+   * How much has to be said before it counts as a job.
+   *
+   * The ear mishears, and "time" arriving as work:instruct once queued a
+   * one-word instruction to a real agent. A fragment is far more likely to
+   * be a misheard scrap than a task, and the cost of ignoring a real short
+   * one is that you say it again.
+   */
+  private static readonly MIN_INSTRUCTION_WORDS = 4;
+
   instruct(text: string, repo?: string): string {
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    if (words.length < Daemon.MIN_INSTRUCTION_WORDS) {
+      return "I didn't catch enough of that to pass on; say it again?";
+    }
     const sessions = Object.values(this.tracker.snapshot());
     const target =
       repo ??
@@ -2086,8 +2097,18 @@ export class Daemon {
     // the first instruction of the day always failed and you opened a
     // terminal. Now it is a reason to start one.
     if (!target) return this.startAgent(repo ?? "", text);
-    this.instructions.push({ repo: target, text, at: Date.now() });
     const s = sessions.find((x) => x.repo === target);
+    // Mid-turn, the queue is the only way in: a second `-p` cannot interrupt
+    // a turn already running, and the Stop hook hands this over the moment
+    // it ends. Idle, there is nothing to wait for — say it straight into the
+    // conversation and it starts now.
+    if (s && s.status !== "working" && this.settings.agents) {
+      const said = this.startAgent(target, text);
+      if (!/^(started|passed)/.test(said)) return said;
+      log(`instruction sent to ${target}: ${text}`);
+      return said;
+    }
+    this.instructions.push({ repo: target, text, at: Date.now() });
     const when = s?.status === "working" ? "when its turn ends" : "with the user's next prompt";
     log(`instruction queued for ${target}: ${text}`);
     return `queued for ${target}; it gets it ${when}`;
@@ -2112,7 +2133,14 @@ export class Daemon {
     if (!task) return "tell me what it should do";
     const cwd = project.roots[0] ?? "";
     if (!cwd) return `I don't know where ${project.name} is on disk`;
-    const { ok, said } = this.agents.start(project.id, cwd, task);
+    // The project's own conversation: made once, resumed for ever after, so
+    // this morning's first sentence lands where last night's left off. There
+    // is no process to keep alive — `-p` starts and exits — so "a session is
+    // already there" costs an id and nothing else.
+    const fresh = !project.session;
+    const session = this.projects.sessionFor(project.id);
+    const { ok, said } = this.agents.start(project.id, cwd, task, session, fresh);
+    if (ok) this.saveProjects();
     if (ok) {
       // Show it happening: the board the work will land on is the one to be
       // looking at.
