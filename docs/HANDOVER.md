@@ -568,3 +568,30 @@ Kik and *work* to the agent. So "what number did you remember?" goes to Kik,
 who has no idea, while "write it to a file" reaches the agent. If the goal
 is really to talk to the agent, that split needs revisiting — some
 questions are for the agent, and only it can answer them.
+
+## Talking to it with no model of its own (2026-09-07)
+
+Asked "so can I have a normal conversation with it?" the answer was no —
+both model accounts are empty — and that was the wrong answer, because a
+whole Claude was sitting idle in the next room on the user's own
+subscription.
+
+So when Kik's brain is unavailable, the fallback now has three answers
+rather than one:
+
+- **social** — the rulebook, as before.
+- **a question the rulebook knows** (`headKnows()` in `core/src/head.ts`:
+  tests, errors, waiting, how long, what's it doing) — answered here,
+  instantly and free. Measured at 75 ms.
+- **anything else** — to the agent, through `instruct()`, and its reply comes
+  back on the Stop hook and is spoken like any other. Measured end to end:
+  "why is a bounded retry better than an unbounded one" → 19 s → spoken
+  aloud, and a card on the canvas.
+
+`headKnows()` exists because the rulebook always returned *something*, so
+there was no way to tell "I know this" from "here is a status line because
+it is all I have".
+
+**The cost, stated plainly:** an agent turn is fifteen to forty seconds.
+That is a conversation, but not a quick one, and it is not a substitute for
+credit — Kik's own voice is a second away when it has a model.

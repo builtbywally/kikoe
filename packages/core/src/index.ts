@@ -48,6 +48,6 @@ export type {
 } from "./arbiter.js";
 export { route, gate, nameLike, normalize, DEFAULT_ALIASES } from "./router.js";
 export type { Decision, RouteOptions } from "./router.js";
-export { answer as headAnswer, social as headSocial } from "./head.js";
+export { answer as headAnswer, social as headSocial, knows as headKnows } from "./head.js";
 export { diagramToSvg, parseDiagram } from "./diagram.js";
 export type { Diagram } from "./diagram.js";

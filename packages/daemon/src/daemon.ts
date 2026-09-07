@@ -33,6 +33,7 @@ import {
   events as ev,
   gate,
   headAnswer,
+  headKnows,
   headSocial,
   route,
   utterance,
@@ -1589,18 +1590,25 @@ export class Daemon {
       this.rememberExchange(text, said);
     } catch (e) {
       log(`brain failed: ${(e as Error).message}; rules answered`);
-      // The model being gone is not a reason to refuse work. An instruction
-      // still reaches the agent, and still starts one if none is running —
-      // that path never needed a model, and "say it to the terminal" was
-      // the wrong answer the moment Kik could start an agent itself.
+      // The model being gone is not a reason to stop talking.
+      //
+      // Three answers, in order of what can actually help. A question about
+      // the status board is answered here, instantly and free. Work goes to
+      // the agent, as it always did. And anything else — a real question,
+      // the kind a person asks — also goes to the agent, because it is a
+      // whole Claude on the user's own subscription and Kik going quiet
+      // while a perfectly good mind sits idle in the next room is silly.
+      const sessions = Object.values(this.tracker.snapshot());
       said =
-        kind === "question"
-          ? headAnswer(text, Object.values(this.tracker.snapshot()))
-          : kind === "social"
-            ? headSocial(intent)
-            : kind === "work"
+        kind === "social"
+          ? headSocial(intent)
+          : kind === "question" && headKnows(text)
+            ? headAnswer(text, sessions)
+            : this.settings.agents
               ? sentence(this.instruct(text))
-              : "I can't reach the model right now. Say that to the terminal.";
+              : kind === "question"
+                ? headAnswer(text, sessions)
+                : "I can't reach the model right now. Say that to the terminal.";
       record(kind, intent, said);
       this.say(said, ev.SEV_ATTENTION, "head");
     } finally {

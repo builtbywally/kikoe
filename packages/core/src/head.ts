@@ -47,6 +47,22 @@ function pick(sessions: SessionSnapshot[], text: string): SessionSnapshot | unde
   return [...sessions].sort((a, b) => rank(a) - rank(b) || a.quiet_for_s - b.quiet_for_s)[0];
 }
 
+/**
+ * The questions this head actually knows, as opposed to the ones it will
+ * answer with a status line because that is all it has.
+ *
+ * It matters when there is no model: "did the tests pass" is answered here,
+ * instantly and free, while "why is the retry bounded" is not a question
+ * about the status board at all and deserves to reach something that can
+ * think. Without this distinction every question got the same shrug.
+ */
+const KNOWN =
+  /test|how long|since when|how far|error|fail|broke|wrong|crash|wait|block|need|stuck|permission|what did (it|you) (say|do)|last thing|which|who|what.*(repo|agent|talking)|what.*(doing|happening|going on)|status|busy|idle|running/i;
+
+export function knows(text: string): boolean {
+  return KNOWN.test(text);
+}
+
 export function answer(text: string, sessions: SessionSnapshot[]): string {
   const t = text.toLowerCase();
   if (!sessions.length) return "Nothing's running. I haven't heard from an agent yet.";

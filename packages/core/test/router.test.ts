@@ -1,5 +1,6 @@
 import { headAnswer as answer, gate, route } from "@kikoe/core";
 import { describe, expect, it } from "vitest";
+import { headKnows } from "../src/index.js";
 
 describe("the name gate", () => {
   it("opens on the name and its misspellings, and fails closed otherwise", () => {
@@ -155,5 +156,33 @@ describe("the name by its shape", () => {
     expect(gate("hey keeko what's up")).toEqual([true, "whats up"]);
     expect(gate("kikoi, stop")).toEqual([true, "stop"]);
     expect(gate("keep going")[0]).toBe(false);
+  });
+});
+
+describe("what the rulebook actually knows", () => {
+  // With no model, this decides who answers: a question about the status
+  // board is answered here, instantly and free; anything else is a real
+  // question and deserves to reach the agent, which is a whole Claude.
+  it("claims the questions it can answer from the board", () => {
+    for (const q of [
+      "did the tests pass",
+      "any errors",
+      "what's it doing",
+      "how long has it been going",
+      "is anything waiting on me",
+      "which agent is running",
+      "what did it say",
+    ])
+      expect(headKnows(q)).toBe(true);
+  });
+
+  it("does not claim a question it would only shrug at", () => {
+    for (const q of [
+      "why is a bounded retry better than an unbounded one",
+      "should I use a queue here",
+      "explain the token refresh",
+      "what do you think of this design",
+    ])
+      expect(headKnows(q)).toBe(false);
   });
 });
