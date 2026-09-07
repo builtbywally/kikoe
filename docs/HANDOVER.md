@@ -265,7 +265,12 @@ Known weak spots:
 1. `git pull`, `pnpm install`, `pnpm test` (expect 115 green).
 2. Kill the installed app, `pnpm app`, say "kik, what's on the board" with
    the headset on; read `~/.kikoe/logs/daemon.log`.
-3. Pick from `docs/ROADMAP.md` milestone 1. The user's own priorities, in
+3. Check the Anthropic account has credit: from 2026-09-06 20:29 every
+   model call failed with "credit balance is too low" and Kik ran on the
+   rulebook for a day. Then the ear: `docs/HEARING.md` (2026-09-07) is
+   the researched plan, phase 1 needs no new models and fixes the call
+   that Kik joined (the "you" rule and the twenty-second window).
+   Then `docs/ROADMAP.md` milestone 1. The user's own priorities, in
    their words across the last session: it should know when they're
    talking to it without the name; it should think and speak on its own;
    the canvas is how it communicates; canvas freedom; live memory.

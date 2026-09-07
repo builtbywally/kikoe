@@ -5,6 +5,8 @@ decisions, and the gotchas the code does not say. Then `docs/SENTIENCE.md`
 (the goal: Kik feels like someone in the room), `docs/AUDIT.md` (every
 flow, its gaps, and the plan), and `docs/ROADMAP.md`. `docs/EVAL-MODELS.md`
 says why the voice runs on Haiku and the designer on Sonnet.
+`docs/HEARING.md` is the researched plan for the ear: endpointing, the
+recognizer, knowing who the user is talking to, echo cancellation.
 
 Rules that are not negotiable:
 

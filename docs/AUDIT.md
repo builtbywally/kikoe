@@ -221,6 +221,13 @@ a spoken demo and an installer.
 
 ### Next: the feeling (two weeks)
 
+Items 6 to 8 and the ear half of item 5 were researched on 2026-09-07;
+`docs/HEARING.md` has the measured failures (a video call taken as
+addressed, sentences in pieces, Whisper captions) and the phased setup
+that supersedes the three lines below: a turn model, the owner's voice,
+the name as a keyword, a transducer recognizer, call awareness, and
+WebRTC echo cancellation with a loopback reference.
+
 6. **The wake word** via the sherpa-onnx keyword spotter already in the
    ear (model download, a keywords file, tuned on the real mic), with the
    shape match kept as a fallback.
