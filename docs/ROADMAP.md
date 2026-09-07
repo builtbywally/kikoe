@@ -63,6 +63,11 @@ The bar: you forget it is a program for a whole session.
 
 The bar: a designer would keep it open.
 
+- The work feed shipped 2026-09-07: the agent's diffs, commands, test
+  results and replies are cards, in their own budget beside the whiteboard.
+  Per-project boards and remembered positions are the next slice; see
+  `docs/HANDOVER.md`, "The work feed".
+
 - Selection, multi-select, group move, align, distribute.
 - The artifact runtime grows up: a bundled offline copy of React and
   Tailwind so designed pages work without the network; version history
