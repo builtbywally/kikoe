@@ -24,6 +24,20 @@
 
         <span class="state" id="state">connecting</span>
 
+        <!-- What is left of each assistant's limit, one ring apiece. The idea
+             and the shape are Codenotch's (github.com/vinzdg/codenotch): a grey
+             track, a coloured arc from twelve o'clock, the provider's mark in
+             the middle, the number beside it. Its traffic light is redrawn in
+             this palette — paper, amber, ember — because the stylesheet above
+             says no green, and the thresholds are the only part worth keeping
+             literally.
+
+             Read-only, like everything else on the pill: hovering a ring opens
+             the card below it and that is the whole interaction. No refresh
+             button, because a poll already follows every turn that ends. -->
+        <span class="rule" id="rings-rule" hidden></span>
+        <div class="rings" id="rings"></div>
+
         <!-- The one thing on this window that accepts a mouse event. It is a
              button rather than a voice command because picking a speaker means
              hearing the difference between two of them. -->
@@ -41,6 +55,19 @@
       <div id="panel" class="panel" hidden>
         <div class="panel-head"><span id="panel-title"></span></div>
         <pre id="panel-body" class="panel-body"></pre>
+      </div>
+
+      <!-- The card behind a ring: every limit window, its bar, and when it
+           comes back. A tail points at the ring it belongs to, which is the
+           only thing that says which of three rings you are reading. -->
+      <div id="usage-card" class="usage-card" hidden>
+        <span class="usage-tail" id="usage-tail"></span>
+        <div class="usage-head">
+          <span class="usage-glyph" id="usage-glyph"></span>
+          <span id="usage-title"></span>
+          <span class="usage-plan" id="usage-plan"></span>
+        </div>
+        <div id="usage-body"></div>
       </div>
 
       <!-- Audio settings. Every row can be tested before it is chosen, because

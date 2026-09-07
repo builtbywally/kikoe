@@ -34,6 +34,72 @@
     }
     if (page === "doctor") renderDoctor();
     if (page === "hooks") previewHooks();
+    if (page === "usage") renderUsage();
+  }
+
+  // --- limits ---------------------------------------------------------------
+  //
+  // One row per provider, saying what was read, from whose credential, and
+  // when. A row that is off is not read at all — the switch is about the
+  // credential, not about the ring.
+
+  function renderUsage() {
+    const rows = $("usage-rows");
+    if (!rows) return;
+    $("usage-on").checked = info.settings.usage !== false;
+    const off = new Set(info.settings.usage_off || []);
+    const providers = info.state?.usage || [];
+    rows.textContent = "";
+    if (!providers.length && !off.size) {
+      const empty = document.createElement("p");
+      empty.className = "dim";
+      empty.textContent =
+        "Nothing to read yet. Sign in to Claude Code — or any tool Kikoe knows — and its ring appears on its own.";
+      rows.append(empty);
+      return;
+    }
+    for (const p of providers) rows.append(usageRow(p, off.has(p.id)));
+  }
+
+  function usageRow(p, isOff) {
+    const label = document.createElement("label");
+    label.className = "row";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = !isOff;
+    box.addEventListener("change", async () => {
+      const off = new Set(info.settings.usage_off || []);
+      if (box.checked) off.delete(p.id);
+      else off.add(p.id);
+      const r = await api.save({ usage_off: [...off] });
+      info = await api.get();
+      note(
+        "usage-note",
+        r.error || (box.checked ? `reading ${p.name}` : `${p.name} left alone`),
+        r.error ? "bad" : "good",
+      );
+      renderUsage();
+    });
+
+    const text = document.createElement("div");
+    const title = document.createElement("b");
+    title.textContent = p.plan ? `${p.name} — ${p.plan}` : p.name;
+    const detail = document.createElement("span");
+    // The reading itself, then where it came from. A status where a number
+    // should be always says what to do about it.
+    const windows = (p.windows || [])
+      .map((w) => `${w.label} ${Math.round(w.used * 100)}%`)
+      .join(" · ");
+    detail.textContent = [
+      windows || p.message || "nothing read",
+      `borrowed from ${p.source}`,
+      p.status === "ok" ? "" : p.status.replace(/_/g, " "),
+    ]
+      .filter(Boolean)
+      .join(" — ");
+    text.append(title, detail);
+    label.append(box, text);
+    return label;
   }
 
   async function load() {
@@ -566,6 +632,20 @@
     $("doctor").textContent = lines.join("\n");
   }
   $("doctor-refresh").addEventListener("click", renderDoctor);
+
+  $("usage-on").addEventListener("change", async () => {
+    const r = await api.save({ usage: $("usage-on").checked });
+    info = await api.get();
+    note("usage-note", r.error || (r.settings.usage ? "on" : "off"), r.error ? "bad" : "good");
+    renderUsage();
+  });
+  $("usage-refresh").addEventListener("click", async () => {
+    note("usage-note", "reading…");
+    const r = await api.refreshUsage();
+    info = await api.get();
+    renderUsage();
+    note("usage-note", r?.error || "read just now", r?.error ? "bad" : "good");
+  });
 
   // --- navigation -------------------------------------------------------------
 

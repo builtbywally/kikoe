@@ -674,6 +674,11 @@ function snapshot() {
 }
 
 ipcMain.handle("settings:get", () => snapshot());
+ipcMain.handle("settings:refreshUsage", async () => {
+  if (!daemon) return { error: "the daemon is not running" };
+  await daemon.usage.poll();
+  return { ok: true, providers: daemon.usage.list() };
+});
 ipcMain.handle(
   "settings:save",
   async (
@@ -699,6 +704,12 @@ ipcMain.handle(
     ) {
       daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey());
     } else if (rest.narrate) daemon?.setMode(rest.narrate);
+    // Switching a provider off has to stop its credential being read, not just
+    // hide its ring, so the store is rebuilt rather than filtered on the way out.
+    if ("usage" in rest || "usage_off" in rest) {
+      daemon?.applyUsageSettings(s);
+      void daemon?.usage.poll();
+    }
     buildTrayMenu();
     return { ok: true, settings: s };
   },
@@ -1028,6 +1039,33 @@ if (!app.requestSingleInstanceLock()) {
       await new Promise((r) => setTimeout(r, 1200));
       const img2 = await roomWin?.webContents.capturePage();
       if (img2) writeFileSync(shotPath.replace(/\.png$/, "-settings.png"), img2.toPNG());
+      // The pill has its own window, so the Room's capture never showed it —
+      // which meant the one surface that is looked at all day was the one
+      // surface no screenshot could check. Transparent, so it comes out on
+      // nothing; that is what it looks like in use.
+      // Hover the first usage ring, so its card is in the shot. The pill only
+      // ever opens that card on a pointer, so without staging the move the one
+      // surface that carries the actual numbers could never be checked.
+      //
+      // The card has to be *pinned*, not merely opened: the window is
+      // click-through with mouse moves forwarded, so the real pointer sitting
+      // anywhere else keeps closing a staged hover before the capture. Stubbing
+      // the close is the harness freezing a frame, and it lives here rather
+      // than in the pill for exactly that reason.
+      await island?.webContents.executeJavaScript(
+        `(() => {
+          hideUsageCard = () => {};
+          const r = document.querySelector(".ring-cell .ring")?.getBoundingClientRect();
+          if (!r) return false;
+          document.dispatchEvent(new MouseEvent("mousemove", {
+            clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+          }));
+          return true;
+        })()`,
+      );
+      await new Promise((r) => setTimeout(r, 400));
+      const img3 = await island?.webContents.capturePage();
+      if (img3) writeFileSync(shotPath.replace(/\.png$/, "-island.png"), img3.toPNG());
       process.stdout.write(`${JSON.stringify({ ok: Boolean(img), path: shotPath })}\n`);
       await Promise.race([daemon?.close(), new Promise((r) => setTimeout(r, 2000))]);
       app.exit(img ? 0 : 1);

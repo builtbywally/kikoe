@@ -171,9 +171,58 @@ text of everything heard; turn off when the name lands reliably),
 `hear_you` (true), `barge_in` (true, headset only), `brain` (true),
 `brain_model` (Haiku 4.5; Sonnet 5 option), `brain_narrates`,
 `brain_checkin`, `brain_greets` (hello after an hour away),
-`artifact_model` (Sonnet 5: designs pages), `backdrop`
+`artifact_model` (Sonnet 5: designs pages), `usage` (true: the limit rings
+on the pill), `usage_off` (provider ids never read), `backdrop`
 ("aurora"), `backdrop_dim`, `backdrop_blur`,
 `backdrop_image`, `start_at_login`, `theme`.
+
+## The usage rings (2026-09-07)
+
+The right-hand end of the pill carries one ring per coding assistant: how
+much of its limit is gone, the number beside it, and a card on hover with
+every limit window and when it resets. The idea and the drawing are
+[Codenotch](https://github.com/vinzdg/codenotch)'s — a macOS notch that
+pins the same reading to a screen edge — and the user asked for both.
+
+- `daemon/src/usage.ts` is the whole engine. `ClaudeUsageProvider` reads
+  the OAuth token from `<claude dir>/.credentials.json` (`claudeAiOauth`,
+  never logged) and GETs `https://api.anthropic.com/api/oauth/usage` with
+  `anthropic-beta: oauth-2025-04-20` — the same endpoint Claude Code's own
+  `/usage` reads, so the two never disagree. `OpenCodeUsageProvider` uses
+  the `opencode-go` key from `~/.local/share/opencode/auth.json`.
+- Kikoe **never signs in anywhere**. Every reading is borrowed from a
+  credential a tool on this machine already holds. Switching a provider
+  off in Settings → Limits stops it being read at all; it does not sign
+  you out of the tool that owns the account.
+- Failures degrade to a visible status, never a number: no reading is a
+  dash, an old reading is dimmed with its age and the reason, and "0%" is
+  never shown for something that was not read. This is the one rule worth
+  defending if the code is ever refactored.
+- An expired token is not a sign-out. Claude Code rotates it whenever it
+  runs and Kikoe deliberately does not, so after a restart it is often
+  stale until Claude Code is next used.
+- 429 backs off 60s, doubling to 15 min. The endpoint answers
+  `Retry-After: 0`, which is honoured only as a floor-raiser.
+- Polling follows the work: a minute while an agent is running, five when
+  nothing is, plus one poll four seconds after any turn ends. Last-good
+  readings live in `~/.kikoe/usage.json` so a fresh start draws numbers
+  rather than empty circles.
+- Multiple accounts: `~/.claude` first, then every `~/.claude-<slug>` that
+  Claude Code has actually used, alphabetically, each its own ring.
+- The inner thin arc is *activity*, not usage — spinning while an agent
+  works, pulsing while one waits on you. It comes from Kikoe's own tracker,
+  so it stays live even when the percentage has gone stale. Hooks carry no
+  profile, so it is attributed to the default Claude ring only.
+- Kik knows the numbers: `brainSystem()` carries `usage.brief()`, so "how
+  much have I got left?" is answered from the live picture, not a tool call.
+- Codenotch's thresholds (half, seven tenths) are kept; its traffic light
+  is not. `island.css` says "ember as the one accent. No green.", so the
+  bands are paper, amber, ember. The user chose that explicitly.
+- `KIKOE_USAGE=off` (set in `vitest.config.ts`) yields no providers, so no
+  test can ever read a real credential or call a vendor.
+- `npx electron . --screenshot out.png` now also writes `out-island.png`,
+  with the first ring's card pinned open — the harness stubs
+  `hideUsageCard` because the real pointer keeps closing a staged hover.
 
 ## Decisions already made (don't relitigate)
 

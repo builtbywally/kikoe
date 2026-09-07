@@ -58,6 +58,7 @@
       <button data-spage="narration">Narration</button>
       <button data-spage="hooks">Claude Code</button>
       <button data-spage="board">The board</button>
+      <button data-spage="usage">Limits</button>
       <button data-spage="screens">Screens</button>
       <button data-spage="look">Look and startup</button>
       <button data-spage="doctor">Doctor</button>
@@ -183,6 +184,16 @@
         <p>The agent's whiteboard. It pins what can't be said: a diff to approve, a failing test's lines, a table, a picture, a page, an SVG it drew, or a diagram written as boxes and arrows. Each repo has a frame; drag to look around, pinch or control-scroll to zoom; drag a card to arrange. Nothing on it is editable. Pins fade after fifteen minutes.</p>
         <p class="dim">From a shell, anything can pin: <code>curl -K ~/.kikoe/show.curlrc -H "X-Kikoe-Kind: diff" --data-binary @changes.diff</code>. Add <code>-H "X-Kikoe-Ask: apply,no"</code> and the command waits for your answer.</p>
         <div class="actions"><button id="board-clear" class="quiet">Clear the board now</button></div>
+      </section>
+
+      <section id="spage-usage" class="spage" hidden>
+        <h2>Limits</h2>
+        <p>How much of each coding assistant's limit is gone, as a ring on the island. Hover a ring for its windows and when they reset. Kik can be asked out loud, too — "how much have I got left?"</p>
+        <p class="dim">Kikoe never signs in anywhere. Every reading is borrowed from a credential a tool on this machine already holds, so a tool you use appears on its own; one you don't, never does. Switching a row off stops its credential being read at all; it does not sign you out of the tool that owns the account. The idea and the design are <a href="https://github.com/vinzdg/codenotch" target="_blank" rel="noreferrer">Codenotch</a>'s.</p>
+        <label class="row"><input type="checkbox" id="usage-on" /><div><b>Show the rings</b><span>Off, and nothing is read at all.</span></div></label>
+        <div class="rows" id="usage-rows"></div>
+        <div class="actions"><button id="usage-refresh" class="quiet">Read them now</button> <span id="usage-note" class="note"></span></div>
+        <p class="dim">No vendor publishes a clean "your limit is N% used" API for any of these. Each reads whatever the owning app itself reads, and those can change without notice — so every failure shows as a status with a date on it rather than an invented number.</p>
       </section>
 
       <section id="spage-screens" class="spage" hidden>

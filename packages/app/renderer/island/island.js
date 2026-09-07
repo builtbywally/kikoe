@@ -43,6 +43,14 @@ const el = {
   outputs: document.getElementById("outputs"),
   inputs: document.getElementById("inputs"),
   note: document.getElementById("settings-note"),
+  rings: document.getElementById("rings"),
+  ringsRule: document.getElementById("rings-rule"),
+  usageCard: document.getElementById("usage-card"),
+  usageTail: document.getElementById("usage-tail"),
+  usageGlyph: document.getElementById("usage-glyph"),
+  usageTitle: document.getElementById("usage-title"),
+  usagePlan: document.getElementById("usage-plan"),
+  usageBody: document.getElementById("usage-body"),
 };
 
 // How long a transient state holds before falling back to what the session is
@@ -151,11 +159,21 @@ function showPermission(p) {
 const handlers = {
   hello(f) {
     sessions = f.sessions || {};
+    // Archived readings ride in on the hello, so an island started long after
+    // the last poll draws the numbers it had rather than empty circles.
+    renderRings(f.usage);
     rest();
+  },
+
+  usage(f) {
+    renderRings(f.providers);
   },
 
   sessions(f) {
     sessions = f.sessions || {};
+    // The inner arc is the tracker's own fact, not the endpoint's, so it moves
+    // with the sessions rather than waiting for the next poll.
+    renderRings(usageProviders);
     // Never let a routine update paper over something that needs a human, cut
     // a line off mid-sentence, or stomp a state the user is still reading.
     if (
@@ -296,6 +314,333 @@ const handlers = {
   },
 };
 
+// --- usage rings -----------------------------------------------------------
+//
+// What is left of each coding assistant's limit. The idea, the ring, the bands
+// and the card are Codenotch's (github.com/vinzdg/codenotch), which pins the
+// same reading to a macOS screen edge; the daemon's usage.ts holds the parsers
+// and says where each number is borrowed from.
+//
+// Three of its rules matter more than the drawing:
+//
+//   a missing reading is a dash, never a zero — "0%" is a claim, and a ring
+//   that has never succeeded is not entitled to make it;
+//   an old reading is shown dimmed with its age, because a number with a date
+//   on it beats no number;
+//   whether an agent is *working* is known first-hand from Kikoe's own hooks,
+//   so it stays at full strength even when the percentage behind it is stale.
+//
+// Display only, like the rest of the pill. Hovering a ring opens its card and
+// that is the entire interaction: the window stays click-through, because
+// mouse *moves* are forwarded to the page even when clicks are not.
+
+/** The arc's radius in the 24-unit box, and the circumference that follows. */
+const RING_R = 10.4;
+const RING_C = 2 * Math.PI * RING_R;
+
+/** Codenotch's thresholds. Kept in step with `band()` in daemon/src/usage.ts. */
+function bandOf(used) {
+  if (used >= 1) return "spent";
+  if (used >= 0.7) return "critical";
+  if (used >= 0.5) return "watch";
+  return "ample";
+}
+
+/**
+ * A radial burst as line segments.
+ *
+ * Ray count is a size decision, not a brand one: below about 24px a twelve-ray
+ * mark turns to mush, which is why the orb at the other end of this pill drops
+ * every other ray too. Inside a ring the mark is barely 9px across, so six is
+ * what survives.
+ */
+function burst(rays, inner, outer) {
+  const out = [];
+  for (let i = 0; i < rays; i++) {
+    const a = (i * 2 * Math.PI) / rays - Math.PI / 2;
+    out.push([
+      12 + inner * Math.cos(a),
+      12 + inner * Math.sin(a),
+      12 + outer * Math.cos(a),
+      12 + outer * Math.sin(a),
+    ]);
+  }
+  return out;
+}
+
+const SVG = "http://www.w3.org/2000/svg";
+
+function svgEl(name, attrs) {
+  const node = document.createElementNS(SVG, name);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, String(v));
+  return node;
+}
+
+/**
+ * The provider's mark, drawn into a 24-unit box centred on 12,12.
+ *
+ * Deliberately simple strokes rather than traced logos: at this size a traced
+ * outline is indistinguishable from a blob, and a blob that claims to be
+ * someone's trademark is worse than an honest glyph. `scale` grows the same
+ * drawing for the card, where there is room for the detail.
+ */
+function glyphFor(name, scale = 1) {
+  const g = svgEl("g", { class: "ring-glyph" });
+  const s = (v) => 12 + (v - 12) * scale;
+  const line = (x1, y1, x2, y2) =>
+    g.appendChild(svgEl("line", { x1: s(x1), y1: s(y1), x2: s(x2), y2: s(y2) }));
+
+  if (name === "opencode") {
+    // A prompt: the chevron and the caret under it. Says "a coding CLI"
+    // without pretending to be anyone's logo.
+    g.appendChild(
+      svgEl("polyline", {
+        points: `${s(9.7)},${s(9)} ${s(13)},${s(12)} ${s(9.7)},${s(15)}`,
+        fill: "none",
+      }),
+    );
+    line(14.4, 15, 16.6, 15);
+    return g;
+  }
+  // claude, and the fallback: the asterisk.
+  for (const [x1, y1, x2, y2] of burst(scale > 1.4 ? 12 : 6, 1.5, 4.6)) line(x1, y1, x2, y2);
+  return g;
+}
+
+/** One ring and its number. Built once, then updated in place so the arc sweeps. */
+function ringCell(provider) {
+  const cell = document.createElement("div");
+  cell.className = "ring-cell";
+  cell.dataset.id = provider.id;
+
+  const svg = svgEl("svg", { class: "ring", viewBox: "0 0 24 24", width: 23, height: 23 });
+  svg.append(
+    svgEl("circle", { class: "ring-track", cx: 12, cy: 12, r: RING_R }),
+    svgEl("circle", {
+      class: "ring-arc",
+      cx: 12,
+      cy: 12,
+      r: RING_R,
+      "stroke-dasharray": RING_C,
+      "stroke-dashoffset": RING_C,
+    }),
+    glyphFor(provider.glyph),
+    // A quarter of the circle, so the spin has something to read against.
+    svgEl("circle", {
+      class: "ring-activity",
+      cx: 12,
+      cy: 12,
+      r: 7.4,
+      "stroke-dasharray": `${2 * Math.PI * 7.4 * 0.25} ${2 * Math.PI * 7.4}`,
+    }),
+  );
+
+  const pct = document.createElement("span");
+  pct.className = "ring-pct";
+  cell.append(svg, pct);
+  return cell;
+}
+
+let usageProviders = [];
+let usageCells = new Map();
+let hoveredRing = null;
+
+/** Which window the ring itself means, and how full it is. */
+function headlineOf(provider) {
+  const windows = provider.windows || [];
+  return windows.find((w) => w.id === provider.headline) || windows[0] || null;
+}
+
+function renderRings(providers) {
+  usageProviders = Array.isArray(providers) ? providers : [];
+  const ids = usageProviders.map((p) => p.id).join(",");
+  if (ids !== [...usageCells.keys()].join(",")) {
+    el.rings.textContent = "";
+    usageCells = new Map();
+    for (const provider of usageProviders) {
+      const cell = ringCell(provider);
+      usageCells.set(provider.id, cell);
+      el.rings.append(cell);
+    }
+  }
+  el.ringsRule.hidden = !usageProviders.length;
+
+  for (const provider of usageProviders) {
+    const cell = usageCells.get(provider.id);
+    if (!cell) continue;
+    const window = headlineOf(provider);
+    const used = window ? Math.min(Math.max(window.used, 0), 1) : 0;
+    cell.dataset.status = provider.status;
+    cell.dataset.reading = window ? "some" : "none";
+    cell.dataset.band = window ? bandOf(used) : "ample";
+    cell.dataset.activity = activityFor(provider.id);
+    cell.querySelector(".ring-arc").setAttribute("stroke-dashoffset", RING_C * (1 - used));
+    // A dash, not "0%": nothing read is not the same as nothing used.
+    cell.querySelector(".ring-pct").textContent = window ? `${Math.round(used * 100)}%` : "—";
+  }
+  if (hoveredRing) fillUsageCard(hoveredRing);
+}
+
+/**
+ * Whether that assistant is doing something right now.
+ *
+ * Every session Kikoe sees comes through Claude Code's hooks, and a hook says
+ * nothing about which configuration directory it was launched from — so the
+ * work is attributed to the default profile and not guessed at for the others.
+ */
+function activityFor(id) {
+  if (id !== "claude") return "idle";
+  const rows = Object.values(sessions).filter(Boolean);
+  if (rows.some((s) => s.status === "waiting")) return "waiting";
+  if (rows.some((s) => s.status === "working")) return "working";
+  return "idle";
+}
+
+/** Sessions the ring's card lists under its hairline. */
+function sessionsFor(id) {
+  if (id !== "claude") return [];
+  return Object.values(sessions)
+    .filter((s) => s && (s.status === "working" || s.status === "waiting"))
+    .slice(0, 4);
+}
+
+function row(cls, text) {
+  const node = document.createElement("div");
+  node.className = cls;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function fillUsageCard(provider) {
+  el.usageGlyph.textContent = "";
+  const mark = svgEl("svg", { viewBox: "0 0 24 24", width: 15, height: 15 });
+  mark.append(glyphFor(provider.glyph, 1.5));
+  el.usageGlyph.append(mark);
+  el.usageTitle.textContent = `${provider.name} usage`;
+  el.usagePlan.textContent = provider.plan || "";
+
+  el.usageBody.textContent = "";
+  const windows = provider.windows || [];
+  for (const w of windows) {
+    const used = Math.min(Math.max(w.used, 0), 1);
+    const block = row("usage-row");
+    block.dataset.band = bandOf(used);
+
+    const line = row("usage-line");
+    line.append(row("what", w.label));
+    if (w.resets_at) line.append(row("usage-when", resetCopy(w.resets_at)));
+    block.append(line);
+
+    const bar = row("usage-bar");
+    const fill = row("usage-fill");
+    fill.style.width = `${used * 100}%`;
+    bar.append(fill);
+    block.append(bar, row("usage-used", `${Math.round(used * 100)}% used`));
+    el.usageBody.append(block);
+  }
+
+  // Why there is no number, or why the one above is old. Never a status where
+  // a reading should be with nothing said about it.
+  const stale = provider.status === "stale" || provider.status === "rate_limited";
+  if (!windows.length || stale) {
+    const note = row("usage-note");
+    note.dataset.tone = windows.length ? "" : "bad";
+    note.textContent = [stale && windows.length ? ageCopy(provider.read_at) : "", provider.message]
+      .filter(Boolean)
+      .join(" · ");
+    if (note.textContent) el.usageBody.append(note);
+  }
+
+  const live = sessionsFor(provider.id);
+  if (live.length) {
+    const group = row("usage-live");
+    for (const s of live) {
+      const line = row("usage-session");
+      line.dataset.status = s.status;
+      line.append(row("where", s.repo || s.label || "an agent"));
+      line.append(
+        row(
+          "what",
+          s.status === "waiting"
+            ? s.pending_permission || "needs you"
+            : s.current_tool || s.tool || "working",
+        ),
+      );
+      group.append(line);
+    }
+    el.usageBody.append(group);
+  }
+}
+
+/** "resets in 51 min", "resets Thu 12:00 am", "resets Sep 28" — see usage.ts. */
+function resetCopy(at, now = Date.now()) {
+  const seconds = (at - now) / 1000;
+  if (seconds <= 0) return "resetting…";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `resets in ${Math.max(1, minutes)} min`;
+  const when = new Date(at);
+  const days = Math.round(
+    (new Date(at).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 86400000,
+  );
+  if (days >= 7) return `resets ${when.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  const time = when
+    .toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return `resets ${when.toLocaleDateString([], { weekday: "short" })} ${time}`;
+}
+
+function ageCopy(readAt) {
+  if (!readAt) return "never read";
+  const minutes = Math.floor((Date.now() - readAt) / 60000);
+  if (minutes < 1) return "read just now";
+  if (minutes < 60) return `read ${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `read ${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  const days = Math.round(hours / 24);
+  return `read ${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
+function showUsageCard(provider, cell) {
+  hoveredRing = provider;
+  fillUsageCard(provider);
+  el.usageCard.hidden = false;
+  // The tail points at the ring's centre, and the card is centred under it
+  // until an edge stops it. Measured against the wrap, which is what the card
+  // is positioned in.
+  const wrap = document.querySelector(".wrap").getBoundingClientRect();
+  const ring = cell.querySelector(".ring").getBoundingClientRect();
+  const centre = ring.left + ring.width / 2 - wrap.left;
+  const width = el.usageCard.getBoundingClientRect().width;
+  const left = Math.min(Math.max(centre - width / 2, 0), Math.max(0, wrap.width - width));
+  el.usageCard.style.left = `${left}px`;
+  el.usageTail.style.left = `${centre - left}px`;
+  // Four limit windows and four live sessions run past the window's resting
+  // height, and anything past it is simply not drawn — so the window grows to
+  // whatever the card actually measured.
+  fitWindow();
+}
+
+function hideUsageCard() {
+  hoveredRing = null;
+  el.usageCard.hidden = true;
+  fitWindow();
+}
+
+/** Hit-test the rings on every move. No hover CSS: see the note at the top. */
+function trackRingHover(x, y) {
+  for (const provider of usageProviders) {
+    const cell = usageCells.get(provider.id);
+    if (!cell) continue;
+    const r = cell.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+      if (hoveredRing?.id !== provider.id) showUsageCard(provider, cell);
+      return;
+    }
+  }
+  if (hoveredRing) hideUsageCard();
+}
+
 // --- audio settings --------------------------------------------------------
 //
 // Click-through is the invariant here, and the failure to avoid is a HUD stuck
@@ -328,12 +673,20 @@ function setInteractive(on) {
 // window having claimed it first.
 document.addEventListener("mousemove", (e) => {
   setInteractive(inHotZone(e.clientX, e.clientY));
+  trackRingHover(e.clientX, e.clientY);
 });
 
 // Leaving the window entirely produces no further moves, so without this the
-// window could stay interactive with the pointer somewhere else.
-document.addEventListener("mouseleave", () => setInteractive(false));
-window.addEventListener("blur", () => setInteractive(false));
+// window could stay interactive with the pointer somewhere else — and a card
+// opened by the last move in could stay open for ever.
+document.addEventListener("mouseleave", () => {
+  setInteractive(false);
+  hideUsageCard();
+});
+window.addEventListener("blur", () => {
+  setInteractive(false);
+  hideUsageCard();
+});
 
 function note(text, tone = "") {
   el.note.textContent = text || "";
@@ -434,7 +787,14 @@ async function loadDevices() {
 // machine has, which is not knowable ahead of time.
 function fitWindow() {
   const wrap = document.querySelector(".wrap");
-  if (wrap) window.island.setHeight(Math.ceil(wrap.getBoundingClientRect().bottom) + 24);
+  if (!wrap) return;
+  // The usage card is positioned absolutely, so it is not in the wrap's box and
+  // has to be measured on its own or a tall one is simply cut off.
+  const bottom = Math.max(
+    wrap.getBoundingClientRect().bottom,
+    el.usageCard.hidden ? 0 : el.usageCard.getBoundingClientRect().bottom,
+  );
+  window.island.setHeight(Math.ceil(bottom) + 24);
 }
 
 function openSettings() {
@@ -473,6 +833,9 @@ window.island.stream(
     if (status === "disconnected") {
       pendingPermission = null;
       showDetail(null);
+      hideUsageCard();
+      // The rings stay. A limit does not reset because the daemon dropped, and
+      // the hello frame will correct them the moment it reconnects.
       render("disconnected", { label: "no daemon" });
     }
   },

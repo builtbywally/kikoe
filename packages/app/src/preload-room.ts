@@ -83,6 +83,7 @@ contextBridge.exposeInMainWorld("kikoe", {
   openLogs: () => ipcRenderer.invoke("settings:openLogs"),
   pickClaudeSettings: () => ipcRenderer.invoke("settings:pickClaudeSettings"),
   pickBackdrop: () => ipcRenderer.invoke("settings:pickBackdrop"),
+  refreshUsage: () => ipcRenderer.invoke("settings:refreshUsage"),
   onProgress: (fn: (p: unknown) => void) =>
     ipcRenderer.on("settings:progress", (_e, p: unknown) => fn(p)),
 });

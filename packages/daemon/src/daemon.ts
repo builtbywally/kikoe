@@ -53,6 +53,7 @@ import { Board } from "./pins.js";
 import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
 import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
+import { UsageStore, defaultProviders } from "./usage.js";
 
 const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
 const HISTORY = 50;
@@ -151,6 +152,8 @@ export interface DaemonOptions {
   reflectMs?: number;
   /** how long the model may take before Kik says "hm" (tests shorten it) */
   fillerMs?: number;
+  /** keep last-good usage readings in ~/.kikoe/usage.json ("" for none) */
+  usageArchive?: string;
 }
 
 /**
@@ -207,6 +210,8 @@ export class Daemon {
   readonly adapter: ClaudeCodeAdapter;
   readonly history: SpokenRecord[] = [];
   readonly board: Board;
+  /** what is left of each assistant's limit; the island's rings read this */
+  readonly usage: UsageStore;
   private lastSpokeRepo = "";
   private lastSpoken: { text: string; at: number } | null = null;
   private lastRepeatable = "";
@@ -310,6 +315,16 @@ export class Daemon {
         },
       },
     });
+    // A provider switched off in the settings is not read at all — the point of
+    // the switch is that its credential stays untouched, not that its ring is
+    // merely hidden.
+    const off = new Set(this.settings.usage_off ?? []);
+    this.usage = new UsageStore({
+      fetchImpl: this.fetchImpl,
+      providers: defaultProviders().filter((p) => !off.has(p.id)),
+      ...(opts.usageArchive !== undefined ? { archive: opts.usageArchive } : {}),
+      onChange: (providers) => this.hub.publish("usage", { providers }),
+    });
   }
 
   /** The line about to play. The ear uses it to ignore its own echo. */
@@ -375,7 +390,27 @@ export class Daemon {
       sessions: this.tracker.snapshot(),
       brief: this.tracker.brief(),
     });
+    // The limits only move while something is spending them, so the poll
+    // follows the work rather than a fixed clock. A finished turn is the moment
+    // the number has just changed and someone is most likely looking at it.
+    this.usage.busy = [...this.tracker.sessions.values()].some((s) => s.status === "working");
+    if (e.kind === ev.TURN_END) this.usageSoon();
     return queued;
+  }
+
+  /**
+   * One poll a few seconds after a turn ends, and only one however many agents
+   * finish at once. The delay is for the endpoint's benefit: it reports the
+   * turn's spend a moment after the turn.
+   */
+  private usageTimer: NodeJS.Timeout | null = null;
+  private usageSoon(): void {
+    if (this.usageTimer || !this.settings.usage) return;
+    this.usageTimer = setTimeout(() => {
+      this.usageTimer = null;
+      void this.usage.poll();
+    }, 4000);
+    this.usageTimer.unref();
   }
 
   hook(payload: Record<string, unknown>): ev.AgentEvent | null {
@@ -421,6 +456,18 @@ export class Daemon {
     this.narrator.setMode(settings.narrate);
     this.hub.publish("tts", { ladder: this.ladder.names, strict: this.ladder.strict });
     this.hub.publish("look", this.look());
+    this.applyUsageSettings();
+  }
+
+  /** Which rings the island draws, after a settings change. */
+  applyUsageSettings(settings?: Settings): void {
+    if (settings) this.settings = settings;
+    const off = new Set(this.settings.usage_off ?? []);
+    this.usage.setProviders(
+      this.settings.usage ? defaultProviders().filter((p) => !off.has(p.id)) : [],
+    );
+    if (this.settings.usage) this.usage.start();
+    else this.usage.stop();
   }
 
   /** The canvas backdrop, as the Room needs it. */
@@ -1292,6 +1339,14 @@ export class Daemon {
         );
       }
     }
+    // What is left of the limits. Here rather than in a tool because it is the
+    // kind of thing the user asks in passing — "how much have I got left?" —
+    // and a tool round trip to answer it would be slower than the question.
+    const usage = this.settings.usage ? this.usage.brief() : "";
+    if (usage)
+      lines.push(
+        `Limits left (used, so higher is worse; say these as plain numbers and never invent one that is not here):\n${usage}`,
+      );
     const recent = this.history.slice(-5).map((h) => h.text);
     if (recent.length)
       lines.push(`Last things said aloud: ${recent.map((t) => `"${t}"`).join(" ")}`);
@@ -1867,6 +1922,7 @@ export class Daemon {
       asking: this.board.asking()?.id ?? null,
       mic: { phase: this.micPhase, device: this.micDevice, enabled: this.settings.mic },
       heard: [...this.heardLog].reverse(),
+      usage: this.usage.list(),
       home: HOME,
     };
   }
@@ -2011,7 +2067,7 @@ export class Daemon {
     // A viewer may look and may not touch.
     const reading =
       req.method === "GET" &&
-      ["/state", "/sessions", "/stream", "/pins", "/backdrop"].includes(url.pathname);
+      ["/state", "/sessions", "/stream", "/pins", "/backdrop", "/usage"].includes(url.pathname);
     if (grant === "viewer" && !reading)
       return this.json(res, 403, { error: "viewer token: read only" });
 
@@ -2046,8 +2102,20 @@ export class Daemon {
           brief: this.tracker.brief(),
         });
       case "GET /stream":
-        this.hub.subscribe(res, { sessions: this.tracker.snapshot(), mode: this.narrator.mode });
+        this.hub.subscribe(res, {
+          sessions: this.tracker.snapshot(),
+          mode: this.narrator.mode,
+          // The rings draw from the hello frame, so an island started long
+          // after the last poll shows the archived readings rather than three
+          // empty circles until the next one lands.
+          usage: this.usage.list(),
+        });
         return;
+      case "GET /usage":
+        return this.json(res, 200, { providers: this.usage.list() });
+      case "POST /usage/refresh":
+        await this.usage.poll();
+        return this.json(res, 200, { providers: this.usage.list() });
       case "POST /hook/claude": {
         let payload: Record<string, unknown>;
         try {
@@ -2291,6 +2359,7 @@ export class Daemon {
         if (dropped.length) log(`unloaded idle model: ${dropped.join(", ")}`);
       }, 60_000),
     );
+    if (this.settings.usage) this.usage.start();
     log(`listening on 127.0.0.1:${port}, speaker ${this.speaker.info().device}`);
     return { port };
   }
@@ -2300,6 +2369,8 @@ export class Daemon {
     if (this.checkinTimer) clearInterval(this.checkinTimer);
     if (this.reflectTimer) clearTimeout(this.reflectTimer);
     if (this.presenceTimer) clearTimeout(this.presenceTimer);
+    if (this.usageTimer) clearTimeout(this.usageTimer);
+    this.usage.stop();
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     if (this.pending) this.answerPermission(false, this.pending.id);

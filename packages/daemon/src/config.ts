@@ -70,6 +70,10 @@ export interface Settings {
   brain_greets: boolean;
   /** the model that designs pages and apps for the canvas; sharper than the voice */
   artifact_model: string;
+  /** rings on the island for what is left of each assistant's limit */
+  usage: boolean;
+  /** providers switched off by hand; a listed id is never read at all */
+  usage_off: string[];
 }
 
 export const DEFAULTS: Settings = {
@@ -104,6 +108,8 @@ export const DEFAULTS: Settings = {
   brain_checkin: true,
   brain_greets: true,
   artifact_model: "claude-sonnet-5",
+  usage: true,
+  usage_off: [],
 };
 
 const FILE = () => path.join(HOME, "config.local.json");

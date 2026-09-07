@@ -162,6 +162,33 @@ Gaps:
 - The doctor does not say when the ear is dead in words a person would
   use. **friction**, tied to gap 5.
 
+## 10b. The limit rings (added 2026-09-07)
+
+Works: one ring per assistant on the pill, the number beside it, a hover
+card with every window and its reset, an inner arc for whether an agent is
+working or waiting, Kik answering "how much have I got left?" out loud, a
+Settings page that says whose credential each reading is borrowed from and
+can stop one being read at all. Claude Code (every `~/.claude-<slug>`
+profile) and OpenCode's Go plan today. Parsers pinned by 23 tests; every
+failure degrades to a status with a date on it.
+
+Gaps:
+- Codenotch reads Cursor, Codex, GLM, Grok and Antigravity too. None of
+  those had a credential on this machine to test against, and Cursor's
+  needs a SQLite read of a 200 MB `state.vscdb`. **later** — the provider
+  interface is the only thing a new one has to satisfy.
+- The activity arc is attributed to the default Claude profile, because a
+  hook says nothing about which config directory launched it. With two
+  profiles running at once the work shows on the wrong ring. **friction**.
+- The rings are on the pill only. The Room — the surface you actually sit
+  in front of — does not show them anywhere. **friction**.
+- Nothing warns before a limit runs out. The numbers are there and the
+  watcher already speaks about waits and red tests; "you're at ninety on
+  the weekly" is the obvious next line and does not exist. **later**.
+- No test covers the renderer, like the rest of `renderer/`. The idle
+  activity arc drew a permanent quarter-arc that read as usage, and only
+  the screenshot caught it. **breaks trust** for every future change.
+
 ## 11. The CLI and the show contract
 
 Works: `kikoe speak`, `kikoe show` with kinds, asks, TTL, repo.
