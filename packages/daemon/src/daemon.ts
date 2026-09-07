@@ -143,6 +143,7 @@ export interface DaemonOptions {
   audio?: boolean;
   elevenKey?: string;
   anthropicKey?: string;
+  openrouterKey?: string;
   /** for tests: the fetch the brain uses */
   fetchImpl?: typeof fetch;
   /** keep sticky pins in ~/.kikoe/board.json (off for smoke and screenshot runs) */
@@ -219,6 +220,7 @@ export class Daemon {
   /** until when an utterance without the name still counts as for us */
   private attentionUntil = 0;
   private anthropicKey = "";
+  private openrouterKey = "";
   private readonly fetchImpl: typeof fetch;
   private brainCache: Brain | null = null;
   private checkinTimer: NodeJS.Timeout | null = null;
@@ -271,6 +273,7 @@ export class Daemon {
 
   constructor(opts: DaemonOptions = {}) {
     this.anthropicKey = opts.anthropicKey ?? "";
+    this.openrouterKey = opts.openrouterKey ?? "";
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.checkinTimer = setInterval(() => {
       this.watch();
@@ -445,8 +448,14 @@ export class Daemon {
    * A voice change swaps the ladder and nothing else: the server stays up,
    * the tracker keeps its sessions, the arbiter keeps its counts.
    */
-  reconfigure(settings: Settings, elevenKey?: string, anthropicKey?: string): void {
+  reconfigure(
+    settings: Settings,
+    elevenKey?: string,
+    anthropicKey?: string,
+    openrouterKey?: string,
+  ): void {
     if (anthropicKey !== undefined) this.anthropicKey = anthropicKey;
+    if (openrouterKey !== undefined) this.openrouterKey = openrouterKey;
     this.brainCache = null;
     this.interrupt();
     const old = this.ladder;
@@ -1189,12 +1198,24 @@ export class Daemon {
   }
 
   /** The model head, when there is a key and the setting is on. */
+  /** The key for the provider in the settings; empty means no brain. */
+  private brainKey(): string {
+    return this.settings.brain_provider === "openrouter" ? this.openrouterKey : this.anthropicKey;
+  }
+
   brain(): Brain | null {
-    if (!this.settings.brain || !this.anthropicKey) return null;
-    if (!this.brainCache || this.brainCache.model !== this.settings.brain_model) {
+    const key = this.brainKey();
+    if (!this.settings.brain || !key) return null;
+    const provider = this.settings.brain_provider || "anthropic";
+    if (
+      !this.brainCache ||
+      this.brainCache.model !== this.settings.brain_model ||
+      this.brainCache.provider !== provider
+    ) {
       this.brainCache = new Brain({
-        key: this.anthropicKey,
+        key,
         model: this.settings.brain_model,
+        provider,
         fetchImpl: this.fetchImpl,
         log,
       });
@@ -1892,7 +1913,8 @@ export class Daemon {
       brain: {
         on: this.brain() !== null,
         model: this.settings.brain_model,
-        key: Boolean(this.anthropicKey),
+        provider: this.settings.brain_provider || "anthropic",
+        key: Boolean(this.brainKey()),
       },
       instructions: this.instructions.length,
       inner: this.innerNote,

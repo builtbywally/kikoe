@@ -169,7 +169,12 @@ Flight": the desk mic M8 hears the room), `wake_name` ("kik"),
 `stt_model` ("base"), `hear_debug` (ON right now for tuning; it keeps the
 text of everything heard; turn off when the name lands reliably),
 `hear_you` (true), `barge_in` (true, headset only), `brain` (true),
-`brain_model` (Haiku 4.5; Sonnet 5 option), `brain_narrates`,
+`brain_model` (Haiku 4.5; Sonnet 5 option), `brain_provider` ("openrouter"
+on this machine since 2026-09-07: the Anthropic account ran out of credit
+and Kik was the rulebook for a day; OpenRouter serves the same Messages
+API, key in `~/.kikoe/openrouter_key.txt`, model names mapped in
+`brain.ts` `providerModel`; measured 1.0 s to the first word for Haiku on
+a Kik-sized prompt, the same as direct), `brain_narrates`,
 `brain_checkin`, `brain_greets` (hello after an hour away),
 `artifact_model` (Sonnet 5: designs pages), `usage` (true: the limit rings
 on the pill), `usage_off` (provider ids never read), `backdrop`

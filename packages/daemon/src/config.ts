@@ -62,6 +62,13 @@ export interface Settings {
   /** a model in the head: what is addressed to Kik goes to the API */
   brain: boolean;
   brain_model: string;
+  /**
+   * who serves the model: anthropic (the key in the keychain) or openrouter
+   * (the key in ~/.kikoe/openrouter_key.txt, the same Messages format, any
+   * Claude model by the same name). The Anthropic account ran dry once and
+   * Kik was the rulebook for a day; a second door costs one setting.
+   */
+  brain_provider: string;
   /** the model phrases milestones, errors and endings in its own words */
   brain_narrates: boolean;
   /** it may speak up unprompted when something is worth it */
@@ -104,6 +111,7 @@ export const DEFAULTS: Settings = {
   backdrop_image: "",
   brain: false,
   brain_model: "claude-haiku-4-5-20251001",
+  brain_provider: "anthropic",
   brain_narrates: true,
   brain_checkin: true,
   brain_greets: true,
@@ -190,6 +198,16 @@ export function anthropicKeyFromFile(): string {
   if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY.trim();
   try {
     return readFileSync(path.join(HOME, "anthropic_key.txt"), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** The OpenRouter key lives in a plain file only; nothing else reads it. */
+export function openrouterKeyFromFile(): string {
+  if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY.trim();
+  try {
+    return readFileSync(path.join(HOME, "openrouter_key.txt"), "utf8").trim();
   } catch {
     return "";
   }

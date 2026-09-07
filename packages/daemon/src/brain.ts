@@ -20,6 +20,8 @@ export interface BrainTool {
 export interface BrainOptions {
   key: string;
   model: string;
+  /** anthropic (default) or openrouter; picks the URL, the auth header and the model name */
+  provider?: string;
   fetchImpl?: typeof fetch;
   log?: (line: string) => void;
   /** how long a conversation stays in memory between utterances */
@@ -58,6 +60,30 @@ Rules: one to three spoken sentences, at most about sixty words. No lists, headi
 
 const SENTENCE_END = /([.!?]["')\]]?)\s+/;
 
+/**
+ * Where a provider answers the Messages API and how it wants the key.
+ * OpenRouter speaks the same format, streaming and tools included, so a
+ * second provider is a URL and a header, not a second client.
+ */
+export const PROVIDERS: Record<string, { url: string; auth: "x-api-key" | "bearer" }> = {
+  anthropic: { url: "https://api.anthropic.com/v1/messages", auth: "x-api-key" },
+  openrouter: { url: "https://openrouter.ai/api/v1/messages", auth: "bearer" },
+};
+
+/** Anthropic's dated ids, as OpenRouter names them. */
+const OPENROUTER_NAMES: Record<string, string> = {
+  "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4.5",
+  "claude-haiku-4-5": "anthropic/claude-haiku-4.5",
+  "claude-sonnet-5": "anthropic/claude-sonnet-5",
+  "claude-opus-5": "anthropic/claude-opus-5",
+};
+
+/** The model's name at the provider: OpenRouter wants a vendor prefix. */
+export function providerModel(provider: string, model: string): string {
+  if (provider !== "openrouter" || model.includes("/")) return model;
+  return OPENROUTER_NAMES[model] ?? `anthropic/${model}`;
+}
+
 export class Brain {
   private turns: Turn[] = [];
   private readonly memoryMs: number;
@@ -71,6 +97,10 @@ export class Brain {
 
   get model(): string {
     return this.opts.model;
+  }
+
+  get provider(): string {
+    return this.opts.provider || "anthropic";
   }
 
   forget(): void {
@@ -288,8 +318,10 @@ Answer with exactly one word: yes if it was addressed to Kik, no if not.`;
     maxTokens = 4000,
     model?: string,
   ): Promise<{ blocks: Block[]; stop: string }> {
+    const provider = this.opts.provider || "anthropic";
+    const where = PROVIDERS[provider] ?? PROVIDERS.anthropic!;
     const body = {
-      model: model || this.opts.model,
+      model: providerModel(provider, model || this.opts.model),
       // a page or a long checklist is a tool call with a big input
       max_tokens: maxTokens,
       stream: true,
@@ -305,10 +337,12 @@ Answer with exactly one word: yes if it was addressed to Kik, no if not.`;
           }
         : {}),
     };
-    const res = await this.fetchImpl("https://api.anthropic.com/v1/messages", {
+    const res = await this.fetchImpl(where.url, {
       method: "POST",
       headers: {
-        "x-api-key": this.opts.key,
+        ...(where.auth === "bearer"
+          ? { authorization: `Bearer ${this.opts.key}` }
+          : { "x-api-key": this.opts.key }),
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
       },

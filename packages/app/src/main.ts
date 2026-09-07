@@ -31,6 +31,7 @@ import {
   loadSettings,
   log,
   modelInstalled,
+  openrouterKeyFromFile,
   probe,
   removeModel,
   saveSettings,
@@ -136,6 +137,7 @@ async function startDaemon(): Promise<void> {
     audio: !noAudio,
     elevenKey: loadElevenKey(),
     anthropicKey: loadAnthropicKey(),
+    openrouterKey: openrouterKeyFromFile(),
     persistBoard: !smoke && !shotPath,
     roomDir: path.join(RENDERER, "room"),
   });
@@ -652,6 +654,7 @@ function snapshot() {
     version: VERSION,
     hasElevenKey: Boolean(loadElevenKey()),
     hasAnthropicKey: Boolean(loadAnthropicKey()),
+    hasOpenrouterKey: Boolean(openrouterKeyFromFile()),
     hooks: hookStatus(s.claude_settings || settingsPath()),
     claudeSettingsPath: s.claude_settings || settingsPath(),
     curl: hasCurl(),
@@ -702,7 +705,12 @@ ipcMain.handle(
       ) ||
       elevenKey !== undefined
     ) {
-      daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey());
+      daemon?.reconfigure(
+        loadSettings(),
+        loadElevenKey(),
+        loadAnthropicKey(),
+        openrouterKeyFromFile(),
+      );
     } else if (rest.narrate) daemon?.setMode(rest.narrate);
     // Switching a provider off has to stop its credential being read, not just
     // hide its ring, so the store is rebuilt rather than filtered on the way out.
@@ -821,7 +829,12 @@ ipcMain.handle("settings:fetchKokoro", async () => {
       downloading = { name: "kokoro", ...p };
       roomWin?.webContents.send("settings:progress", downloading);
     });
-    daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey());
+    daemon?.reconfigure(
+      loadSettings(),
+      loadElevenKey(),
+      loadAnthropicKey(),
+      openrouterKeyFromFile(),
+    );
     return { ok: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -832,7 +845,7 @@ ipcMain.handle("settings:fetchKokoro", async () => {
 });
 ipcMain.handle("settings:removeKokoro", () => {
   removeModel(KOKORO);
-  daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey());
+  daemon?.reconfigure(loadSettings(), loadElevenKey(), loadAnthropicKey(), openrouterKeyFromFile());
   return { ok: true };
 });
 ipcMain.handle("settings:answerPermission", (_e, allow: boolean, id?: string) => ({
@@ -879,7 +892,7 @@ ipcMain.handle("settings:pickBackdrop", async () => {
     copyFileSync(src, dest);
     const next = { ...loadSettings(), backdrop: "custom", backdrop_image: dest };
     saveSettings(next);
-    daemon?.reconfigure(next, loadElevenKey(), loadAnthropicKey());
+    daemon?.reconfigure(next, loadElevenKey(), loadAnthropicKey(), openrouterKeyFromFile());
     return { ok: true, file: dest };
   } catch (e) {
     return { error: (e as Error).message };

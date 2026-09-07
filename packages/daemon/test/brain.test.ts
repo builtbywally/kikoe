@@ -130,6 +130,66 @@ describe("the brain", () => {
     const b = new Brain({ key: "k", model: "m", fetchImpl: f });
     await expect(b.reply("hi", { system: "s" })).rejects.toThrow(/401/);
   });
+
+  it("goes through OpenRouter with a bearer key and the vendor-prefixed model name", async () => {
+    const calls: Array<{ url: string; headers: Record<string, string>; model: string }> = [];
+    const f = (async (url: unknown, init?: RequestInit) => {
+      calls.push({
+        url: String(url),
+        headers: init?.headers as Record<string, string>,
+        model: String(JSON.parse(String(init?.body)).model),
+      });
+      return new Response(sse(text("Hi.")), { status: 200 });
+    }) as unknown as typeof fetch;
+    const b = new Brain({
+      key: "or-k",
+      model: "claude-haiku-4-5-20251001",
+      provider: "openrouter",
+      fetchImpl: f,
+    });
+    await b.reply("hi", { system: "s" });
+    expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/messages");
+    expect(calls[0]?.headers.authorization).toBe("Bearer or-k");
+    expect(calls[0]?.headers["x-api-key"]).toBeUndefined();
+    expect(calls[0]?.model).toBe("anthropic/claude-haiku-4.5");
+    // the default is Anthropic itself, with the key in its own header
+    const a = new Brain({ key: "ak", model: "claude-sonnet-5", fetchImpl: f });
+    await a.reply("hi", { system: "s" });
+    expect(calls[1]?.url).toBe("https://api.anthropic.com/v1/messages");
+    expect(calls[1]?.headers["x-api-key"]).toBe("ak");
+    expect(calls[1]?.model).toBe("claude-sonnet-5");
+  });
+
+  it("names models the way each provider wants", async () => {
+    const { providerModel } = await import("../src/brain.js");
+    expect(providerModel("anthropic", "claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(providerModel("openrouter", "claude-sonnet-5")).toBe("anthropic/claude-sonnet-5");
+    expect(providerModel("openrouter", "google/gemini-2.5-flash")).toBe("google/gemini-2.5-flash");
+    expect(providerModel("openrouter", "claude-opus-6")).toBe("anthropic/claude-opus-6");
+  });
+});
+
+describe("the provider setting", () => {
+  it("uses the OpenRouter key when the setting says so, and none otherwise", async () => {
+    const { f } = fakeFetch([text("Hi.")]);
+    const settings = {
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      brain_provider: "openrouter",
+    } as typeof config.DEFAULTS;
+    const anthropicOnly = new Daemon({ settings, audio: false, anthropicKey: "k", fetchImpl: f });
+    expect(anthropicOnly.brain()).toBeNull();
+    expect(anthropicOnly.state().brain).toMatchObject({ on: false, provider: "openrouter" });
+    await anthropicOnly.close();
+    const d = new Daemon({ settings, audio: false, openrouterKey: "or", fetchImpl: f });
+    expect(d.brain()?.provider).toBe("openrouter");
+    expect(d.state().brain).toMatchObject({ on: true, provider: "openrouter", key: true });
+    // switching the setting back swaps the brain, not just its model
+    d.reconfigure({ ...settings, brain_provider: "anthropic" }, undefined, "ak");
+    expect(d.brain()?.provider).toBe("anthropic");
+    await d.close();
+  });
 });
 
 describe("the brain in the daemon", () => {

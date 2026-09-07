@@ -133,6 +133,7 @@
     $("barge-in").checked = Boolean(s.barge_in);
     $("brain").checked = Boolean(s.brain);
     $("brain-model").value = s.brain_model || "claude-haiku-4-5-20251001";
+    $("brain-provider").value = s.brain_provider || "anthropic";
     $("brain-narrates").checked = s.brain_narrates !== false;
     $("brain-checkin").checked = s.brain_checkin !== false;
     $("brain-greets").checked = s.brain_greets !== false;
@@ -477,13 +478,17 @@
     const patch = {
       brain: $("brain").checked,
       brain_model: $("brain-model").value,
+      brain_provider: $("brain-provider").value,
       brain_narrates: $("brain-narrates").checked,
       brain_checkin: $("brain-checkin").checked,
       brain_greets: $("brain-greets").checked,
       artifact_model: $("artifact-model").value,
     };
     if (key) patch.anthropicKey = key;
-    if (patch.brain && !key && !info.hasAnthropicKey)
+    const viaOpenrouter = patch.brain_provider === "openrouter";
+    if (patch.brain && viaOpenrouter && !info.hasOpenrouterKey)
+      return note("brain-note", "Put an OpenRouter key in openrouter_key.txt first.", "bad");
+    if (patch.brain && !viaOpenrouter && !key && !info.hasAnthropicKey)
       return note("brain-note", "Paste an Anthropic API key first.", "bad");
     note("brain-note", "saving…");
     const r = await api.save(patch);

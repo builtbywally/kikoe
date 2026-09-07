@@ -118,6 +118,7 @@
         <label class="check"><input type="checkbox" id="brain" /> Think and talk with Claude.</label>
         <div class="actions">
           <select id="brain-model"><option value="claude-haiku-4-5-20251001">Haiku 4.5 · fastest</option><option value="claude-sonnet-5">Sonnet 5 · sharper</option></select>
+          <select id="brain-provider" title="Who serves the model. OpenRouter speaks the same API and takes its key from openrouter_key.txt in the Kikoe folder."><option value="anthropic">through Anthropic</option><option value="openrouter">through OpenRouter</option></select>
           <input type="password" id="anthropic-key" placeholder="Anthropic API key" autocomplete="off" style="width: 260px" />
         </div>
         <label class="check"><input type="checkbox" id="brain-narrates" /> Phrase milestones, errors and endings its own way.</label>

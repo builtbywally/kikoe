@@ -11,6 +11,7 @@ export {
   ensureHome,
   elevenKeyFromFile,
   anthropicKeyFromFile,
+  openrouterKeyFromFile,
   log,
   redact,
 } from "./config.js";
