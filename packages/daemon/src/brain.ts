@@ -61,6 +61,29 @@ Rules: one to three spoken sentences, at most about sixty words. No lists, headi
 const SENTENCE_END = /([.!?]["')\]]?)\s+/;
 
 /**
+ * Below this there is no answer worth having, so the failure is the truth.
+ * A spoken line is about sixty words, which is well under two hundred.
+ */
+export const MIN_TOKENS = 200;
+
+/**
+ * What a billing refusal says we could have asked for.
+ *
+ * A provider that is out of credit does not truncate the reply, it refuses
+ * the request — and then names the budget it would have accepted. Reading
+ * that number is the difference between Kik going quiet with credit still
+ * on the account and Kik getting shorter as the account runs down.
+ */
+export function affordable(detail: string): number {
+  const m = /can only afford (\d+)/i.exec(detail);
+  if (!m?.[1]) return 0;
+  const n = Number.parseInt(m[1], 10);
+  // Leave a little room: the number is a moving target with other requests
+  // in flight, and being refused twice for the same reason helps nobody.
+  return Number.isFinite(n) ? Math.floor(n * 0.9) : 0;
+}
+
+/**
  * Where a provider answers the Messages API and how it wants the key.
  * OpenRouter speaks the same format, streaming and tools included, so a
  * second provider is a URL and a header, not a second client.
@@ -317,6 +340,7 @@ Answer with exactly one word: yes if it was addressed to Kik, no if not.`;
     messages: Turn[] = this.turns,
     maxTokens = 4000,
     model?: string,
+    mayRetry = true,
   ): Promise<{ blocks: Block[]; stop: string }> {
     const provider = this.opts.provider || "anthropic";
     const where = PROVIDERS[provider] ?? PROVIDERS.anthropic!;
@@ -351,6 +375,17 @@ Answer with exactly one word: yes if it was addressed to Kik, no if not.`;
     });
     if (!res.ok || !res.body) {
       const detail = await res.text().catch(() => "");
+      // A nearly-empty account refuses the whole request rather than
+      // truncating it, and says exactly what it would have allowed: "you
+      // requested up to 4000 tokens, but can only afford 981". A spoken line
+      // is sixty words, so that is plenty — ask again for what is left
+      // rather than going mute with credit still on the account.
+      const afford = affordable(detail);
+      // Once only. An account this empty is a thing to fix, not to hammer.
+      if (mayRetry && afford && afford >= MIN_TOKENS && maxTokens > afford) {
+        this.opts.log?.(`brain: ${maxTokens} tokens refused, retrying with ${afford}`);
+        return this.stream(system, tools, signal, emit, messages, afford, model, false);
+      }
       throw new Error(`brain: ${res.status} ${detail.slice(0, 200)}`);
     }
     const blocks: Block[] = [];

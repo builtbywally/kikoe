@@ -97,6 +97,49 @@ describe("the brain", () => {
     expect(msgs.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
   });
 
+  it("gets shorter as the credit runs out, instead of going quiet", async () => {
+    // What an account with a few hundred tokens left actually says. It does
+    // not truncate the reply; it refuses the request and names the budget it
+    // would have taken.
+    const refusal = JSON.stringify({
+      type: "error",
+      error: {
+        type: "billing_error",
+        message:
+          "This request requires more credits, or fewer max_tokens. You requested up to 4000 tokens, but can only afford 981.",
+      },
+    });
+    const sent: Record<string, unknown>[] = [];
+    let n = 0;
+    const f = (async (_url: unknown, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body ?? "{}")));
+      if (n++ === 0) return new Response(refusal, { status: 402 });
+      return new Response(sse(text("Two failing, both Windows paths.")), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const b = new Brain({ key: "k", model: "m", fetchImpl: f });
+    const said = await b.reply("kik how are the tests", { system: "sys" });
+    expect(said).toBe("Two failing, both Windows paths.");
+    expect(sent[0]?.max_tokens).toBe(4000);
+    // asked again for what was actually left, with a little room to spare
+    expect(sent[1]?.max_tokens).toBe(882);
+  });
+
+  it("gives up rather than hammering an account with nothing left", async () => {
+    const broke = JSON.stringify({
+      error: { message: "You requested up to 4000 tokens, but can only afford 12." },
+    });
+    let calls = 0;
+    const f = (async () => {
+      calls++;
+      return new Response(broke, { status: 402 });
+    }) as unknown as typeof fetch;
+    const b = new Brain({ key: "k", model: "m", fetchImpl: f });
+    await expect(b.reply("kik hello", { system: "sys" })).rejects.toThrow(/402/);
+    // twelve tokens is not an answer, so it never asked twice
+    expect(calls).toBe(1);
+  });
+
   it("runs a tool and carries the result back", async () => {
     const { f, sent } = fakeFetch([
       toolCall("instruct_agent", { instruction: "add a retry" }, "On it."),
