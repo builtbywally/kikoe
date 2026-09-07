@@ -37,6 +37,7 @@ import {
   route,
   utterance,
 } from "@kikoe/core";
+import { Agents } from "./agents.js";
 import { Brain, type BrainTool, PERSONA } from "./brain.js";
 import {
   HOME,
@@ -225,6 +226,8 @@ export class Daemon {
   transcribe: ((pcm: Int16Array) => Promise<string>) | null = null;
   /** a name, some folders, a board; the Room shows one at a time */
   readonly projects = new Projects();
+  /** agents Kik started itself, so the day need not begin in a terminal */
+  readonly agents: Agents;
   /** the agent's work, as cards: diffs, commands, results, replies */
   readonly work: Work;
   /** what is left of each assistant's limit; the island's rings read this */
@@ -331,6 +334,7 @@ export class Daemon {
       this.loadProjects();
       this.loadBoard();
     }
+    this.agents = new Agents({ bin: this.settings.claude_bin, log });
     this.work = new Work({
       board: this.board,
       projectOf: (e) => this.projects.of(e.cwd, e.repo).id,
@@ -384,6 +388,9 @@ export class Daemon {
   ingest(e: ev.AgentEvent): number {
     this.eventsSeen++;
     if (this.persistBoard) this.rememberProject(e.cwd, e.repo);
+    // An agent Kik started announces itself like any other; that is how a
+    // run is matched to a session, rather than by parsing its output.
+    if (e.kind === ev.SESSION_START) this.agents.claim(e.cwd, e.session);
     this.tracker.apply(e);
     // Hooks mean the user is at the desk driving agents, even if silent.
     this.presence.seen = Date.now();
@@ -687,7 +694,12 @@ export class Daemon {
         said = headSocial(d.intent);
         break;
       case "work":
-        said = "I can't take instructions yet. Say it to the terminal.";
+        // This used to be "say it to the terminal", which was true when
+        // there was nothing to hand an instruction to. There is now: it goes
+        // to whichever agent is running, and starts one if none is. It lives
+        // in the rulebook rather than the model because the first thing you
+        // ask for in a morning should not depend on an account balance.
+        said = sentence(this.instruct(d.text || clean));
         break;
     }
     record(d.kind, d.intent, said ?? "");
@@ -1580,12 +1592,18 @@ export class Daemon {
       this.rememberExchange(text, said);
     } catch (e) {
       log(`brain failed: ${(e as Error).message}; rules answered`);
+      // The model being gone is not a reason to refuse work. An instruction
+      // still reaches the agent, and still starts one if none is running —
+      // that path never needed a model, and "say it to the terminal" was
+      // the wrong answer the moment Kik could start an agent itself.
       said =
         kind === "question"
           ? headAnswer(text, Object.values(this.tracker.snapshot()))
           : kind === "social"
             ? headSocial(intent)
-            : "I can't reach the model right now. Say that to the terminal.";
+            : kind === "work"
+              ? sentence(this.instruct(text))
+              : "I can't reach the model right now. Say that to the terminal.";
       record(kind, intent, said);
       this.say(said, ev.SEV_ATTENTION, "head");
     } finally {
@@ -1905,6 +1923,20 @@ export class Daemon {
         run: (i) => (this.board.remove(String(i.id ?? "")) ? "removed" : "no such pin"),
       },
       {
+        name: "start_agent",
+        description:
+          "Start a coding agent in a project and give it the job. Use this when the user asks for work doing and nothing is running there — you do not need to ask them to open a terminal first. The agent's progress comes back on its own: you will hear about it and the canvas will fill. Give the task in the user's own words, with enough of the context you have that it can begin without asking.",
+        input_schema: {
+          type: "object",
+          properties: {
+            task: str("what it should do, in the user's words"),
+            project: str("which project; omit for the one on screen"),
+          },
+          required: ["task"],
+        },
+        run: (i) => this.startAgent(String(i.project ?? ""), String(i.task ?? "")),
+      },
+      {
         name: "open_project",
         description:
           "Show another project's board. Each project keeps its own canvas, arranged the way the user left it. Use it when they ask to switch, open, or go to a project by name, or when what they want is clearly about another one. The agents in other projects keep running either way.",
@@ -2050,12 +2082,89 @@ export class Daemon {
       repo ??
       sessions.find((s) => s.status === "working")?.repo ??
       sessions[sessions.length - 1]?.repo;
-    if (!target) return "no agent is connected; nothing to hand it to";
+    // Nothing to hand it to used to be the end of the sentence, which meant
+    // the first instruction of the day always failed and you opened a
+    // terminal. Now it is a reason to start one.
+    if (!target) return this.startAgent(repo ?? "", text);
     this.instructions.push({ repo: target, text, at: Date.now() });
     const s = sessions.find((x) => x.repo === target);
     const when = s?.status === "working" ? "when its turn ends" : "with the user's next prompt";
     log(`instruction queued for ${target}: ${text}`);
     return `queued for ${target}; it gets it ${when}`;
+  }
+
+  /**
+   * Start a coding agent in a project, with something to do.
+   *
+   * The work comes back the way it always has — hooks, narration, cards on
+   * the canvas — because the session Kik starts is an ordinary one. What is
+   * new is only that nobody had to open a terminal to begin it.
+   */
+  startAgent(name: string, prompt: string): string {
+    if (!this.settings.agents) return "starting agents is switched off in Settings";
+    const project = name
+      ? (this.projects.resolve(name) ?? this.projects.current)
+      : this.projects.current;
+    // What the user said first, then what the machine knows: being told the
+    // folder is missing when the real problem is an empty task is a worse
+    // answer than the one about the task.
+    const task = prompt.trim();
+    if (!task) return "tell me what it should do";
+    const cwd = project.roots[0] ?? "";
+    if (!cwd) return `I don't know where ${project.name} is on disk`;
+    const { ok, said } = this.agents.start(project.id, cwd, task);
+    if (ok) {
+      // Show it happening: the board the work will land on is the one to be
+      // looking at.
+      if (this.projects.current.id !== project.id) {
+        this.projects.open(project.id);
+        this.saveProjects();
+        this.publishProject();
+      }
+      this.hub.publish("sessions", {
+        sessions: this.tracker.snapshot(),
+        brief: this.tracker.brief(),
+      });
+    }
+    return said;
+  }
+
+  /**
+   * Do something about a card.
+   *
+   * The canvas has been a window onto the work: you could read a diff and a
+   * test run and do nothing about either. This makes the cards act — and it
+   * does it by *asking the agent*, never by touching the repo. Kikoe writes
+   * to no source file and runs no build of its own, so a revert is an edit
+   * the agent makes and you can see, and a re-run is the command it already
+   * ran. Nothing new can reach your disk that could not before.
+   */
+  actOnPin(id: string, action: string): { ok: boolean; said: string } {
+    const pin = this.board.get(id);
+    if (!pin) return { ok: false, said: "that card is gone" };
+    const repo = pin.repo && pin.repo !== "kik" ? pin.repo : undefined;
+    const what = pinSubject(pin);
+    let instruction = "";
+    switch (action) {
+      case "again":
+        if (!what.command) return { ok: false, said: "that card has no command on it" };
+        instruction = `Run this again and tell me what changed: ${what.command}`;
+        break;
+      case "revert":
+        if (!what.file) return { ok: false, said: "that card has no file on it" };
+        instruction = `Undo the change you just made to ${what.file}. Put it back as it was, change nothing else, and say only what you did.`;
+        break;
+      case "explain":
+        instruction = what.file
+          ? `Explain the change you made to ${what.file}: what it does and why, in a few sentences.`
+          : `Explain what this did and what it means: ${what.command || pin.title}`;
+        break;
+      default:
+        return { ok: false, said: `I don't know how to ${action}` };
+    }
+    const said = this.instruct(instruction, repo);
+    log(`card ${id}: ${action} -> ${said}`);
+    return { ok: true, said };
   }
 
   /**
@@ -2390,6 +2499,12 @@ export class Daemon {
       const b = JSON.parse((await this.body(req)) || "{}");
       const ok = this.board.answer(answerMatch[1]!, String(b.answer ?? ""));
       return this.json(res, ok ? 200 : 404, { ok });
+    }
+    const actMatch = /^POST \/pins\/([A-Za-z0-9_-]+)\/act$/.exec(route);
+    if (actMatch) {
+      const b = JSON.parse((await this.body(req)) || "{}");
+      const r = this.actOnPin(actMatch[1]!, String(b.action ?? ""));
+      return this.json(res, r.ok ? 200 : 400, r);
     }
     const removeMatch = /^DELETE \/pins\/([A-Za-z0-9_-]+)$/.exec(route);
     if (removeMatch) return this.json(res, 200, { ok: this.board.remove(removeMatch[1]!) });
@@ -2744,6 +2859,38 @@ function safeSpeaker(): Speaker {
     log(`no audio device: ${(e as Error).message}; playing nothing`);
     return new NullSpeaker();
   }
+}
+
+/**
+ * What a work card is about: the command it ran, or the file it changed.
+ *
+ * Read back out of the body rather than stored beside it, because the body
+ * is a format this codebase writes — `$ command` on a run, `--- a/file` on
+ * a diff — and a second copy of the same fact is a second thing to keep
+ * true.
+ */
+/** A tool's answer, said out loud: a capital and a full stop. */
+function sentence(s: string): string {
+  const t = s.trim();
+  if (!t) return "";
+  return /[.!?]$/.test(t)
+    ? t.charAt(0).toUpperCase() + t.slice(1)
+    : `${t.charAt(0).toUpperCase()}${t.slice(1)}.`;
+}
+
+export function pinSubject(pin: { kind: string; body: string; title: string }): {
+  command: string;
+  file: string;
+} {
+  if (pin.kind === "run" || pin.kind === "result") {
+    const m = /^\$ (.+)$/m.exec(pin.body);
+    return { command: (m?.[1] ?? "").trim(), file: "" };
+  }
+  if (pin.kind === "diff") {
+    const m = /^--- a\/(.+)$/m.exec(pin.body);
+    return { command: "", file: (m?.[1] ?? "").trim() };
+  }
+  return { command: "", file: "" };
 }
 
 function displayArgs(e: ev.AgentEvent): Record<string, string> {

@@ -581,6 +581,33 @@ function pinCard(p) {
       }
       foot.append(views);
     }
+    // A work card can be acted on, not only read. Every one of these goes to
+    // the agent as an instruction — Kikoe writes no source file and runs no
+    // build of its own, so a revert is an edit you can see and judge.
+    if (p.stream === "work") {
+      const act = (label, action, title) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.title = title;
+        b.addEventListener("click", async () => {
+          b.disabled = true;
+          const was = b.textContent;
+          b.textContent = "…";
+          const r = await window.room.actOnPin?.(p.id, action);
+          b.textContent = r?.ok ? "sent" : was;
+          setTimeout(() => {
+            b.textContent = was;
+            b.disabled = false;
+          }, 2000);
+        });
+        foot.append(b);
+      };
+      if (p.kind === "run" || p.kind === "result")
+        act("run again", "again", "ask the agent to re-run it");
+      if (p.kind === "diff") act("revert", "revert", "ask the agent to put this file back");
+      if (p.kind === "diff" || p.kind === "run" || p.kind === "result")
+        act("explain", "explain", "ask the agent what this did");
+    }
     if (p.kind === "web") {
       const addr = document.createElement("span");
       addr.className = "note";

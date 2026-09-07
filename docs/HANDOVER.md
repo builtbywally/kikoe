@@ -205,6 +205,42 @@ a terminal.
   line 20 from the same change at line 900, and multi-hunk diffs ran
   together.
 
+## Starting an agent, and acting on a card (2026-09-07)
+
+The two things that turned the canvas from a window onto the work into
+something you can work *from*.
+
+- **`daemon/src/agents.ts`.** `startAgent(project, task)` spawns Claude Code
+  headless with `-p` in the project's folder. It is not a wrapper: the hooks
+  are already installed, so narration, the tracker and the work cards all
+  arrive the way they always have. Nothing is parsed from its output — the
+  session is matched to the run by `claim(cwd, session)` when `SessionStart`
+  fires, so "hooks in, hooks out" still holds. **`--dangerously-skip-permissions`
+  is never passed**: being asked, and answering by voice, is the product.
+- **Finding the binary is the part that breaks.** On Windows an npm install
+  of `claude` is a `.cmd` shim, which `spawn` refuses without a shell, and
+  the failure looks exactly like Kikoe ignoring you. `findClaude()` resolves
+  setting → PATH → the usual install locations, and `spawn` gets
+  `shell: true` only for a `.cmd`. There is a `claude_bin` setting for the
+  machine where that is not enough.
+- **`instruct()` no longer dead-ends.** "No agent is connected; nothing to
+  hand it to" was the answer to the *first* instruction of every day, which
+  is exactly the one that mattered. It now starts one.
+- **It works with the model down.** Two paths had to change for that: the
+  rulebook's `work` case, which said "say it to the terminal" since before
+  Kik could start anything, and the brain's own failure fallback, which said
+  the same. Both now instruct. This was verified with the account at 402:
+  a spoken sentence started a real agent and the file it was asked for
+  appeared.
+- **`actOnPin(id, action)`** is how a card acts: `again` on a run or result,
+  `revert` on a diff, `explain` on any of them. **Every one is an
+  instruction to the agent.** Kikoe writes to no source file and runs no
+  build of its own, so a revert is an edit you can see and judge and a
+  re-run is the command that already ran — no new way for anything to reach
+  your disk. `pinSubject()` reads the command or the file back out of the
+  card body, because the body is a format this codebase writes and a second
+  copy of the same fact is a second thing to keep true.
+
 ## The walkie-talkie: your phone as a microphone (2026-09-07)
 
 Hold a button on your phone, talk, let go; what you said arrives as though

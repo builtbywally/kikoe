@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld("room", {
   // browser shim have always had it. Only this line was missing, so the
   // button threw in the app and worked on the second screen.
   clearBoard: () => ipcRenderer.invoke("room:clearBoard"),
+  actOnPin: (id: string, action: string) => ipcRenderer.invoke("room:actOnPin", id, action),
   sayToKik: (text: string) => ipcRenderer.invoke("room:sayToKik", text),
   native: true,
   /** where the daemon serves pages: a card frames `${base}/artifact/<id>` */

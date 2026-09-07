@@ -61,6 +61,7 @@
         r.json(),
       ),
     clearBoard: () => post("/pins/clear"),
+    actOnPin: (id, action) => post(`/pins/${id}/act`, { action }),
     updatePin: (id, patch) => post(`/pins/${encodeURIComponent(id)}/update`, patch),
     sayToKik: (text) => post("/say", { text }),
     native: false,

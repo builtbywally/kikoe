@@ -88,6 +88,14 @@ export interface Settings {
    */
   walkie: boolean;
   walkie_port: number;
+  /**
+   * Kik may start a coding agent itself, so the first move of the day is not
+   * a terminal. It spawns a process, which is worth a switch; permissions
+   * are still asked for and answered by voice, always.
+   */
+  agents: boolean;
+  /** where Claude Code lives, when it is not somewhere obvious */
+  claude_bin: string;
   /** rings on the island for what is left of each assistant's limit */
   usage: boolean;
   /** providers switched off by hand; a listed id is never read at all */
@@ -129,6 +137,8 @@ export const DEFAULTS: Settings = {
   artifact_model: "claude-sonnet-5",
   walkie: false,
   walkie_port: 4571,
+  agents: true,
+  claude_bin: "",
   usage: true,
   usage_off: [],
 };

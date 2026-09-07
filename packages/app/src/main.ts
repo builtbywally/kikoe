@@ -688,6 +688,11 @@ ipcMain.handle("room:removePin", (_e, id: string) => ({
   ok: daemon?.board.remove(String(id)) ?? false,
 }));
 ipcMain.handle("room:clearBoard", () => ({ cleared: daemon?.board.clear() ?? 0 }));
+ipcMain.handle(
+  "room:actOnPin",
+  (_e, id: string, action: string) =>
+    daemon?.actOnPin(String(id), String(action)) ?? { ok: false, said: "not running" },
+);
 ipcMain.on("room:artifactBase", (e) => {
   e.returnValue = `http://127.0.0.1:${loadSettings().port}`;
 });

@@ -211,6 +211,13 @@ Gaps:
   called it, the IPC handler and the browser shim both had it, and only
   `preload-room.ts` was missing the line — so it threw in the installed app
   and worked on the second screen.
+- **Starting an agent from Kik** (flow 1). Say what you want done and it
+  starts a session in the project and hands it the job — with the model off,
+  too. `docs/HANDOVER.md`, "Starting an agent, and acting on a card".
+- **Acting on a card** (most of flows 3 and 4). Re-run a command, revert a
+  file, ask what a change did, from the card itself. What is still missing
+  from flow 3 is the voice half: "read me the diff", "apply hunks two and
+  four".
 - **Answering from the couch, half of it.** The phone can now *talk* to Kik
   (`docs/HANDOVER.md`, "The walkie-talkie"). It still cannot see the canvas
   or answer a permission by tapping; that is the rest of flow 2.
