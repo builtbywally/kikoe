@@ -25,9 +25,12 @@ let got: Int16Array | null = null;
 
 function req(
   p: string,
-  opts: { method?: string; body?: Buffer; auth?: string } = {},
-): Promise<{ status: number; body: string }> {
+  opts: { method?: string; body?: Buffer; auth?: string; cookie?: string } = {},
+): Promise<{ status: number; body: string; cookie: string }> {
   return new Promise((resolve, reject) => {
+    const headers: Record<string, string> = {};
+    if (opts.auth) headers.authorization = opts.auth;
+    if (opts.cookie) headers.cookie = opts.cookie;
     const r = https.request(
       {
         host: "127.0.0.1",
@@ -36,14 +39,20 @@ function req(
         method: opts.method ?? "GET",
         // It is self-signed by design; that is the thing under test elsewhere.
         rejectUnauthorized: false,
-        headers: opts.auth ? { authorization: opts.auth } : {},
+        headers,
       },
       (res) => {
         let out = "";
         res.on("data", (c) => {
           out += c;
         });
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: out }));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            body: out,
+            cookie: String(res.headers["set-cookie"]?.[0] ?? ""),
+          }),
+        );
       },
     );
     r.on("error", reject);
@@ -94,6 +103,37 @@ describe("the server", () => {
   it("takes the token in the link or in a header", async () => {
     expect((await req(`/?t=${TOKEN}`)).status).toBe(200);
     expect((await req("/", { auth: `Bearer ${TOKEN}` })).status).toBe(200);
+  });
+
+  it("remembers a phone that arrived with the full link", async () => {
+    // The bug: a phone drops the query string when you tap past the
+    // certificate warning, reload, or add the page to the home screen, and
+    // every visit after that said "the link needs its token".
+    const first = await req(`/?t=${TOKEN}`);
+    expect(first.status).toBe(200);
+    expect(first.cookie).toContain(`${mod.COOKIE}=${TOKEN}`);
+    expect(first.cookie).toContain("HttpOnly");
+    expect(first.cookie).toContain("Secure");
+
+    const cookie = first.cookie.split(";")[0] ?? "";
+    // now the bare address works, which is the address a phone actually keeps
+    expect((await req("/", { cookie })).status).toBe(200);
+    expect((await req("/audio", { method: "POST", body: Buffer.alloc(4), cookie })).status).toBe(
+      200,
+    );
+  });
+
+  it("does not hand the cookie to someone who never had the token", async () => {
+    const r = await req("/");
+    expect(r.status).toBe(401);
+    expect(r.cookie).toBe("");
+    expect((await req("/", { cookie: `${mod.COOKIE}=guess` })).status).toBe(401);
+  });
+
+  it("says what to do when the token is missing, not just that it is", async () => {
+    const r = await req("/");
+    expect(r.body).toContain("Settings");
+    expect(r.body).toContain("?t=");
   });
 
   it("serves one page that needs nothing else to load", async () => {

@@ -35,6 +35,9 @@ export const WALKIE_RATE = 16000;
 /** A held button is a sentence or two; anything longer is a stuck finger. */
 export const MAX_CLIP_S = 60;
 const MAX_BODY = WALKIE_RATE * 2 * MAX_CLIP_S;
+/** Where a phone remembers the token, so the bare address keeps working. */
+export const COOKIE = "kikoe_walkie";
+const COOKIE_DAYS = 180;
 
 export interface WalkieOptions {
   port: number;
@@ -182,13 +185,27 @@ export class Walkie {
     this.log("walkie: stopped");
   }
 
-  private ok(req: import("node:http").IncomingMessage): boolean {
+  /**
+   * Is this request allowed, and did the link carry the token itself?
+   *
+   * A phone loses the query string constantly: tapping through the
+   * certificate warning, a reload, "add to home screen", or retyping the
+   * address by hand all arrive at the bare origin. The first time the token
+   * is seen we set a cookie, so the answer to "the link needs its token"
+   * stops being "find the original link again".
+   */
+  private auth(req: import("node:http").IncomingMessage): { ok: boolean; fresh: boolean } {
     const t = this.opts.token;
-    if (!t) return false;
+    if (!t) return { ok: false, fresh: false };
     const url = new URL(req.url ?? "/", "https://x");
-    if (url.searchParams.get("t") === t) return true;
-    const auth = String(req.headers.authorization ?? "");
-    return auth === `Bearer ${t}`;
+    if (url.searchParams.get("t") === t) return { ok: true, fresh: true };
+    const header = String(req.headers.authorization ?? "");
+    if (header === `Bearer ${t}`) return { ok: true, fresh: false };
+    for (const part of String(req.headers.cookie ?? "").split(";")) {
+      const [k, ...rest] = part.trim().split("=");
+      if (k === COOKIE && rest.join("=") === t) return { ok: true, fresh: false };
+    }
+    return { ok: false, fresh: false };
   }
 
   private async handle(
@@ -196,10 +213,19 @@ export class Walkie {
     res: import("node:http").ServerResponse,
   ): Promise<void> {
     const url = new URL(req.url ?? "/", "https://x");
-    if (!this.ok(req)) {
-      res.writeHead(401, { "content-type": "text/plain" });
-      res.end("kikoe: the link needs its token");
+    const { ok, fresh } = this.auth(req);
+    if (!ok) {
+      res.writeHead(401, { "content-type": "text/html; charset=utf-8" });
+      res.end(denied());
       return;
+    }
+    // Remembered on this phone, so the bare address keeps working. Scoped to
+    // this origin, unreadable to scripts, and worth no more than the link the
+    // user already had.
+    const headers: Record<string, string> = {};
+    if (fresh) {
+      headers["set-cookie"] =
+        `${COOKIE}=${this.opts.token}; Max-Age=${COOKIE_DAYS * 86400}; Path=/; Secure; HttpOnly; SameSite=Lax`;
     }
     // The certificate itself, so a phone can be told to trust it properly
     // rather than waved past a warning. Some browsers will hand over a
@@ -208,6 +234,7 @@ export class Walkie {
     if (req.method === "GET" && url.pathname === "/cert.pem") {
       try {
         res.writeHead(200, {
+          ...headers,
           "content-type": "application/x-pem-file",
           "content-disposition": 'attachment; filename="kikoe.pem"',
         });
@@ -220,6 +247,7 @@ export class Walkie {
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
       const body = page(this.opts.token);
       res.writeHead(200, {
+        ...headers,
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
       });
@@ -253,13 +281,48 @@ export class Walkie {
       } catch (e) {
         this.log(`walkie: ${(e as Error).message}`);
       }
-      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.writeHead(200, {
+        ...headers,
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
       res.end(JSON.stringify({ ok: true, text: heard, seconds: Number(seconds.toFixed(2)) }));
       return;
     }
     res.writeHead(404, { "content-type": "text/plain" });
     res.end("no");
   }
+}
+
+/**
+ * What you get without the token.
+ *
+ * It used to be one line of plain text, which told you what was wrong and
+ * nothing about what to do — and "the link needs its token" is exactly what
+ * you see when a phone drops the query string, which phones do constantly.
+ */
+function denied(): string {
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kik</title>
+<style>
+  html,body{margin:0;height:100%;background:#14100e;color:#f5f1ec;
+    font:15px/1.6 "Segoe UI",system-ui,-apple-system,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:28px}
+  div{max-width:34ch}
+  h1{font:600 19px/1.3 inherit;margin:0 0 12px}
+  p{color:#8b8b80;margin:0 0 10px}
+  b{color:#d2683f;font-weight:600}
+</style></head><body><div>
+<h1>This link is missing its token</h1>
+<p>Open the <b>whole</b> link from Kikoe — Settings, then Phone. It ends in
+<b>?t=</b> and a long word, and that part is what lets your phone in.</p>
+<p>Phones drop it easily: tapping past the certificate warning, adding the
+page to your home screen, or typing the address by hand all lose it. Use the
+full link once and this phone will be remembered.</p>
+</div></body></html>`;
 }
 
 /**
