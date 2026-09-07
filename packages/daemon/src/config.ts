@@ -77,6 +77,17 @@ export interface Settings {
   brain_greets: boolean;
   /** the model that designs pages and apps for the canvas; sharper than the voice */
   artifact_model: string;
+  /**
+   * Your phone as a microphone, on the local network.
+   *
+   * The one part of Kikoe that is not loopback, so it is off until you say
+   * otherwise and the socket closes again the moment you switch it back.
+   * It needs HTTPS — a browser will not hand over a microphone to a plain
+   * http page that is not localhost — so it serves a self-signed
+   * certificate the phone is asked to trust once.
+   */
+  walkie: boolean;
+  walkie_port: number;
   /** rings on the island for what is left of each assistant's limit */
   usage: boolean;
   /** providers switched off by hand; a listed id is never read at all */
@@ -116,6 +127,8 @@ export const DEFAULTS: Settings = {
   brain_checkin: true,
   brain_greets: true,
   artifact_model: "claude-sonnet-5",
+  walkie: false,
+  walkie_port: 4571,
   usage: true,
   usage_off: [],
 };
@@ -189,6 +202,27 @@ export function viewerToken(): string {
     /* create */
   }
   const t = `v-${randomBytes(18).toString("hex")}`;
+  writeFileSync(file, `${t}\n`, { encoding: "utf8", mode: 0o600 });
+  return t;
+}
+
+/**
+ * The walkie token: opens the phone page and nothing else.
+ *
+ * Its own token, not the daemon's, because this one is typed into a phone
+ * and lives in a browser's history on the far side of a network. It can
+ * push audio in; it cannot read the board, approve a tool call, or speak.
+ */
+export function walkieToken(): string {
+  ensureHome();
+  const file = path.join(HOME, "walkie_token.txt");
+  try {
+    const t = readFileSync(file, "utf8").trim();
+    if (t) return t;
+  } catch {
+    /* create */
+  }
+  const t = `w-${randomBytes(18).toString("hex")}`;
   writeFileSync(file, `${t}\n`, { encoding: "utf8", mode: 0o600 });
   return t;
 }

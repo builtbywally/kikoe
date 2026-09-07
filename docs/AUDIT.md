@@ -211,6 +211,9 @@ Gaps:
   called it, the IPC handler and the browser shim both had it, and only
   `preload-room.ts` was missing the line — so it threw in the installed app
   and worked on the second screen.
+- **Answering from the couch, half of it.** The phone can now *talk* to Kik
+  (`docs/HANDOVER.md`, "The walkie-talkie"). It still cannot see the canvas
+  or answer a permission by tapping; that is the rest of flow 2.
 - **The viewport buttons did nothing but resize.** They send `wide: true`;
   neither update path mapped it to `size`, so a page never became an
   artboard. Both paths now do.

@@ -205,6 +205,54 @@ a terminal.
   line 20 from the same change at line 900, and multi-hunk diffs ran
   together.
 
+## The walkie-talkie: your phone as a microphone (2026-09-07)
+
+Hold a button on your phone, talk, let go; what you said arrives as though
+the headset had heard it, and Kik answers out loud from the desktop.
+
+- **It is the one listener that is not loopback**, so it is `walkie: false`
+  by default and switching it off *closes the socket* rather than ignoring
+  it. Its own server on its own port (4571), its own token
+  (`~/.kikoe/walkie_token.txt`, prefix `w-`) which can push audio in and
+  nothing else — it cannot read the board, approve a tool call, or speak.
+  The daemon's own port is untouched and still loopback only.
+- **HTTPS is not optional.** `getUserMedia` refuses outside a secure
+  context, and a phone on `http://192.168.x.x` is not one (localhost is the
+  exception; the phone is not localhost). So the daemon signs itself a
+  certificate with `selfsigned` — a new dependency, pure JS, so no native
+  module for electron-builder to drop — and keeps it in `~/.kikoe`. It is
+  **kept, not regenerated**: a fresh certificate every restart is a fresh
+  warning every restart, and a warning you see constantly is one you stop
+  reading. Every LAN address goes in as a SAN, because a modern browser
+  ignores the common name entirely. `walkie_cert.json` records which
+  addresses it was made for, since a PEM is base64 and cannot be asked.
+- **The audio is raw.** The page downsamples to the 16 kHz mono the
+  recognizer already wants and posts Int16 PCM. No codec to decode, and no
+  second speech model: the clip goes to the ear utility process over
+  `postMessage` and the same Whisper that hears the headset hears the phone.
+  The answer comes back the same way rather than through `/heard`, because
+  an HTTP request is waiting on it.
+- **Push to talk is its own answer to "was that for me"**, so the name gate
+  and the model judgement are skipped: you held a button on a page called
+  Kik.
+- The page is one file with nothing fetched — it has to work on a phone
+  that has just been told this certificate is suspicious. Capture is a
+  `ScriptProcessor` rather than an `AudioWorklet` because a worklet needs
+  its own module URL, and one file is worth more here than the deprecation.
+- **The one thing not proven on this machine**: whether a given phone hands
+  over the microphone after you tap through the certificate warning. Chrome
+  on the desktop refuses the page outright (`ERR_CERT_AUTHORITY_INVALID`)
+  rather than offering the bypass to an automated client, so this needs a
+  real phone. `GET /cert.pem` serves the certificate for installing
+  properly, which removes the warning and the question together; the page
+  says so itself if it finds it is not in a secure context.
+
+Verified end to end over the LAN: 1.39 s of speech posted to
+`https://192.168.1.115:4571/audio` came back `"Kick switch to billier"` and
+the Room moved to Billiar. That one line is also the best argument for the
+project resolver matching by shape — Whisper said "billier", the folder is
+"Billiar".
+
 ## Projects: a board each, switched by voice (2026-09-07)
 
 The second slice of the ADE work. `docs/REVIEW-2026-09-05.md:126-130` asked

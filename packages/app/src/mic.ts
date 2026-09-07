@@ -207,16 +207,47 @@ function main(): void {
     }
   }
 
-  function transcribe(samples: Float32Array, durS: number): void {
-    post("/mic", { phase: "transcribing" });
-    const t = Date.now();
+  function recognize(samples: Float32Array): string {
     const rec = loadRecognizer();
     const stream = rec.createStream();
     stream.acceptWaveform({ samples, sampleRate: RATE });
     rec.decode(stream);
-    const text = String(rec.getResult(stream).text ?? "").trim();
+    return String(rec.getResult(stream).text ?? "").trim();
+  }
+
+  function transcribe(samples: Float32Array, durS: number): void {
+    post("/mic", { phase: "transcribing" });
+    const t = Date.now();
+    const text = recognize(samples);
     post("/heard", { text, dur_s: Number(durS.toFixed(2)), stt_ms: Date.now() - t });
   }
+
+  /**
+   * A clip from somewhere that is not this microphone — the phone, held as a
+   * walkie-talkie. It arrives as the 16 kHz Int16 the page already made, and
+   * the answer goes back the way it came rather than to /heard, because the
+   * daemon is waiting on it to answer an HTTP request.
+   */
+  process.parentPort?.on(
+    "message",
+    (e: { data?: { type?: string; id?: number; pcm?: unknown } }) => {
+      const m = e?.data;
+      if (m?.type !== "clip" || typeof m.id !== "number") return;
+      let text = "";
+      try {
+        const pcm = m.pcm as Int16Array;
+        const samples = new Float32Array(pcm.length);
+        for (let i = 0; i < pcm.length; i++) samples[i] = (pcm[i] ?? 0) / 32768;
+        lastSpeechAt = Date.now();
+        const t = Date.now();
+        text = recognize(samples);
+        say(`walkie clip ${(pcm.length / RATE).toFixed(1)}s -> "${text}" in ${Date.now() - t} ms`);
+      } catch (err) {
+        say(`walkie clip failed: ${(err as Error).message}`);
+      }
+      process.parentPort?.postMessage({ type: "clip", id: m.id, text });
+    },
+  );
 
   rt.start();
   post("/mic", { phase: "ready", text: String(dev?.name ?? id), rate });

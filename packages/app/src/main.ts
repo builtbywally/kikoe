@@ -142,6 +142,9 @@ async function startDaemon(): Promise<void> {
     roomDir: path.join(RENDERER, "room"),
   });
   await daemon.listen();
+  // The phone speaks through the ear that is already loaded.
+  daemon.transcribe = transcribeWithEar;
+  if (!smoke && !shotPath) await daemon.syncWalkie();
   daemon.hub.listen((frame) => {
     if (frame.type === "speech")
       updateTrayTitle(String(frame.phase) === "speaking" ? String(frame.text ?? "") : "");
@@ -243,13 +246,52 @@ async function startEar(): Promise<void> {
     },
   });
   ear.stderr?.on("data", (d: Buffer) => log(String(d).trim()));
+  // The phone's audio goes to the ear that is already running rather than a
+  // second copy of Whisper: one recognizer, two sources.
+  ear.on("message", (m: { type?: string; id?: number; text?: string }) => {
+    if (m?.type !== "clip" || typeof m.id !== "number") return;
+    const waiting = clipWaiters.get(m.id);
+    if (!waiting) return;
+    clipWaiters.delete(m.id);
+    waiting(String(m.text ?? ""));
+  });
   ear.on("exit", (code) => {
     log(`mic process exited ${code}`);
     ear = null;
     if (daemon) daemon.micPhase = code === 0 ? "off" : "dead";
+    // Anything still waiting on the ear will never be answered now.
+    for (const [, resolve] of clipWaiters) resolve("");
+    clipWaiters.clear();
     buildTrayMenu();
   });
   buildTrayMenu();
+}
+
+/** Clips sent to the ear, waiting for their text back. */
+const clipWaiters = new Map<number, (text: string) => void>();
+let clipId = 0;
+
+/** Hand a clip to the ear and wait for what it heard. */
+function transcribeWithEar(pcm: Int16Array): Promise<string> {
+  if (!ear) return Promise.resolve("");
+  const id = ++clipId;
+  return new Promise<string>((resolve) => {
+    const done = (t: string) => {
+      clearTimeout(timer);
+      resolve(t);
+    };
+    // A minute of audio decodes in a few seconds; anything past this is the
+    // ear having died mid-clip, and a walkie that hangs is worse than one
+    // that says it heard nothing.
+    const timer = setTimeout(() => {
+      clipWaiters.delete(id);
+      resolve("");
+    }, 60_000);
+    clipWaiters.set(id, done);
+    // Structured clone carries a typed array as itself; a minute of speech
+    // as a plain array would be a million numbers to serialise.
+    ear?.postMessage({ type: "clip", id, pcm });
+  });
 }
 
 function stopEar(): void {
@@ -760,6 +802,18 @@ ipcMain.handle(
     if ("usage" in rest || "usage_off" in rest) {
       daemon?.applyUsageSettings(s);
       void daemon?.usage.poll();
+    }
+    // Off has to mean the socket is closed, not the switch is grey, so this
+    // is awaited: Settings reads the state straight afterwards and must not
+    // be told "listening" about a server that is still binding.
+    if (("walkie" in rest || "walkie_port" in rest) && daemon) {
+      daemon.settings = loadSettings();
+      if ("walkie_port" in rest && daemon.walkie) {
+        const w = daemon.walkie;
+        daemon.walkie = null;
+        await w.stop();
+      }
+      await daemon.syncWalkie();
     }
     buildTrayMenu();
     return { ok: true, settings: s };

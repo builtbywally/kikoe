@@ -35,6 +35,69 @@
     if (page === "doctor") renderDoctor();
     if (page === "hooks") previewHooks();
     if (page === "usage") renderUsage();
+    if (page === "walkie") renderWalkie();
+  }
+
+  // --- the phone ------------------------------------------------------------
+  //
+  // The link, and what state it is in. The address matters: a phone has to
+  // dial the machine by an address it can actually route to, and a laptop
+  // usually answers on more than one.
+
+  function renderWalkie() {
+    const rows = $("walkie-rows");
+    if (!rows) return;
+    $("walkie-on").checked = info.settings.walkie === true;
+    const w = info.state?.walkie || {};
+    rows.textContent = "";
+    const add = (title, detail, cls) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const d = document.createElement("div");
+      const b = document.createElement("b");
+      b.textContent = title;
+      const s = document.createElement("span");
+      s.textContent = detail;
+      if (cls) s.className = cls;
+      d.append(b, s);
+      row.append(d);
+      rows.append(row);
+      return row;
+    };
+    if (!w.on) {
+      add("Not listening", "Turn it on and a link appears here.");
+      return;
+    }
+    if (!w.ear) {
+      add(
+        "The ear is not running",
+        "Turn the microphone on in Listening, or there is nothing to transcribe with.",
+      );
+    }
+    const urls = w.urls || [];
+    if (!urls.length) {
+      add("No network address", "This machine is not on a network the phone could reach.");
+      return;
+    }
+    for (const u of urls) {
+      const row = add("Open this on your phone", u);
+      const copy = document.createElement("button");
+      copy.className = "quiet";
+      copy.textContent = "copy";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(u);
+          note("walkie-note", "link copied", "good");
+        } catch {
+          note("walkie-note", "could not copy; select it by hand", "bad");
+        }
+      });
+      row.append(copy);
+    }
+    add(
+      "Your phone will warn you once",
+      "The certificate is signed by this machine, not by an authority. Continue past it and the link keeps working.",
+    );
   }
 
   // --- limits ---------------------------------------------------------------
@@ -637,6 +700,19 @@
     $("doctor").textContent = lines.join("\n");
   }
   $("doctor-refresh").addEventListener("click", renderDoctor);
+
+  $("walkie-on").addEventListener("change", async () => {
+    const on = $("walkie-on").checked;
+    note("walkie-note", on ? "starting…" : "closing…");
+    const r = await api.save({ walkie: on });
+    info = await api.get();
+    note(
+      "walkie-note",
+      r.error || (info.state?.walkie?.on ? "listening" : "off"),
+      r.error ? "bad" : "good",
+    );
+    renderWalkie();
+  });
 
   $("usage-on").addEventListener("change", async () => {
     const r = await api.save({ usage: $("usage-on").checked });

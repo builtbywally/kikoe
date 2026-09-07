@@ -47,6 +47,7 @@ import {
   loadSettings,
   log,
   viewerToken,
+  walkieToken,
 } from "./config.js";
 import { Hub } from "./hub.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
@@ -56,6 +57,7 @@ import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runti
 import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
 import { UsageStore, defaultProviders } from "./usage.js";
+import { Walkie } from "./walkie.js";
 import { Work } from "./work.js";
 
 const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
@@ -214,6 +216,13 @@ export class Daemon {
   readonly adapter: ClaudeCodeAdapter;
   readonly history: SpokenRecord[] = [];
   readonly board: Board;
+  /** the phone as a microphone, when it is switched on */
+  walkie: Walkie | null = null;
+  /**
+   * Given raw 16 kHz PCM, what was said. Set by the app, which owns the ear;
+   * without it the walkie has nothing to transcribe with and says so.
+   */
+  transcribe: ((pcm: Int16Array) => Promise<string>) | null = null;
   /** a name, some folders, a board; the Room shows one at a time */
   readonly projects = new Projects();
   /** the agent's work, as cards: diffs, commands, results, replies */
@@ -1389,6 +1398,63 @@ export class Daemon {
     return this.hear(text, {}, { force: true, decided: true });
   }
 
+  // --- the phone as a microphone --------------------------------------------------
+
+  /**
+   * Start or stop the walkie server to match the setting.
+   *
+   * Called on boot and whenever the setting changes. Off is the default and
+   * off means the socket is closed, not merely ignored: this is the one
+   * listener Kikoe has that is not loopback.
+   */
+  async syncWalkie(): Promise<void> {
+    const want = this.settings.walkie;
+    if (want && !this.walkie) {
+      this.walkie = new Walkie({
+        port: this.settings.walkie_port || 4571,
+        token: walkieToken(),
+        onAudio: (pcm) => this.walkieHeard(pcm),
+        log,
+      });
+      try {
+        await this.walkie.start();
+      } catch (e) {
+        log(`walkie: could not start: ${(e as Error).message}`);
+        this.walkie = null;
+      }
+      return;
+    }
+    if (!want && this.walkie) {
+      const w = this.walkie;
+      this.walkie = null;
+      await w.stop();
+    }
+  }
+
+  /**
+   * A held button on a phone, transcribed and treated as spoken to Kik.
+   *
+   * Push to talk is its own answer to "was that for me": you held a button
+   * on a page called Kik, so the name gate and the model judgement are
+   * skipped and it goes straight in as addressed.
+   */
+  private async walkieHeard(pcm: Int16Array): Promise<string> {
+    if (!this.transcribe) {
+      log("walkie: no ear to transcribe with");
+      return "";
+    }
+    this.hub.publish("mic", { phase: "transcribing", source: "walkie" });
+    const t0 = Date.now();
+    const text = (await this.transcribe(pcm)).trim();
+    log(`walkie: heard "${text}" in ${Date.now() - t0} ms`);
+    if (!text) {
+      this.hub.publish("mic", { phase: "idle" });
+      return "";
+    }
+    this.hear(text, {}, { force: true, decided: true });
+    return text;
+  }
+
   /** The model head, when there is a key and the setting is on. */
   /** The key for the provider in the settings; empty means no brain. */
   private brainKey(): string {
@@ -2160,6 +2226,14 @@ export class Daemon {
         all: this.projects.all().map((p) => ({ id: p.id, name: p.name })),
       },
       asking: this.board.asking()?.id ?? null,
+      walkie: {
+        on: this.walkie !== null,
+        port: this.settings.walkie_port,
+        // The link carries its own token; it is shown in Settings so the
+        // phone can be pointed at it, and it is not a key.
+        urls: this.walkie?.urls() ?? [],
+        ear: this.transcribe !== null,
+      },
       mic: { phase: this.micPhase, device: this.micDevice, enabled: this.settings.mic },
       heard: [...this.heardLog].reverse(),
       usage: this.usage.list(),
@@ -2628,6 +2702,12 @@ export class Daemon {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     if (this.pending) this.answerPermission(false, this.pending.id);
+    // The one socket that is not loopback goes first, and always.
+    if (this.walkie) {
+      const w = this.walkie;
+      this.walkie = null;
+      await w.stop();
+    }
     this.board.clear();
     this.arbiter.interrupt();
     await new Promise<void>((resolve) => {

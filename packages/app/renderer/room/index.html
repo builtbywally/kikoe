@@ -58,6 +58,7 @@
       <button data-spage="narration">Narration</button>
       <button data-spage="hooks">Claude Code</button>
       <button data-spage="board">The board</button>
+      <button data-spage="walkie">Phone</button>
       <button data-spage="usage">Limits</button>
       <button data-spage="screens">Screens</button>
       <button data-spage="look">Look and startup</button>
@@ -185,6 +186,16 @@
         <p>The agent's whiteboard. It pins what can't be said: a diff to approve, a failing test's lines, a table, a picture, a page, an SVG it drew, or a diagram written as boxes and arrows. Each repo has a frame; drag to look around, pinch or control-scroll to zoom; drag a card to arrange. Nothing on it is editable. Pins fade after fifteen minutes.</p>
         <p class="dim">From a shell, anything can pin: <code>curl -K ~/.kikoe/show.curlrc -H "X-Kikoe-Kind: diff" --data-binary @changes.diff</code>. Add <code>-H "X-Kikoe-Ask: apply,no"</code> and the command waits for your answer.</p>
         <div class="actions"><button id="board-clear" class="quiet">Clear the board now</button></div>
+      </section>
+
+      <section id="spage-walkie" class="spage" hidden>
+        <h2>The walkie-talkie</h2>
+        <p>Your phone as a microphone. Open the link on it, hold the button, talk, let go — what you said reaches Kik the same way the headset does, and Kik answers out loud from this machine.</p>
+        <p class="dim">This is the one part of Kikoe that listens on the network rather than on this machine alone, so it is off until you turn it on and the socket closes again the moment you turn it off. A browser will not hand a microphone to a plain <code>http</code> page, so Kikoe serves the page over HTTPS with a certificate it signs itself — your phone will say the connection is not private, once. That warning is the price of your voice not going through anyone else's tunnel; the audio goes straight to this machine and is transcribed here.</p>
+        <p class="dim">If your phone still refuses the microphone after you continue past the warning, open <code>/cert.pem</code> on the same link, install it, and trust it in your phone's settings — then there is no warning and no doubt.</p>
+        <label class="row"><input type="checkbox" id="walkie-on" /><div><b>Let my phone talk to Kik</b><span>On the local network only, while this is on.</span></div></label>
+        <div class="rows" id="walkie-rows"></div>
+        <div class="actions"><span id="walkie-note" class="note"></span></div>
       </section>
 
       <section id="spage-usage" class="spage" hidden>
