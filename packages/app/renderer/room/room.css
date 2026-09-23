@@ -1514,3 +1514,25 @@ html[data-phone="true"] .zoom-hud {
 #phone-talk:disabled {
   filter: grayscale(0.6) brightness(0.7);
 }
+.phone-row {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.phone-spacer {
+  width: 52px;
+}
+#phone-sound {
+  pointer-events: auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--fg-rgb), 0.18);
+  background: rgba(var(--bg-rgb), 0.82);
+  color: var(--dim);
+  font: 600 10px / 1.15 var(--mono);
+}
+#phone-sound[aria-pressed="true"] {
+  color: var(--ember);
+  border-color: var(--ember);
+}

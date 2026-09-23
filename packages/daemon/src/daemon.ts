@@ -60,7 +60,14 @@ import { launch, launchFor } from "./pc.js";
 import { Board } from "./pins.js";
 import { Projects, slug } from "./projects.js";
 import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
-import { type Earcon, NullSpeaker, RtAudioSpeaker, type Speaker, earcon } from "./speaker.js";
+import {
+  type Earcon,
+  NullSpeaker,
+  RtAudioSpeaker,
+  type Speaker,
+  TappedSpeaker,
+  earcon,
+} from "./speaker.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
 import { UsageStore, defaultProviders } from "./usage.js";
 import { Walkie } from "./walkie.js";
@@ -341,7 +348,12 @@ export class Daemon {
     ev.setRepoResolver(repoOf);
     this.narrator = new Narrator({ mode: this.settings.narrate });
     this.adapter = new ClaudeCodeAdapter({ readTranscript });
-    this.speaker = opts.audio === false ? new NullSpeaker() : safeSpeaker();
+    // Tapped, so a phone on the walkie can hear Kik too. The walkie is looked
+    // up on every sample, not captured: it comes and goes with its setting.
+    this.speaker = new TappedSpeaker(opts.audio === false ? new NullSpeaker() : safeSpeaker(), {
+      pcm: (s, r) => this.walkie?.voice(s, r),
+      drop: () => this.walkie?.voiceDrop(),
+    });
     this.ladder = new Ladder({
       settings: this.settings,
       ...(opts.elevenKey ? { elevenKey: opts.elevenKey } : {}),

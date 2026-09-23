@@ -14,10 +14,102 @@
   wrap.className = "phone-talk";
   wrap.innerHTML =
     '<div class="phone-said" id="phone-said"></div>' +
-    '<button type="button" id="phone-talk" aria-label="hold to talk to Kik">hold to talk</button>';
+    '<div class="phone-row">' +
+    '<button type="button" id="phone-sound" aria-pressed="false" title="hear Kik on this phone">sound<br>off</button>' +
+    '<button type="button" id="phone-talk" aria-label="hold to talk to Kik">hold to talk</button>' +
+    '<span class="phone-spacer"></span>' +
+    "</div>";
   document.body.appendChild(wrap);
   const talk = wrap.querySelector("#phone-talk");
   const said = wrap.querySelector("#phone-said");
+  const sound = wrap.querySelector("#phone-sound");
+
+  // --- hearing Kik here ------------------------------------------------------
+  // The desk speaker's audio, as it plays, from the walkie's /voice stream.
+  // Each piece is scheduled right after the last so the line plays through
+  // without gaps; a drop (Kik cut off at the desk) stops it here too.
+  let out = null;
+  let voice = null;
+  let next = 0;
+  const playing = new Set();
+  const KEY = "kikoe-phone-sound";
+
+  function play(rate, b64) {
+    if (!out) return;
+    const bin = atob(b64);
+    const n = bin.length >> 1;
+    const buf = out.createBuffer(1, n, rate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) {
+      let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+      if (v >= 0x8000) v -= 0x10000;
+      ch[i] = v / 0x8000;
+    }
+    const src = out.createBufferSource();
+    src.buffer = buf;
+    src.connect(out.destination);
+    const at = Math.max(out.currentTime + 0.05, next);
+    src.start(at);
+    next = at + buf.duration;
+    playing.add(src);
+    src.onended = () => playing.delete(src);
+  }
+
+  function hush() {
+    for (const s of playing) {
+      try {
+        s.stop();
+      } catch {
+        /* already done */
+      }
+    }
+    playing.clear();
+    next = 0;
+  }
+
+  function setSound(on) {
+    sound.setAttribute("aria-pressed", on ? "true" : "false");
+    sound.innerHTML = on ? "sound<br>on" : "sound<br>off";
+    try {
+      localStorage.setItem(KEY, on ? "1" : "0");
+    } catch {
+      /* a private tab forgets, which is fine */
+    }
+    if (!on) {
+      voice?.close();
+      voice = null;
+      hush();
+      return;
+    }
+    // Made inside the tap: a phone will not play audio a page started on its own.
+    out = out || new (window.AudioContext || window.webkitAudioContext)();
+    if (out.state === "suspended") out.resume();
+    if (voice) return;
+    voice = new EventSource("/voice");
+    voice.addEventListener("pcm", (e) => {
+      try {
+        const j = JSON.parse(e.data);
+        play(j.r, j.b);
+      } catch {
+        /* a torn event is one lost syllable */
+      }
+    });
+    voice.addEventListener("drop", hush);
+  }
+
+  sound.addEventListener("click", () => setSound(sound.getAttribute("aria-pressed") !== "true"));
+  let wanted = false;
+  try {
+    wanted = localStorage.getItem(KEY) === "1";
+  } catch {
+    /* no storage, no memory of the choice */
+  }
+  // Remembered as on: listen now, and let the first tap anywhere unlock the audio.
+  if (wanted) {
+    setSound(true);
+    const unlock = () => out?.state === "suspended" && out.resume();
+    window.addEventListener("pointerdown", unlock, { once: true });
+  }
 
   let ctx = null;
   let chunks = [];

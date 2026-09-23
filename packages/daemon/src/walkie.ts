@@ -165,11 +165,45 @@ function coversAll(hosts: string[]): boolean {
   return hosts.every((h) => had.includes(h));
 }
 
+/**
+ * One piece of Kik's voice, as an event: 16-bit PCM at the rate it was made,
+ * in base64. Base64 costs a third more than binary, and on a home network
+ * that is nothing next to one stream that already reconnects by itself.
+ */
+export function voiceEvent(samples: Float32Array, rate: number): string {
+  const pcm = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const v = Math.max(-1, Math.min(1, samples[i] ?? 0));
+    pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+  }
+  const b = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength).toString("base64");
+  return `event: pcm\ndata: {"r":${rate},"b":"${b}"}\n\n`;
+}
+
 export class Walkie {
   private server: https.Server | null = null;
   private readonly log: (line: string) => void;
+  /** phones that asked to hear Kik; empty costs nothing */
+  private readonly ears = new Set<import("node:http").ServerResponse>();
   constructor(private readonly opts: WalkieOptions) {
     this.log = opts.log ?? (() => {});
+  }
+
+  /** How many phones are listening to Kik's voice. */
+  get listeners(): number {
+    return this.ears.size;
+  }
+
+  /** What the desk speaker is playing, to every phone that is listening. */
+  voice(samples: Float32Array, rate: number): void {
+    if (!this.ears.size || !samples.length) return;
+    const ev = voiceEvent(samples, rate);
+    for (const res of this.ears) res.write(ev);
+  }
+
+  /** Kik was cut off: the phones stop too, rather than finishing the sentence. */
+  voiceDrop(): void {
+    for (const res of this.ears) res.write("event: drop\ndata: {}\n\n");
   }
 
   get running(): boolean {
@@ -204,7 +238,13 @@ export class Walkie {
     const s = this.server;
     if (!s) return;
     this.server = null;
-    await new Promise<void>((resolve) => s.close(() => resolve()));
+    // A phone watching the canvas or listening to Kik holds a stream open,
+    // and close() waits for every connection: off would never finish.
+    for (const res of this.ears) res.end();
+    this.ears.clear();
+    const closed = new Promise<void>((resolve) => s.close(() => resolve()));
+    s.closeAllConnections();
+    await closed;
     this.log("walkie: stopped");
   }
 
@@ -276,6 +316,24 @@ export class Walkie {
     ) {
       res.writeHead(302, { ...headers, location: "/room/?phone=1" });
       res.end();
+      return;
+    }
+    // Kik's voice, for a phone that wants to hear it. Its own stream rather
+    // than the Room's, so a phone that only looks never pays for audio.
+    if (req.method === "GET" && url.pathname === "/voice") {
+      res.writeHead(200, {
+        ...headers,
+        "content-type": "text/event-stream",
+        "cache-control": "no-store",
+        connection: "keep-alive",
+      });
+      res.write(": listening\n\n");
+      this.ears.add(res);
+      this.log(`walkie: a phone is listening (${this.ears.size})`);
+      res.on("close", () => {
+        this.ears.delete(res);
+        this.log(`walkie: a phone stopped listening (${this.ears.size})`);
+      });
       return;
     }
     if (req.method === "GET" && this.opts.room && proxiable(url.pathname)) {

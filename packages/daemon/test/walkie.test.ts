@@ -329,6 +329,74 @@ describe("the canvas on the phone", () => {
     expect(typed).toContain("what's it doing");
   });
 
+  it("plays Kik's voice to a phone that listens, and stops it when Kik is cut off", async () => {
+    const events: string[] = [];
+    const done = new Promise<void>((resolve, reject) => {
+      const r = https.request(
+        {
+          host: "127.0.0.1",
+          port: PHONE,
+          path: "/voice",
+          rejectUnauthorized: false,
+          headers: { cookie: `${mod.COOKIE}=${TOKEN}` },
+        },
+        (res) => {
+          expect(String(res.headers["content-type"])).toContain("event-stream");
+          res.on("data", (c) => {
+            events.push(String(c));
+            if (events.join("").includes("event: drop")) {
+              res.destroy();
+              resolve();
+            }
+          });
+        },
+      );
+      r.on("error", reject);
+      r.end();
+    });
+    // wait until the phone is counted, then speak
+    for (let i = 0; i < 50 && phone.listeners === 0; i++)
+      await new Promise((r) => setTimeout(r, 10));
+    expect(phone.listeners).toBe(1);
+    phone.voice(new Float32Array([0, 0.5, -0.5, 1]), 22050);
+    phone.voiceDrop();
+    await done;
+    const all = events.join("");
+    expect(all).toContain('"r":22050');
+    // four samples of 16-bit PCM, in base64
+    const b = /"b":"([^"]+)"/.exec(all)?.[1] ?? "";
+    expect(Buffer.from(b, "base64").length).toBe(8);
+  });
+
+  it("costs nothing when nobody listens", () => {
+    // no phone attached: nothing is encoded, nothing thrown
+    expect(() => phone.voice(new Float32Array(48000), 48000)).not.toThrow();
+  });
+
+  it("still turns off with a phone listening, instead of waiting on it for ever", async () => {
+    await new Promise<void>((resolve) => {
+      const r = https.request(
+        {
+          host: "127.0.0.1",
+          port: PHONE,
+          path: "/voice",
+          rejectUnauthorized: false,
+          headers: { cookie: `${mod.COOKIE}=${TOKEN}` },
+        },
+        (res) => {
+          res.on("data", () => resolve());
+          res.on("error", () => {});
+        },
+      );
+      r.on("error", () => {});
+      r.end();
+    });
+    await phone.stop();
+    expect(phone.running).toBe(false);
+    expect(phone.listeners).toBe(0);
+    await phone.start();
+  }, 15_000);
+
   it("serves the room and its artifacts through the same door", async () => {
     seen.length = 0;
     await get("/room/index.html?phone=1");

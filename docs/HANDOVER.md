@@ -692,6 +692,20 @@ them.
   running anything; Electron will not start with a URL on its command line.
   Pass it through the environment. And a `/c/...` script path from Git Bash
   does the same; `cd` to the folder and use a relative path.
+- **Hearing Kik on the phone.** The daemon's speaker is a `TappedSpeaker`:
+  every `push()` is also handed to `walkie.voice()`, and `drop()` (Kik cut
+  off) to `voiceDrop()`. A phone that turns on its "sound" button opens the
+  walkie's `/voice` event stream and gets 16-bit PCM in base64 at the rate
+  it was made (24 kHz here), scheduled back to back in Web Audio; a drop
+  stops it. Nobody listening costs nothing: no phone, no encoding. The desk
+  still speaks too. Verified live: a spoken line arrived as 97 events,
+  2.3 s of speech, RMS 0.25. The phone remembers the choice, but a phone
+  will not play audio a page started by itself, so after a reload the first
+  tap anywhere unlocks it.
+- **Stopping the walkie with a phone attached**: `server.close()` waits for
+  every open connection, and a phone watching the canvas or listening holds
+  one forever. `stop()` now ends the voice streams and calls
+  `closeAllConnections()`; a test stops it with a listener attached.
 - Not done, by design: acting from the phone (approve, card buttons) is the
   next slice and needs its own token right; `localhost` web cards show only
   on the desk; away from home needs Tailscale (and gives a real certificate).

@@ -42,6 +42,63 @@ export interface Speaker {
   close(): void;
 }
 
+/** Where a tapped speaker sends a copy of what it plays. */
+export interface Tap {
+  pcm(samples: Float32Array, sourceRate: number): void;
+  /** the line was cut off: stop playing what was sent */
+  drop(): void;
+}
+
+/**
+ * A speaker that also hands every sample to a tap: the phone hears what the
+ * desk hears, as it is played, including being cut off. It wraps rather than
+ * replaces, so the desk's own playback is untouched whether or not anyone is
+ * listening elsewhere.
+ */
+export class TappedSpeaker implements Speaker {
+  constructor(
+    private readonly inner: Speaker,
+    private readonly tap: Tap,
+  ) {}
+  get rate(): number {
+    return this.inner.rate;
+  }
+  push(samples: Float32Array, sourceRate: number): void {
+    this.inner.push(samples, sourceRate);
+    try {
+      this.tap.pcm(samples, sourceRate);
+    } catch {
+      /* a listener's trouble is never the speaker's */
+    }
+  }
+  flush(): void {
+    this.inner.flush();
+  }
+  drop(): void {
+    this.inner.drop();
+    try {
+      this.tap.drop();
+    } catch {
+      /* as above */
+    }
+  }
+  queuedSeconds(): number {
+    return this.inner.queuedSeconds();
+  }
+  quiet(): Promise<void> {
+    return this.inner.quiet();
+  }
+  resetClock(): void {
+    this.inner.resetClock();
+  }
+  info(): SpeakerInfo {
+    return this.inner.info();
+  }
+  close(): void {
+    this.inner.close();
+  }
+}
+
 /** A speaker that plays nothing, for tests and `--no-audio`. */
 export class NullSpeaker implements Speaker {
   readonly rate = 24000;
