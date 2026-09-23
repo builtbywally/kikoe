@@ -1536,3 +1536,14 @@ html[data-phone="true"] .zoom-hud {
   color: var(--ember);
   border-color: var(--ember);
 }
+
+/* a thought still running, on the "kik · thinking" card */
+.thinking-now {
+  color: var(--ember);
+  animation: thinking-pulse 1.6s ease-in-out infinite;
+}
+@keyframes thinking-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}

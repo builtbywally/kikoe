@@ -31,11 +31,11 @@ import { Brain, type BrainTool, type ReplyOptions } from "./brain.js";
 
 export const CODE_PROVIDER = "claude-code";
 /** A reply that has not finished in this long is abandoned. */
-const REPLY_TIMEOUT_MS = 120_000;
+export const REPLY_TIMEOUT_MS = 120_000;
 /** A page designed through the CLI can take minutes. */
 const GENERATE_TIMEOUT_MS = 300_000;
 
-const SENTENCE_END = /([.!?])(\s+|$)/;
+export const SENTENCE_END = /([.!?])(\s+|$)/;
 
 export interface CodeBrainOptions {
   /** the claude binary */
@@ -49,7 +49,7 @@ export interface CodeBrainOptions {
 }
 
 /** One line of `--output-format stream-json`, as far as this head reads it. */
-interface StreamLine {
+export interface StreamLine {
   type?: string;
   subtype?: string;
   is_error?: boolean;
@@ -204,11 +204,11 @@ export function codeArgs(o: {
 }
 
 export class CodeBrain extends Brain {
-  private history: Array<{ at: number; you: string; kik: string }> = [];
-  private readonly log: (line: string) => void;
-  private queue: Promise<unknown> = Promise.resolve();
+  protected history: Array<{ at: number; you: string; kik: string }> = [];
+  protected readonly log: (line: string) => void;
+  protected queue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly code: CodeBrainOptions) {
+  constructor(protected readonly code: CodeBrainOptions) {
     super({ key: "", model: code.model, provider: CODE_PROVIDER });
     this.log = code.log ?? (() => {});
     mkdirSync(code.dir, { recursive: true });
@@ -221,7 +221,7 @@ export class CodeBrain extends Brain {
     return CODE_PROVIDER;
   }
 
-  private file(name: string): string {
+  protected file(name: string): string {
     return path.join(this.code.dir, name);
   }
 
@@ -307,13 +307,14 @@ export class CodeBrain extends Brain {
   override async generate(
     prompt: string,
     system: string,
-    o: { model?: string; maxTokens?: number; signal?: AbortSignal } = {},
+    o: { model?: string; maxTokens?: number; signal?: AbortSignal; think?: number } = {},
   ): Promise<string> {
     return (
       await this.run(prompt, system, {
         model: o.model,
         signal: o.signal,
         timeoutMs: GENERATE_TIMEOUT_MS,
+        think: o.think,
       })
     ).trim();
   }
@@ -335,6 +336,8 @@ export class CodeBrain extends Brain {
       mcp?: Record<string, unknown> | undefined;
       signal?: AbortSignal | undefined;
       timeoutMs: number;
+      /** a thinking budget in tokens; 0 switches thinking off */
+      think?: number | undefined;
       onText?: (chunk: string) => void;
       onBreak?: () => void;
     },
@@ -362,6 +365,10 @@ export class CodeBrain extends Brain {
           windowsHide: true,
           shell: /\.(cmd|bat)$/i.test(this.code.bin),
           stdio: ["pipe", "pipe", "pipe"],
+          env:
+            o.think === undefined
+              ? process.env
+              : { ...process.env, MAX_THINKING_TOKENS: String(o.think) },
         });
       } catch (e) {
         reject(e);

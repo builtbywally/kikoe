@@ -57,6 +57,7 @@ import {
 import { Hub } from "./hub.js";
 import { type Command, Jev } from "./jev.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
+import { LiveBrain } from "./livebrain.js";
 import { launch, launchFor } from "./pc.js";
 import { Board } from "./pins.js";
 import { Projects, slug } from "./projects.js";
@@ -138,6 +139,25 @@ const CORRECTION =
   /^(no|nope|wrong|thats wrong|that is wrong|not that|not what i|i said|i didnt say|i did not say|i meant|actually i meant|actually i said|actually no|you misheard|you got that wrong|thats not)\b/;
 /** what Kik says while the model is still thinking */
 const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
+/** One question handed to the thinking session. */
+interface Thought {
+  id: string;
+  question: string;
+  status: "thinking" | "done" | "failed";
+  started: number;
+  finished: number;
+  /** what was said aloud, or why it failed */
+  answer: string;
+  /** the card holding the detail, if there was any */
+  pin: string;
+  abort?: AbortController;
+}
+
+/** The thinking session's brief: think properly, then answer in a shape Kik can speak. */
+const THINKER = `You are the thinking half of Kik, the voice assistant beside a developer's coding agents. The talking half handed you a question because it needs real thought. Think it through properly: the situation, the options, what could go wrong.
+
+Then answer in this shape. First, what Kik should say aloud: at most three sentences of plain speech — no lists, markdown, code or file paths read out character by character — starting with a few words that say which question this answers ("On the retry question, …"). Give the conclusion, not the working. Then, only if detail would help the user, a line containing only --- followed by the detail in markdown: reasons, steps, a table, code. That part goes on the canvas as a card.`;
+
 /** the first beat when the thinking is slow (Claude Code): it says it is thinking */
 const THINKING = [
   "Give me a second to think about that.",
@@ -194,6 +214,8 @@ export interface DaemonOptions {
   jevKey?: string;
   /** for tests: what opening something on the PC does instead of opening it */
   launchImpl?: typeof launch;
+  /** for tests: what starts a Claude Code session for Kik's thinking */
+  codeSpawn?: typeof import("node:child_process").spawn;
   /** for tests: how the tailnet is read and served; null never touches it */
   tailnetImpl?: { status: typeof tailnetStatus; serve: typeof setServe } | null;
   /** for tests: the fetch the brain uses */
@@ -290,6 +312,7 @@ export class Daemon {
   private readonly jevKeyGiven: boolean;
   private jevCache: Jev | null = null;
   private readonly launchImpl: typeof launch;
+  private readonly codeSpawn: typeof import("node:child_process").spawn | undefined;
   private readonly tailnetImpl: { status: typeof tailnetStatus; serve: typeof setServe } | null;
   private readonly fetchImpl: typeof fetch;
   private brainCache: Brain | null = null;
@@ -347,6 +370,7 @@ export class Daemon {
     this.jevKeyGiven = opts.jevKey !== undefined;
     this.jevKey = opts.jevKey ?? jevKeyFromFile();
     this.launchImpl = opts.launchImpl ?? launch;
+    this.codeSpawn = opts.codeSpawn;
     // A test never asks the real Tailscale anything, unless it passes its own.
     this.tailnetImpl =
       opts.tailnetImpl !== undefined
@@ -845,6 +869,122 @@ export class Daemon {
   }
   private lastMeanwhile = { text: "", at: 0 };
 
+  // --- the thinking session ------------------------------------------------------------
+
+  /**
+   * What Kik said aloud or learned outside a reply since the last message: a
+   * filler, a thought that came back. The talking session is told on its next
+   * message, so it never disowns something it said ("what do you mean, let me
+   * look into that?" was asked, and the old head had no idea).
+   */
+  private asides: string[] = [];
+  private sayAside(line: string, why = "while getting your answer ready"): void {
+    this.say(line, ev.SEV_MILESTONE, "head");
+    this.asides.push(`You said aloud ${why}: "${line}"`);
+    this.asides = this.asides.slice(-6);
+  }
+
+  private thoughts: Thought[] = [];
+  private thoughtSeq = 0;
+
+  /**
+   * Hand a question to the thinking session: a separate Claude Code run with
+   * extended thinking and the stronger model, in the background. The talking
+   * session carries on; the answer is spoken when it lands and its detail, if
+   * any, goes on the canvas. The "kik · thinking" card shows it working.
+   */
+  think(question: string, context = ""): string {
+    const bin = this.agents.bin();
+    if (!bin) return "there is no Claude Code on this machine to think with";
+    const q = question.trim();
+    if (!q) return "what should I think about?";
+    if (this.thoughts.filter((t) => t.status === "thinking").length >= 2)
+      return "two thoughts are already running; answer from what you know, or wait for them";
+    const t: Thought = {
+      id: `t${++this.thoughtSeq}`,
+      question: q,
+      status: "thinking",
+      started: Date.now(),
+      finished: 0,
+      answer: "",
+      pin: "",
+      abort: new AbortController(),
+    };
+    this.thoughts = [t, ...this.thoughts].slice(0, 8);
+    this.publishThoughts();
+    const model = this.settings.think_model || "opus";
+    const thinker = new CodeBrain({
+      bin,
+      model,
+      dir: path.join(HOME, "brain"),
+      log,
+      ...(this.codeSpawn ? { spawnImpl: this.codeSpawn } : {}),
+    });
+    const prompt = [
+      `The question: ${q}`,
+      context ? `What Kik knows that bears on it: ${context}` : "",
+      `The live picture:\n${this.brainSystem().slice(PERSONA.length).trim()}`,
+      this.brainCache ? `The recent conversation:\n${this.brainCache.recent(6)}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    log(`thinking: ${t.id} on ${model}`);
+    thinker
+      .generate(prompt, THINKER, {
+        model,
+        think: 12_000,
+        ...(t.abort ? { signal: t.abort.signal } : {}),
+      })
+      .then((out) => this.thought(t, out))
+      .catch((e) => {
+        t.status = "failed";
+        t.finished = Date.now();
+        t.answer = (e as Error).message.slice(0, 200);
+        log(`thinking: ${t.id} failed: ${t.answer}`);
+        this.publishThoughts();
+        this.sayAside("My thinking on that didn't finish.", "when a thought failed");
+      });
+    return `thinking started as ${t.id}; tell the user in a few words that you are on it, and carry on`;
+  }
+
+  /** A thought landed: say it, put its detail on the canvas, tell the talking session. */
+  private thought(t: Thought, out: string): void {
+    const [spokenPart, ...rest] = out.split(/^\s*---\s*$/m);
+    const spoken = (spokenPart ?? "").trim() || "I thought it through; it's on the canvas.";
+    const detail = rest.join("\n---\n").trim();
+    t.status = "done";
+    t.finished = Date.now();
+    t.answer = spoken;
+    if (detail) {
+      const pin = this.board.add({
+        kind: "markdown",
+        title: `thought · ${t.question.slice(0, 48)}`,
+        body: detail,
+        project: this.projects.current.id,
+        repo: "kik",
+        by: "kik",
+        ttl_s: 86_400,
+      });
+      t.pin = pin.id;
+    }
+    log(`thinking: ${t.id} done in ${Math.round((t.finished - t.started) / 1000)} s`);
+    this.publishThoughts();
+    this.say(spoken, ev.SEV_ATTENTION, "head");
+    this.asides.push(
+      `Your thinking on "${t.question.slice(0, 120)}" came back, and you said it aloud: ${spoken}${detail ? " (the detail is on the canvas)" : ""}`,
+    );
+    this.asides = this.asides.slice(-6);
+    this.rememberExchange(`(thinking) ${t.question}`, spoken);
+  }
+
+  /** The thoughts, for the Room's thinking card: newest first, no controllers. */
+  thoughtsView(): Array<Omit<Thought, "abort">> {
+    return this.thoughts.map(({ abort: _, ...t }) => t);
+  }
+  private publishThoughts(): void {
+    this.hub.publish("thinking", { thoughts: this.thoughtsView() });
+  }
+
   /** when Kik last said its model account is out of credit */
   private creditNoticeAt = 0;
 
@@ -942,6 +1082,15 @@ export class Daemon {
       case "canvas":
         said = sentence(this.showOnCanvas(c.url));
         break;
+      case "think": {
+        // Straight to the thinking session: the talking one would only have
+        // handed it over. Said before it starts, so the user knows at once.
+        const r = this.think(spokenRest(clean, d.text));
+        said = /^thinking started/.test(r)
+          ? "On it. I'll think that through and come back to you."
+          : sentence(r);
+        break;
+      }
       case "stop_agent": {
         const n = this.agents.stop(project?.id);
         said = n ? "Stopped it." : "Nothing of mine is running.";
@@ -1835,13 +1984,24 @@ export class Daemon {
         return this.brainCache;
       const bin = this.agents.bin();
       if (!bin) return null;
-      this.brainCache = new CodeBrain({
-        bin,
-        model: this.settings.brain_model,
-        dir: path.join(HOME, "brain"),
-        log,
-      });
-      if (this.persistBoard) this.brainCache.seed(this.conversationFromDisk());
+      // The talking session: kept open, thinking off. Deep thought goes to a
+      // separate thinking session through the think_deeply tool.
+      const live = new LiveBrain(
+        {
+          bin,
+          model: this.settings.brain_model,
+          dir: path.join(HOME, "brain"),
+          log,
+          ...(this.codeSpawn ? { spawnImpl: this.codeSpawn } : {}),
+        },
+        PERSONA,
+      );
+      this.brainCache = live;
+      if (this.persistBoard) {
+        live.seed(this.conversationFromDisk());
+        // started before the first word, so the first answer is warm too
+        void live.warm(this.brainTools()).catch((e) => log(`claude code: ${(e as Error).message}`));
+      }
       return this.brainCache;
     }
     const key = this.brainKey();
@@ -1927,7 +2087,7 @@ export class Daemon {
     // thinking, and if it is still thinking, something real from the board
     // rather than a second "hm". Through Claude Code the wait is four to
     // seven seconds, so the first beat comes sooner and a hello gets one too.
-    const slow = brain.provider === CODE_PROVIDER;
+    const slow = brain.provider === CODE_PROVIDER && !(brain instanceof LiveBrain);
     const pickFrom = (list: string[]) => {
       const pick = list.filter((f) => f !== this.lastFiller);
       const f = pick[Math.floor(Math.random() * pick.length)] ?? list[0] ?? "Hm.";
@@ -1938,18 +2098,13 @@ export class Daemon {
     if (kind !== "social" || slow) {
       timers.push(
         setTimeout(
-          () =>
-            this.say(
-              pickFrom(slow && kind !== "social" ? THINKING : FILLERS),
-              ev.SEV_MILESTONE,
-              "head",
-            ),
+          () => this.sayAside(pickFrom(slow && kind !== "social" ? THINKING : FILLERS)),
           slow ? Math.min(this.fillerMs, 900) : this.fillerMs,
         ),
       );
       timers.push(
         setTimeout(
-          () => this.say(this.meanwhile() ?? pickFrom(STILL), ev.SEV_MILESTONE, "head"),
+          () => this.sayAside(this.meanwhile() ?? pickFrom(STILL)),
           (slow ? Math.min(this.fillerMs, 900) : this.fillerMs) + 4500,
         ),
       );
@@ -1961,6 +2116,7 @@ export class Daemon {
       said = await brain.reply(text, {
         system: this.brainSystem(),
         tools: this.brainTools(),
+        asides: this.asides.splice(0),
         onClause: (clause) => {
           stopFiller();
           const next = /^next:\s*(.+)$/i.exec(clause.trim());
@@ -2088,7 +2244,28 @@ export class Daemon {
 
   brainTools(): BrainTool[] {
     const str = (description: string) => ({ type: "string", description });
+    const thinking: BrainTool[] = this.agents.bin()
+      ? [
+          {
+            name: "think_deeply",
+            description:
+              "Hand a question that needs real thought to your thinking session: a design question, a hard bug, a plan, a comparison, a decision with trade-offs. It runs in the background with extended thinking and a stronger model, shows on the canvas as it works, and its answer is spoken when it lands, in a minute or so. Give the question and everything you know that bears on it. After calling, tell the user in a few words that you are on it, then carry on; do not wait for it.",
+            input_schema: {
+              type: "object",
+              properties: {
+                question: str("the question, in full, as the thinking session should read it"),
+                context: str(
+                  "what you know that bears on it: the situation, constraints, what was said",
+                ),
+              },
+              required: ["question"],
+            },
+            run: (i) => this.think(String(i.question ?? ""), String(i.context ?? "")),
+          },
+        ]
+      : [];
     return [
+      ...thinking,
       {
         name: "approve",
         description: "Approve the tool call or board question the user is being asked about.",
@@ -2812,6 +2989,8 @@ export class Daemon {
       },
       mic: { phase: this.micPhase, device: this.micDevice, enabled: this.settings.mic },
       heard: [...this.heardLog].reverse(),
+      // the thinking session's questions, for the "kik · thinking" card
+      thinking: this.thoughtsView(),
       usage: this.usage.list(),
       home: HOME,
     };
@@ -3281,6 +3460,8 @@ export class Daemon {
   }
 
   async close(): Promise<void> {
+    if (this.brainCache instanceof LiveBrain) this.brainCache.close();
+    for (const t of this.thoughts) t.abort?.abort();
     if (this.held) clearTimeout(this.held.timer);
     if (this.checkinTimer) clearInterval(this.checkinTimer);
     if (this.reflectTimer) clearTimeout(this.reflectTimer);

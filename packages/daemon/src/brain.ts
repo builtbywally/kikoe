@@ -34,6 +34,12 @@ export interface ReplyOptions {
   signal?: AbortSignal;
   /** a finished clause, ready to be spoken */
   onClause?: (clause: string) => void;
+  /**
+   * What Kik said aloud or learned since the last message, outside a reply:
+   * a filler while it waited, a thought that came back. The talking session
+   * is told, so "what do you mean, let me look into that?" has an answer.
+   */
+  asides?: string[];
 }
 
 type Block =

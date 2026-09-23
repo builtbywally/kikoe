@@ -779,6 +779,36 @@ subject". The API account had been at 402 for days.
 - The user's config was switched to `brain_provider: "claude-code"` on
   2026-09-23 at their request (it was `openrouter`).
 
+## Two sessions: talking and thinking (2026-09-23)
+
+The per-thought head above was 7 s a reply and it confused the user: a
+filler said "let me look into that" and the next reply had no idea it had.
+Their design, built the same hour: **a talking session with thinking off,
+kept open, and a separate thinking session.** `docs/PIPELINE.md` is the
+whole flow, written for the user; the parts the next session needs:
+
+- `livebrain.ts`: one `claude -p --input-format stream-json` process,
+  Haiku, `MAX_THINKING_TOKENS=0`, warmed when the brain is made. 0.68 s to
+  the first word live. The live picture rides on each message (the persona
+  is the system prompt); `ReplyOptions.asides` carries what Kik said aloud
+  since (fillers, thoughts that landed). Restarts after 30 turns, 20 min
+  idle, or a crash.
+- `think()`: Opus (`think_model`, default the `opus` alias — the user's
+  choice), `MAX_THINKING_TOKENS=12000`, via `CodeBrain.generate`. Reached by
+  Jev's new `think` action or the `think_deeply` tool. Live: 24 s; answer
+  spoken, detail as a markdown card, `thinking` frame for the Room.
+- Jev's `agent` criterion was narrowed to *doing* things in the repo; "think
+  this through / what's the best way / weigh up" is `think` (11/11 on real
+  Jev). Before that, a design question went to the coding agent.
+- The Room's cards are now **kik · talking**, **kik · thinking** and
+  **agent · \<project\>** — "the session" read as a second Kik.
+- **A trap found on the way**: the screenshot harness stages a fake
+  "kikoe is working" session, and a dev daemon queues instructions for it —
+  which a real Claude Code session in the kikoe repo could receive on its
+  Stop hook. Stop the dev app after a live test and the queue goes with it.
+- Tests start no real Claude: `codeSpawn` (daemon) and `spawnImpl` (heads)
+  take a fake, `livebrain.test.ts` has one that speaks stream-json.
+
 **Jev does not build web pages.** A demo of "Jev building a page live" is
 Jev choosing and an LLM (or code) writing; Jev returns no text. The fast
 page in Kikoe is `design_artifact` with `quick: true` on Haiku.

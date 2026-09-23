@@ -77,6 +77,8 @@ export interface Settings {
   brain_greets: boolean;
   /** the model that designs pages and apps for the canvas; sharper than the voice */
   artifact_model: string;
+  /** the thinking session's model, when Kik thinks through Claude Code */
+  think_model: string;
   /**
    * Your phone as a microphone, on the local network.
    *
@@ -149,6 +151,7 @@ export const DEFAULTS: Settings = {
   brain_checkin: true,
   brain_greets: true,
   artifact_model: "claude-sonnet-5",
+  think_model: "opus",
   walkie: false,
   walkie_port: 4571,
   walkie_tailscale: false,

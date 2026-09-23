@@ -41,7 +41,7 @@ export interface Choice {
 type Answer = Noul | Choice;
 
 /** What to do with an addressed sentence. */
-export type Action = "kik" | "agent" | "new_session" | "open" | "canvas" | "stop_agent";
+export type Action = "kik" | "think" | "agent" | "new_session" | "open" | "canvas" | "stop_agent";
 /** What can be opened on the PC. A fixed list: Jev picks, it never names a program. */
 export type Opener = "vscode" | "explorer" | "terminal" | "browser" | "website";
 
@@ -201,8 +201,10 @@ export class Jev {
           "Kik is a voice assistant that sits beside Claude Code, the user's coding agent. What should happen with the user's `sentence`?",
         criteria: {
           kik: "Kik answers or does it itself: the status of agents, whether tests passed, the canvas and whiteboard, notes to remember, usage limits, opinions, small talk",
+          think:
+            "the user asks Kik to think something through: weigh options, reason about a decision, a design or architecture question, a trade-off, a plan — a question to answer with thought, not work to do",
           agent:
-            "the coding agent should do or answer it: anything about the code, files, commits, bugs, refactors, or what the agent itself was told earlier",
+            "the coding agent should do it: change the code, fix a bug, refactor, run or check something in the repo, or answer what the agent itself was told earlier",
           new_session:
             "the user explicitly asks to open, start or spin up a new Claude or agent session, usually with a job for it",
           open: "the user asks to open an application, a folder, a terminal, or a website in the computer's own browser",

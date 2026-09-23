@@ -524,18 +524,23 @@ function pinCard(p) {
           ? thinking
             ? "thinking"
             : "with you"
-          : p.kind === "agents" || p.kind === "events" || p.kind === "session"
-            ? "live"
-            : p.sticky
-              ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
-              : age < 60
-                ? "pinned now"
-                : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
+          : p.kind === "thinking"
+            ? (state?.thinking ?? []).some((t) => t.status === "thinking")
+              ? "thinking"
+              : "idle"
+            : p.kind === "agents" || p.kind === "events" || p.kind === "session"
+              ? "live"
+              : p.sticky
+                ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
+                : age < 60
+                  ? "pinned now"
+                  : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
   head.append(title, when);
   const body = document.createElement("div");
   body.className = "pin-body";
   if (p.kind === "conversation") body.append(conversationBody());
   else if (p.kind === "session") body.append(sessionBody());
+  else if (p.kind === "thinking") body.append(thinkingBody());
   else if (p.kind === "agents") body.append(agentsBody());
   else if (p.kind === "events") body.append(eventsBody(p.repo));
   else if (p.kind === "checklist") body.append(checklistBody(p));
@@ -549,6 +554,7 @@ function pinCard(p) {
   if (
     p.kind === "conversation" ||
     p.kind === "session" ||
+    p.kind === "thinking" ||
     p.kind === "agents" ||
     p.kind === "events"
   ) {
@@ -670,7 +676,7 @@ function renderBoard() {
   const talk = {
     id: "conversation",
     kind: "conversation",
-    title: "kik",
+    title: "kik · talking",
     body: "",
     repo: "kik",
     by: "kik",
@@ -686,6 +692,16 @@ function renderBoard() {
     (a, b) => (a.repo === "kik" ? -1 : 0) - (b.repo === "kik" ? -1 : 0),
   );
   const extra = [];
+  // Kik's thinking session: shown once it has been asked something, beside
+  // the talking one, so it is plain which of the two is doing what.
+  if (state?.thinking?.length)
+    extra.push({
+      ...talk,
+      id: "thinking",
+      kind: "thinking",
+      title: "kik · thinking",
+      sticky: true,
+    });
   if (Object.keys(sessions).length)
     extra.push({ ...talk, id: "agents", kind: "agents", title: "agents", sticky: true });
   // The thread: the one place that says what has been happening, in order.
@@ -693,7 +709,9 @@ function renderBoard() {
     ...talk,
     id: "session",
     kind: "session",
-    title: state?.project?.name ? `the session · ${state.project.name}` : "the session",
+    // the coding agent's thread, not Kik: named so, since "the session" read
+    // as a second Kik once Kik had two sessions of its own
+    title: state?.project?.name ? `agent · ${state.project.name}` : "agent",
     sticky: true,
   });
   for (const [repo, events] of recentEvents)
@@ -743,6 +761,43 @@ function replyBox(placeholder) {
  * Every agent line points at its card. The thread is the index; the cards
  * are the detail.
  */
+/**
+ * The thinking session: each question the talking session handed over, what
+ * it is doing now, and what it concluded. A thought that left detail on the
+ * canvas links to its card.
+ */
+function thinkingBody() {
+  const wrap = document.createElement("div");
+  wrap.className = "thread";
+  for (const t of state?.thinking ?? []) {
+    const q = document.createElement("div");
+    q.className = "chat-you";
+    q.textContent = t.question;
+    wrap.append(q);
+    const a = document.createElement("div");
+    a.className = t.status === "done" ? "chat-kik" : "thread-agent";
+    if (t.status === "thinking") {
+      const s = Math.max(1, Math.round((Date.now() - t.started) / 1000));
+      a.textContent = `thinking… ${s}s`;
+      a.classList.add("thinking-now");
+    } else if (t.status === "failed") {
+      a.textContent = `didn't finish: ${t.answer}`;
+    } else {
+      a.textContent = t.answer;
+    }
+    wrap.append(a);
+    if (t.pin) {
+      const link = document.createElement("div");
+      link.className = "thread-agent";
+      link.dataset.id = t.pin;
+      link.textContent = "the detail is on the canvas →";
+      link.addEventListener("click", () => window.board.focus?.(t.pin));
+      wrap.append(link);
+    }
+  }
+  return wrap;
+}
+
 function sessionBody() {
   const wrap = document.createElement("div");
   wrap.className = "thread";
@@ -1189,6 +1244,10 @@ function showRoom() {
 // --- frames --------------------------------------------------------------------
 
 const handlers = {
+  thinking(f) {
+    if (state) state.thinking = f.thoughts ?? [];
+    renderBoard();
+  },
   hello(f) {
     sessions = f.sessions ?? {};
     mode = f.mode ?? mode;
