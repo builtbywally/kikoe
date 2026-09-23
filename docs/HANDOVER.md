@@ -456,9 +456,11 @@ pins the same reading to a screen edge — and the user asked for both.
 - Electron forbids external ArrayBuffers: `vad.front(false)`.
 - GNU tar from Git Bash fails on `.tar.bz2` inside Electron; models are
   unpacked with `System32\tar.exe` on Windows.
-- The NSIS install lands in `%LOCALAPPDATA%\Programs\@kikoeapp` (the
-  package name); `extraMetadata.name` did not change it. The start-at-login
-  Run key (`electron.app.kikoe`) points there.
+- The NSIS install lands in `%LOCALAPPDATA%\Programs\kikoe` (it was
+  `@kikoeapp`, the package name, in early builds). The start-at-login Run
+  key (`electron.app.kikoe`) points there. The silent installer does not
+  always relaunch the app (2026-09-23 it did not); start `kikoe.exe` from
+  there and then check `/state`.
 - The ear's phase posts are serialised; do not post from the audio callback
   on separate connections again.
 - The brain's conversation memory must never start on a `tool_result`
