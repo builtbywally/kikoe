@@ -85,8 +85,15 @@ const NO = [
 ];
 
 const CONTROLS: Array<[RegExp, string, (m: RegExpExecArray) => string]> = [
+  // Before the plain stop: "stop the agent" is about the agent, not the voice.
+  [/^(stop|kill|cancel|abort) (the )?(agent|agents|run|session|claude)\b/, "agent", () => "stop"],
   [/^(stop|shut up|quiet|be quiet|hush|silence|enough)\b/, "stop", () => ""],
-  [/^(pause|hold on|hang on|wait)\b/, "pause", () => ""],
+  // "wait, why did that fail" is a question that starts with a breath, not a pause.
+  [
+    /^(pause|hold on|hang on|wait)\b(?!\s+(why|what|how|who|where|when|which|is|are|was|did|does|do|can|could|should)\b)/,
+    "pause",
+    () => "",
+  ],
   [/^(resume|continue|carry on|unpause)\b/, "resume", () => ""],
   [/^(clear|wipe|clean) (the )?board\b/, "board", () => "clear"],
   [/^(show|open|bring up)( me)? (the )?(board|control room|sessions)\b/, "board", () => "show"],

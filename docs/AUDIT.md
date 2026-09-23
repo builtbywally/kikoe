@@ -61,9 +61,10 @@ Gaps:
 
 Works: headset mic, Silero VAD, Whisper base, sentence merging, name gate
 with aliases and the name by its shape, "you" sentences, a follow-up
-window, the model as judge in the gray zone, reflexes never touching the
-model, echo dropped by text, barge-in by VAD on a headset and by words
-through speakers, unaddressed speech dropped whole.
+window, Jev as judge in the gray zone (the model only when Jev is away;
+2026-09-23), reflexes never touching the model, echo dropped by text,
+barge-in by VAD on a headset and by words through speakers, unaddressed
+speech dropped whole.
 
 Gaps:
 - **The ear can die and stay dead.** It did today for hours: the process
@@ -79,6 +80,10 @@ Gaps:
   tuning, wrong as a default. **friction** (privacy).
 - Whisper base on CPU: one to eight seconds of transcription on long
   sentences. **friction**.
+- The gray-zone judge sends the nameless sentence to a cloud service (Jev
+  now, Haiku before). Not new, but it is the one place overheard text
+  leaves the machine to be judged. **friction** (privacy); Laya, local, is
+  the answer once it is fine-tuned on the heard log.
 
 ## 6. Kik answering (the head)
 
@@ -94,6 +99,12 @@ Gaps:
   got it". That is exactly what happened today. **breaks trust**.
 - The instruction goes to a repo by name or "the only one"; with two
   agents and no name Kik guesses. **breaks trust** with more than one.
+  Narrowed 2026-09-23: Jev names the project from the sentence and asks
+  "which project?" when it only half heard it; with no name it still
+  guesses.
+- "What number did you remember?" still goes to Kik, not the agent that
+  was told it. Jev gets 9/10 on Kik-or-agent; this one is the miss, and
+  the fix is telling it what only the agent's session knows. **friction**.
 - Nothing on the canvas shows an instruction waiting. **friction**.
 - A concern the watchers raise is spoken once and then gone; the `concern`
   frame is published but the Room does not render it. **costs the feeling**.
@@ -221,6 +232,12 @@ Gaps:
 - **Answering from the couch, half of it.** The phone can now *talk* to Kik
   (`docs/HANDOVER.md`, "The walkie-talkie"). It still cannot see the canvas
   or answer a permission by tapping; that is the rest of flow 2.
+- **Commands by voice, through Jev (2026-09-23).** "Open a new Claude
+  session in storefront and tell it to do one, two, three, four" starts a
+  fresh session there with exactly that job; "tell it to…" reaches the
+  agent without a Haiku call; "open marine in VS Code", "open github.com",
+  "a terminal in billiar" open on the PC from a fixed menu. "Stop the
+  agent" is a reflex. `docs/HANDOVER.md`, "Jev, the switchboard".
 - **The viewport buttons did nothing but resize.** They send `wide: true`;
   neither update path mapped it to `size`, so a page never became an
   artboard. Both paths now do.

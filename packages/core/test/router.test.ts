@@ -68,6 +68,20 @@ describe("routing", () => {
     });
   });
 
+  it("a question that starts with 'wait' is a question, not a pause", () => {
+    // not a control: past the reflexes, it goes where questions and work go
+    expect(route("kikoe wait, why did that fail").kind).not.toBe("control");
+    expect(route("kikoe wait what happened").kind).not.toBe("control");
+    expect(route("kikoe wait").intent).toBe("pause");
+    expect(route("kikoe hold on a second").intent).toBe("pause");
+  });
+
+  it("stopping the agent is its own reflex, not stopping the voice", () => {
+    for (const t of ["kikoe stop the agent", "kikoe kill the run", "kikoe cancel the session"])
+      expect(route(t)).toMatchObject({ kind: "control", intent: "agent", arg: "stop" });
+    expect(route("kikoe stop talking").intent).toBe("stop");
+  });
+
   it("a bare yes answers only when something is waiting", () => {
     expect(route("yes").kind).toBe("overheard");
     expect(route("yes", { awaitingAnswer: true })).toMatchObject({ kind: "answer", intent: "yes" });

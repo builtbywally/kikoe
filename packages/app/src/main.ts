@@ -811,6 +811,11 @@ ipcMain.handle(
     // Off has to mean the socket is closed, not the switch is grey, so this
     // is awaited: Settings reads the state straight afterwards and must not
     // be told "listening" about a server that is still binding.
+    // The switchboard and the PC switch take effect on the next sentence.
+    if (daemon && ("jev" in rest || "pc" in rest)) {
+      daemon.settings.jev = s.jev;
+      daemon.settings.pc = s.pc;
+    }
     if (("walkie" in rest || "walkie_port" in rest) && daemon) {
       daemon.settings = loadSettings();
       if ("walkie_port" in rest && daemon.walkie) {

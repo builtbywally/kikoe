@@ -96,6 +96,14 @@ export interface Settings {
   agents: boolean;
   /** where Claude Code lives, when it is not somewhere obvious */
   claude_bin: string;
+  /**
+   * Jev decides where what you say goes: to Kik, to the agent, to a new
+   * session, to the PC; and whether a nameless sentence was for Kik at all.
+   * Only with a key in ~/.kikoe/jev_key.txt; without one, the old rules.
+   */
+  jev: boolean;
+  /** Kik may open the editor, a folder, a terminal or a website on this PC */
+  pc: boolean;
   /** rings on the island for what is left of each assistant's limit */
   usage: boolean;
   /** providers switched off by hand; a listed id is never read at all */
@@ -139,6 +147,8 @@ export const DEFAULTS: Settings = {
   walkie_port: 4571,
   agents: true,
   claude_bin: "",
+  jev: true,
+  pc: true,
   usage: true,
   usage_off: [],
 };
@@ -252,6 +262,16 @@ export function openrouterKeyFromFile(): string {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY.trim();
   try {
     return readFileSync(path.join(HOME, "openrouter_key.txt"), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** The TypeSafe key for Jev, in a plain file like the OpenRouter one. */
+export function jevKeyFromFile(): string {
+  if (process.env.JEV_API_KEY) return process.env.JEV_API_KEY.trim();
+  try {
+    return readFileSync(path.join(HOME, "jev_key.txt"), "utf8").trim();
   } catch {
     return "";
   }

@@ -35,6 +35,7 @@ import {
   headAnswer,
   headKnows,
   headSocial,
+  normalize,
   route,
   utterance,
 } from "@kikoe/core";
@@ -46,13 +47,16 @@ import {
   type Settings,
   daemonToken,
   ensureHome,
+  jevKeyFromFile,
   loadSettings,
   log,
   viewerToken,
   walkieToken,
 } from "./config.js";
 import { Hub } from "./hub.js";
+import { type Command, Jev } from "./jev.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
+import { launch, launchFor } from "./pc.js";
 import { Board } from "./pins.js";
 import { Projects, slug } from "./projects.js";
 import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
@@ -122,9 +126,26 @@ const ATTENTION_MS = 20_000;
 const AWAY_MS = 3600_000;
 /** the user putting Kik right; the reply takes it and the note records it */
 const CORRECTION =
-  /^(no|nope|wrong|thats wrong|that is wrong|not that|not what i|i said|i didnt say|i did not say|i meant|you misheard|you got that wrong|thats not)\b/;
+  /^(no|nope|wrong|thats wrong|that is wrong|not that|not what i|i said|i didnt say|i did not say|i meant|actually i meant|actually i said|actually no|you misheard|you got that wrong|thats not)\b/;
 /** what Kik says while the model is still thinking */
 const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
+
+/**
+ * What the user said with the name cut off, in their own spelling.
+ *
+ * The router's text is normalized — lower case, no punctuation — which is
+ * right for matching and wrong for anything passed on: "github.com" stops
+ * being an address, and an agent's task loses its commas. So the raw words
+ * are dropped from the front until what is left normalizes to the router's.
+ */
+export function spokenRest(raw: string, routed: string): string {
+  const words = raw.trim().split(/\s+/);
+  for (let i = 0; i <= Math.min(3, words.length - 1); i++) {
+    const rest = words.slice(i).join(" ");
+    if (normalize(rest) === routed) return rest.replace(/^[\s,.!?]+/, "");
+  }
+  return routed || raw.trim();
+}
 
 /** The local calendar day of a timestamp, as YYYY-MM-DD. */
 export function dayOf(ms: number): string {
@@ -151,6 +172,10 @@ export interface DaemonOptions {
   elevenKey?: string;
   anthropicKey?: string;
   openrouterKey?: string;
+  /** the TypeSafe key for Jev; read from ~/.kikoe/jev_key.txt when not given */
+  jevKey?: string;
+  /** for tests: what opening something on the PC does instead of opening it */
+  launchImpl?: typeof launch;
   /** for tests: the fetch the brain uses */
   fetchImpl?: typeof fetch;
   /** keep sticky pins in ~/.kikoe/board.json (off for smoke and screenshot runs) */
@@ -241,6 +266,10 @@ export class Daemon {
   private attentionUntil = 0;
   private anthropicKey = "";
   private openrouterKey = "";
+  private jevKey = "";
+  private readonly jevKeyGiven: boolean;
+  private jevCache: Jev | null = null;
+  private readonly launchImpl: typeof launch;
   private readonly fetchImpl: typeof fetch;
   private brainCache: Brain | null = null;
   private checkinTimer: NodeJS.Timeout | null = null;
@@ -294,6 +323,9 @@ export class Daemon {
   constructor(opts: DaemonOptions = {}) {
     this.anthropicKey = opts.anthropicKey ?? "";
     this.openrouterKey = opts.openrouterKey ?? "";
+    this.jevKeyGiven = opts.jevKey !== undefined;
+    this.jevKey = opts.jevKey ?? jevKeyFromFile();
+    this.launchImpl = opts.launchImpl ?? launch;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.checkinTimer = setInterval(() => {
       this.watch();
@@ -497,7 +529,10 @@ export class Daemon {
   ): void {
     if (anthropicKey !== undefined) this.anthropicKey = anthropicKey;
     if (openrouterKey !== undefined) this.openrouterKey = openrouterKey;
+    // A key dropped into ~/.kikoe while the app runs is picked up here.
+    if (!this.jevKeyGiven) this.jevKey = jevKeyFromFile();
     this.brainCache = null;
+    this.jevCache = null;
     this.interrupt();
     const old = this.ladder;
     this.settings = settings;
@@ -666,6 +701,35 @@ export class Daemon {
     }
     this.hub.publish("mic", { phase: "addressed", text: clean });
 
+    // "Which project?" was asked; a name now answers it, whatever else it is.
+    const asked = this.askedProject;
+    if (asked && Date.now() < asked.until) {
+      const p = this.projects.resolve(d.text || clean);
+      if (p) {
+        this.askedProject = null;
+        void this.carryOut({ ...asked.command, project: p.name, projectSure: 1 }, clean, d, record);
+        return { kind: "command", intent: asked.command.action };
+      }
+    }
+    this.askedProject = null;
+
+    // Questions and work go past the switchboard first: Kik, the agent, a new
+    // session, the PC. Social and control never do; a hello needs no judge
+    // and a stop must be instant.
+    if ((d.kind === "question" || d.kind === "work") && this.jev() !== null) {
+      this.hub.publish("mic", { phase: "thinking", text: clean });
+      void this.dispatch(clean, d, record);
+      return { kind: "deciding", intent: d.kind };
+    }
+    return this.respond(d, clean, record);
+  }
+
+  /** What was heard, answered the way it was before the switchboard: the model, or the rules. */
+  private respond(
+    d: ReturnType<typeof route>,
+    clean: string,
+    record: (kind: string, intent: string, said?: string) => void,
+  ): { kind: string; intent: string; said?: string } {
     if (
       (d.kind === "question" || d.kind === "social" || d.kind === "work") &&
       this.brain() !== null
@@ -709,6 +773,117 @@ export class Daemon {
     }
     this.hub.publish("mic", { phase: "idle" });
     return { kind: d.kind, intent: d.intent, ...(said ? { said } : {}) };
+  }
+
+  // --- the switchboard ---------------------------------------------------------------
+
+  /** A command that stopped to ask "which project?", waiting for the name. */
+  private askedProject: { command: Command; until: number } | null = null;
+
+  /**
+   * Ask Jev what to do with an addressed sentence, then do it. Anything Jev
+   * is unsure of, or says is Kik's own, goes on the way it always went, so
+   * a slow network or a missing key changes nothing but speed.
+   */
+  private async dispatch(
+    clean: string,
+    d: ReturnType<typeof route>,
+    record: (kind: string, intent: string, said?: string) => void,
+  ): Promise<void> {
+    const jev = this.jev();
+    const t0 = Date.now();
+    const c = jev
+      ? await jev.command(spokenRest(clean, d.text), {
+          projects: [
+            this.projects.current.name,
+            ...this.projects
+              .all()
+              .map((p) => p.name)
+              .filter((n) => n !== this.projects.current.name),
+          ],
+          current: this.projects.current.name,
+          running: this.tracker.brief(),
+          last: this.lastExchange.at
+            ? `User: ${this.lastExchange.you} | Kik: ${this.lastExchange.kik}`
+            : "",
+        })
+      : null;
+    if (c)
+      log(
+        `jev: ${c.action} ${c.sure.toFixed(2)}${c.project ? ` in ${c.project} ${c.projectSure.toFixed(2)}` : ""} (${Date.now() - t0} ms)`,
+      );
+    if (!c || c.action === "kik" || c.sure < Daemon.JEV_SURE) {
+      this.respond(d, clean, record);
+      return;
+    }
+    // A project half-heard is asked about rather than guessed: starting work
+    // in the wrong repo is worse than one short question.
+    const needsProject = c.action === "agent" || c.action === "new_session" || c.action === "open";
+    if (needsProject && c.project && c.projectSure < Daemon.JEV_PROJECT_SURE) {
+      const other = this.projects
+        .all()
+        .map((p) => p.name)
+        .find((n) => n !== c.project && n !== this.projects.current.name);
+      const said = `Which project, ${c.project}${other ? ` or ${other}` : ""}?`;
+      this.askedProject = { command: c, until: Date.now() + ATTENTION_MS };
+      record(d.kind, `ask:${c.action}`, said);
+      this.openWindow(clean, said);
+      this.say(said, ev.SEV_ATTENTION, "head");
+      this.hub.publish("mic", { phase: "idle" });
+      return;
+    }
+    await this.carryOut(c, clean, d, record);
+  }
+
+  /** Jev only lets this through above this; below it, the old path answers. */
+  private static readonly JEV_SURE = 0.6;
+  /** A named project below this is asked about, not assumed. */
+  private static readonly JEV_PROJECT_SURE = 0.5;
+
+  private async carryOut(
+    c: Command,
+    clean: string,
+    d: ReturnType<typeof route>,
+    record: (kind: string, intent: string, said?: string) => void,
+  ): Promise<void> {
+    const project = c.project ? this.projects.resolve(c.project) : undefined;
+    let said: string;
+    switch (c.action) {
+      case "new_session":
+        said = sentence(this.startAgent(project?.name ?? "", c.task, { fresh: true }));
+        break;
+      case "agent":
+        said = sentence(this.instruct(c.task, project?.name));
+        break;
+      case "open":
+        said = sentence(this.openOnPc(c, project));
+        break;
+      case "stop_agent": {
+        const n = this.agents.stop(project?.id);
+        said = n ? "Stopped it." : "Nothing of mine is running.";
+        break;
+      }
+      default:
+        this.respond(d, clean, record);
+        return;
+    }
+    record(d.kind, c.action, said);
+    this.rememberExchange(clean, said);
+    this.openWindow(clean, said);
+    this.say(said, ev.SEV_ATTENTION, "head");
+    this.hub.publish("mic", { phase: "idle" });
+  }
+
+  /** The editor, a folder, a terminal or a site, from a fixed menu. */
+  openOnPc(c: Command, named?: { name: string; roots: string[] }): string {
+    if (!this.settings.pc) return "opening things on this PC is switched off in Settings";
+    const p = named ?? this.projects.current;
+    const dir = p.roots[0] ?? "";
+    const l = launchFor(c.open, { dir, url: c.url, name: p.name });
+    if (typeof l === "string") return l;
+    this.launchImpl(l, dir, log);
+    log(`pc: ${c.open} -> ${l.bin} ${l.args.join(" ")}`);
+    return l.said;
   }
 
   private brainSpeaksFor(e: ev.AgentEvent): boolean {
@@ -800,7 +975,7 @@ export class Daemon {
   private grayZone(): boolean {
     // Every nameless sentence, while there is a model to ask: with a headset
     // in an empty room a wrong yes costs one answer, a wrong no costs trust.
-    return this.settings.hear_you && this.brain() !== null;
+    return this.settings.hear_you && (this.jev() !== null || this.brain() !== null);
   }
 
   private async decideDirected(
@@ -809,6 +984,7 @@ export class Daemon {
   ): Promise<void> {
     const brain = this.brain();
     let yes = false;
+    let by = "nobody";
     try {
       const ago = this.lastExchange.at
         ? Math.round((Date.now() - this.lastExchange.at) / 1000)
@@ -816,11 +992,21 @@ export class Daemon {
       const last = this.lastExchange.at
         ? `${ago} seconds ago. User: ${this.lastExchange.you}\nKik: ${this.lastExchange.kik}`
         : "(no exchange yet)";
-      yes = brain ? await brain.directed(text, last) : false;
+      // Jev first: a typed yes/no is what this question is, and a prompted
+      // chat model is the setup the research calls the worst at it
+      // (docs/HEARING.md). The model is the fallback, not the judge.
+      const p = (await this.jev()?.directed(text, last)) ?? null;
+      if (p !== null) {
+        yes = p >= 0.5;
+        by = `jev ${p.toFixed(2)}`;
+      } else if (brain) {
+        yes = await brain.directed(text, last);
+        by = "model";
+      }
     } catch (e) {
       log(`directed check failed: ${(e as Error).message}`);
     }
-    log(`follow-up? ${yes ? "yes" : "no"} (${text.split(/\s+/).length} words)`);
+    log(`follow-up? ${yes ? "yes" : "no"} by ${by} (${text.split(/\s+/).length} words)`);
     this.hear(text, meta, yes ? { force: true, decided: true } : { decided: true });
   }
 
@@ -1465,7 +1651,14 @@ export class Daemon {
     return text;
   }
 
-  /** The model head, when there is a key and the setting is on. */
+  /** The switchboard, when there is a key and the setting is on. */
+  jev(): Jev | null {
+    if (!this.settings.jev || !this.jevKey) return null;
+    if (!this.jevCache)
+      this.jevCache = new Jev({ key: this.jevKey, fetchImpl: this.fetchImpl, log });
+    return this.jevCache;
+  }
+
   /** The key for the provider in the settings; empty means no brain. */
   private brainKey(): string {
     return this.settings.brain_provider === "openrouter" ? this.openrouterKey : this.anthropicKey;
@@ -2129,11 +2322,17 @@ export class Daemon {
    * the canvas — because the session Kik starts is an ordinary one. What is
    * new is only that nobody had to open a terminal to begin it.
    */
-  startAgent(name: string, prompt: string): string {
+  startAgent(name: string, prompt: string, opts: { fresh?: boolean } = {}): string {
     if (!this.settings.agents) return "starting agents is switched off in Settings";
     const project = name
       ? (this.projects.resolve(name) ?? this.projects.current)
       : this.projects.current;
+    // "Open a new session" means a new conversation, not the standing one.
+    // Forgotten only when nothing is running there: a refused start must not
+    // cost the conversation that is still going.
+    if (opts.fresh && !this.agents.running.some((r) => r.project === project.id)) {
+      this.projects.forget(project.id);
+    }
     // What the user said first, then what the machine knows: being told the
     // folder is missing when the real problem is an empty task is a worse
     // answer than the one about the task.
@@ -2234,6 +2433,13 @@ export class Daemon {
 
   private control(intent: string, arg: string): string | undefined {
     switch (intent) {
+      case "agent": {
+        this.interrupt();
+        const n = this.agents.stop();
+        // Only the runs Kik started can be stopped from here; one in a
+        // terminal belongs to the terminal.
+        return n ? "Stopped it." : "Nothing I started is running.";
+      }
       case "stop":
         this.interrupt();
         return undefined;

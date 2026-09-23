@@ -595,3 +595,64 @@ it is all I have".
 **The cost, stated plainly:** an agent turn is fifteen to forty seconds.
 That is a conversation, but not a quick one, and it is not a substitute for
 credit — Kik's own voice is a second away when it has a model.
+
+## Jev, the switchboard (2026-09-23)
+
+The user asked for Laya or Jev "as the form of communication between
+Claude Code and my PC": say "open a new Claude session and tell it to do
+one, two, three, four" and have it happen. Both are System One models:
+typed questions in, probabilities out, no text generated. So they cannot
+*be* the conversation; they decide where a sentence goes, and code acts.
+
+- **Why Jev and not Laya.** Both were put to Kikoe's own cases
+  (`~/orca/projects/laya-vs-jev/kikoe_probe*.py`). "Was that said to Kik":
+  Jev 10/10 with wide margins, Laya no separation at all (0.19–0.38 for
+  every sentence). Kik-or-agent: Jev 9/10 at near-certainty, Laya 8/10 at
+  0.3–0.7. Laya is 34 ms local on the 3090 against Jev's ~320 ms over the
+  network, and is the answer for privacy once fine-tuned on the heard log;
+  it is cloned with a CUDA venv at `~/orca/projects/laya`. Jev costs
+  $0.042 per million input tokens: nothing.
+- **`daemon/src/jev.ts`.** `command()` asks, in one request, the action
+  (kik, agent, new_session, open, stop_agent), which *cut* of the sentence
+  is the task (`taskCandidates()`: the whole thing, after "tell it to",
+  after "and", …), and what to open. The project is a **second request in
+  parallel over the sentence alone** — given the current project and the
+  last exchange too, Jev named projects the sentence never mentioned.
+  `directed()` replaces `Brain.directed()` in the gray zone; the model is
+  now only the fallback.
+- **Jev chooses, code acts.** The task an agent gets is the user's own
+  words, cut, never paraphrased. `spokenRest()` hands Jev the raw
+  transcript minus the name, because the router's normalized text had
+  turned "github.com" into "github com" and dropped the task's commas.
+  `pc.ts` is a fixed menu (editor, folder, terminal, browser, an http(s)
+  address found in the sentence), no shell except `code.cmd`, behind the
+  `pc` setting.
+- **Thresholds.** An action below 0.6 goes the old way (`respond()`, the
+  pre-Jev tail of `hear()`); a named project below 0.5 is asked about
+  ("Which project, storefront or billiar?") and the next name answers it.
+  Measured on thirteen real sentences: every action right, the lowest
+  0.52 (and that one was Kik's anyway).
+- **"New session" is a new conversation**: `startAgent(…, { fresh: true })`
+  forgets the project's standing session id, only when nothing is running
+  there. Verified live: "open a new claude session in ClaudeTalks and tell
+  it to reply with the single word ready" → Jev new_session 0.97 in
+  ClaudeTalks 0.84 (906 ms) → agent started 16 ms later → `ready`.
+- **Two rule fixes that need no key**: "wait, why did that fail" was a
+  *pause* (the control regex took any sentence starting with "wait");
+  "stop the agent" only stopped Kik's voice. Now `agent` is its own
+  control intent that stops the runs Kik started.
+- **Tried and dropped**: Jev for corrections. It called "stop the agent" a
+  correction and missed "no, I said storefront"; the regex stays, with
+  "actually I meant" added.
+- The key is `~/.kikoe/jev_key.txt` (or `JEV_API_KEY`), re-read on
+  `reconfigure()`. Tests pass `jevKey` and a fake `fetchImpl`; no test can
+  reach TypeSafe. **The screenshot harness does**, since it reads the real
+  key: its staged "add a retry" line made one real Jev call. Harmless, but
+  know it.
+- Still open: Jev does not know what only the agent's session knows, so
+  "what number did you remember?" goes to Kik. The fix is a line of state
+  about the standing session, not a better model.
+
+**Jev does not build web pages.** A demo of "Jev building a page live" is
+Jev choosing and an LLM (or code) writing; Jev returns no text. The fast
+page in Kikoe is `design_artifact` with `quick: true` on Haiku.
