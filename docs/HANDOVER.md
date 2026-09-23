@@ -714,6 +714,16 @@ them.
   at 402 — the rules now answer "how are you" and "hey", and Kik says once
   an hour that it is out of credit; and the session card repeated the Kik
   card line for line — it now shows only what reached the agent.
+- **"Open YouTube here" puts it on the canvas** (asked from the phone the
+  same morning). Jev has a `canvas` action beside `open`: "on the canvas",
+  "on the board", "here" → a live `web` card, the same one the model's
+  create_artifact makes; "in my browser" → the PC. From the phone, an `open`
+  of a website becomes `canvas` too, because the desk's browser helps nobody
+  on the couch. `siteByName()` turns "open YouTube" into youtube.com (the
+  phone asked "which address?" three times running), and `findUrl()` mends
+  Whisper's "youtube.com.com". **Limit**: the Room unframes sites only
+  inside Electron; a phone's browser honours X-Frame-Options, so YouTube's
+  card is blank on the phone and fine on the desk.
 - **Stopping the walkie with a phone attached**: `server.close()` waits for
   every open connection, and a phone watching the canvas or listening holds
   one forever. `stop()` now ends the voice streams and calls

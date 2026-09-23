@@ -638,7 +638,7 @@ export class Daemon {
   hear(
     text: string,
     meta: { dur_s?: number; stt_ms?: number } = {},
-    opts: { force?: boolean; decided?: boolean } = {},
+    opts: { force?: boolean; decided?: boolean; via?: "phone" } = {},
   ): { kind: string; intent: string; said?: string } {
     const clean = text.trim();
     // Whisper names sounds it cannot read as words: "[buzzing]", "(music)",
@@ -737,7 +737,7 @@ export class Daemon {
     // and a stop must be instant.
     if ((d.kind === "question" || d.kind === "work") && this.jev() !== null) {
       this.hub.publish("mic", { phase: "thinking", text: clean });
-      void this.dispatch(clean, d, record);
+      void this.dispatch(clean, d, record, opts.via);
       return { kind: "deciding", intent: d.kind };
     }
     return this.respond(d, clean, record);
@@ -811,6 +811,7 @@ export class Daemon {
     clean: string,
     d: ReturnType<typeof route>,
     record: (kind: string, intent: string, said?: string) => void,
+    via?: "phone",
   ): Promise<void> {
     const jev = this.jev();
     const t0 = Date.now();
@@ -838,6 +839,15 @@ export class Daemon {
       this.respond(d, clean, record);
       return;
     }
+    // From the phone, "open YouTube" in the desk's browser helps nobody on
+    // the couch; the canvas is the screen they are holding.
+    if (
+      via === "phone" &&
+      c.action === "open" &&
+      (c.open === "website" || c.open === "browser") &&
+      c.url
+    )
+      c.action = "canvas";
     // A project half-heard is asked about rather than guessed: starting work
     // in the wrong repo is worse than one short question.
     const needsProject = c.action === "agent" || c.action === "new_session" || c.action === "open";
@@ -880,6 +890,9 @@ export class Daemon {
       case "open":
         said = sentence(this.openOnPc(c, project));
         break;
+      case "canvas":
+        said = sentence(this.showOnCanvas(c.url));
+        break;
       case "stop_agent": {
         const n = this.agents.stop(project?.id);
         said = n ? "Stopped it." : "Nothing of mine is running.";
@@ -894,6 +907,29 @@ export class Daemon {
     this.openWindow(clean, said);
     this.say(said, ev.SEV_ATTENTION, "head");
     this.hub.publish("mic", { phase: "idle" });
+  }
+
+  /**
+   * A site on the canvas, as a live web card, where "open YouTube here" means
+   * here: in the Room, on whichever screen is looking. The same card the
+   * model's create_artifact makes, so it looks and behaves the same.
+   */
+  showOnCanvas(url: string): string {
+    if (!/^https?:\/\//i.test(url)) return "which site?";
+    const name = url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/.*$/, "");
+    const pin = this.board.add({
+      kind: "web",
+      title: name,
+      body: url,
+      project: this.projects.current.id,
+      repo: "kik",
+      by: "kik",
+      size: "wide",
+      ttl_s: 3600,
+    });
+    this.hub.publish("focus", { id: pin.id });
+    log(`canvas: ${name} as ${pin.id}`);
+    return `${name} is on the canvas`;
   }
 
   /** The editor, a folder, a terminal or a site, from a fixed menu. */
@@ -1612,8 +1648,8 @@ export class Daemon {
   }
 
   /** The user typed to Kik on the canvas: addressed, no name needed. */
-  typed(text: string): { kind: string; intent: string; said?: string } {
-    return this.hear(text, {}, { force: true, decided: true });
+  typed(text: string, via?: "phone"): { kind: string; intent: string; said?: string } {
+    return this.hear(text, {}, { force: true, decided: true, ...(via ? { via } : {}) });
   }
 
   // --- the phone as a microphone --------------------------------------------------
@@ -1638,7 +1674,7 @@ export class Daemon {
         onAudio: (pcm) => this.walkieHeard(pcm),
         onText: (text) => {
           log(`walkie: typed ${text.split(/\s+/).length} words`);
-          return this.typed(text).kind;
+          return this.typed(text, "phone").kind;
         },
         ...(this.roomDir ? { room: { port: daemonPort, viewer: this.viewer } } : {}),
         log,
@@ -1678,7 +1714,7 @@ export class Daemon {
       this.hub.publish("mic", { phase: "idle" });
       return "";
     }
-    this.hear(text, {}, { force: true, decided: true });
+    this.hear(text, {}, { force: true, decided: true, via: "phone" });
     return text;
   }
 

@@ -41,7 +41,7 @@ export interface Choice {
 type Answer = Noul | Choice;
 
 /** What to do with an addressed sentence. */
-export type Action = "kik" | "agent" | "new_session" | "open" | "stop_agent";
+export type Action = "kik" | "agent" | "new_session" | "open" | "canvas" | "stop_agent";
 /** What can be opened on the PC. A fixed list: Jev picks, it never names a program. */
 export type Opener = "vscode" | "explorer" | "terminal" | "browser" | "website";
 
@@ -104,7 +104,37 @@ export function findUrl(text: string): string {
   if (!m?.[1]) return "";
   // "the fetch in api.ts" names a file, not a site
   if (!/^https?:/i.test(m[1]) && CODE_FILE.test(m[1])) return "";
-  return /^https?:/i.test(m[1]) ? m[1] : `https://${m[1]}`;
+  // Whisper, hearing "youtube dot com" said twice over, wrote "youtube.com.com"
+  const found = m[1].replace(/(\.[a-z]{2,})\1+(?=\/|$)/i, "$1");
+  return /^https?:/i.test(found) ? found : `https://${found}`;
+}
+
+/** Words after "open" that are never a site's name. */
+const NOT_A_SITE = new Set(
+  "a an the my it this that these those up canvas board here browser terminal folder editor vs code new session claude agent project localhost me something".split(
+    " ",
+  ),
+);
+
+/**
+ * A site said by name: "open YouTube here" means youtube.com. Nobody says the
+ * ".com", and asking "which address?" back was the answer three times running
+ * on the phone. The first word after the verb that is not filler, with .com —
+ * used only when Jev has already decided a website is what was asked for.
+ */
+export function siteByName(text: string, exclude: string[] = []): string {
+  const skip = new Set([...NOT_A_SITE, ...exclude.map((e) => e.toLowerCase())]);
+  const m =
+    /\b(?:open|show|go to|bring up|pull up|load|put|launch|browse)\s+((?:[a-z0-9][\w-]*\s*){1,4})/i.exec(
+      text,
+    );
+  if (!m?.[1]) return "";
+  for (const raw of m[1].trim().split(/\s+/)) {
+    const w = raw.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    if (!w || skip.has(w) || /^(on|in|at|for|to)$/.test(w)) continue;
+    return `https://www.${w}.com`;
+  }
+  return "";
 }
 
 export interface JevOptions {
@@ -175,7 +205,9 @@ export class Jev {
             "the coding agent should do or answer it: anything about the code, files, commits, bugs, refactors, or what the agent itself was told earlier",
           new_session:
             "the user explicitly asks to open, start or spin up a new Claude or agent session, usually with a job for it",
-          open: "the user asks to open an application, a folder, a terminal, a browser or a website on their computer",
+          open: "the user asks to open an application, a folder, a terminal, or a website in the computer's own browser",
+          canvas:
+            "the user asks to show or open a website or web app on the canvas, the board, or 'here' in the Room where they are looking",
           stop_agent: "the user asks to stop, kill or cancel the running agent",
         },
       },
@@ -255,7 +287,7 @@ export class Jev {
       projectSure: project ? (project.probabilities[project.choice] ?? 0) : 0,
       task: tasks[taskIdx] ?? tasks[0] ?? text,
       open: (open?.choice ?? "browser") as Opener,
-      url: findUrl(text),
+      url: findUrl(text) || siteByName(text, projects),
     };
   }
 }

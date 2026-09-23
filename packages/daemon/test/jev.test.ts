@@ -106,6 +106,14 @@ describe("the pieces Jev chooses between", () => {
     expect(jev.findUrl("open the browser")).toBe("");
   });
 
+  it("knows a site by its name, and mends a doubled ending", () => {
+    expect(jev.siteByName("Can you open YouTube here?")).toBe("https://www.youtube.com");
+    expect(jev.siteByName("open github in my browser")).toBe("https://www.github.com");
+    expect(jev.siteByName("open marine in vs code", ["Marine"])).toBe("");
+    expect(jev.siteByName("open the canvas")).toBe("");
+    expect(jev.findUrl("open youtube.com.com")).toBe("https://youtube.com");
+  });
+
   it("passes on the user's spelling with only the name cut off", () => {
     expect(dmod.spokenRest("Kikoe, open github.com please", "open github com please")).toBe(
       "open github.com please",
@@ -253,6 +261,29 @@ describe("the switchboard in the daemon", () => {
     const r = d.hear("kikoe stop the agent");
     expect(r).toMatchObject({ kind: "control", intent: "agent" });
     expect(r.said).toMatch(/nothing i started/i);
+    await d.close();
+  });
+
+  it("puts a site on the canvas when asked to show it here", async () => {
+    const { d, launched } = daemon({ action: "canvas" });
+    d.hear("kikoe can you open YouTube here");
+    await tick();
+    const card = d.board.list().find((p) => p.kind === "web");
+    expect(card?.body).toBe("https://www.youtube.com");
+    expect(launched).toHaveLength(0);
+    await d.close();
+  });
+
+  it("from the phone, opening a site means the canvas, not the desk's browser", async () => {
+    const { d, launched } = daemon({ action: "open", open: "website" });
+    d.typed("open youtube", "phone");
+    await tick();
+    expect(d.board.list().some((p) => p.kind === "web")).toBe(true);
+    expect(launched).toHaveLength(0);
+    // at the desk the same words open the browser
+    d.hear("kikoe open youtube");
+    await tick();
+    expect(launched[0]?.args.join(" ")).toContain("youtube.com");
     await d.close();
   });
 
