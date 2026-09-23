@@ -89,6 +89,12 @@ export interface Settings {
   walkie: boolean;
   walkie_port: number;
   /**
+   * Put the walkie on the user's tailnet with Tailscale Serve: a real
+   * certificate at machine.tailnet.ts.net, reachable from their own devices
+   * anywhere. Only while the walkie is on; off takes the rule down.
+   */
+  walkie_tailscale: boolean;
+  /**
    * Kik may start a coding agent itself, so the first move of the day is not
    * a terminal. It spawns a process, which is worth a switch; permissions
    * are still asked for and answered by voice, always.
@@ -145,6 +151,7 @@ export const DEFAULTS: Settings = {
   artifact_model: "claude-sonnet-5",
   walkie: false,
   walkie_port: 4571,
+  walkie_tailscale: false,
   agents: true,
   claude_bin: "",
   jev: true,

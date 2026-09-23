@@ -68,6 +68,7 @@ import {
   TappedSpeaker,
   earcon,
 } from "./speaker.js";
+import { NO_TAILNET, type Tailnet, setServe, tailnetStatus } from "./tailnet.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
 import { UsageStore, defaultProviders } from "./usage.js";
 import { Walkie } from "./walkie.js";
@@ -183,6 +184,8 @@ export interface DaemonOptions {
   jevKey?: string;
   /** for tests: what opening something on the PC does instead of opening it */
   launchImpl?: typeof launch;
+  /** for tests: how the tailnet is read and served; null never touches it */
+  tailnetImpl?: { status: typeof tailnetStatus; serve: typeof setServe } | null;
   /** for tests: the fetch the brain uses */
   fetchImpl?: typeof fetch;
   /** keep sticky pins in ~/.kikoe/board.json (off for smoke and screenshot runs) */
@@ -277,6 +280,7 @@ export class Daemon {
   private readonly jevKeyGiven: boolean;
   private jevCache: Jev | null = null;
   private readonly launchImpl: typeof launch;
+  private readonly tailnetImpl: { status: typeof tailnetStatus; serve: typeof setServe } | null;
   private readonly fetchImpl: typeof fetch;
   private brainCache: Brain | null = null;
   private checkinTimer: NodeJS.Timeout | null = null;
@@ -333,6 +337,13 @@ export class Daemon {
     this.jevKeyGiven = opts.jevKey !== undefined;
     this.jevKey = opts.jevKey ?? jevKeyFromFile();
     this.launchImpl = opts.launchImpl ?? launch;
+    // A test never asks the real Tailscale anything, unless it passes its own.
+    this.tailnetImpl =
+      opts.tailnetImpl !== undefined
+        ? opts.tailnetImpl
+        : process.env.VITEST
+          ? null
+          : { status: tailnetStatus, serve: setServe };
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.checkinTimer = setInterval(() => {
       this.watch();
@@ -1662,6 +1673,39 @@ export class Daemon {
    * listener Kikoe has that is not loopback.
    */
   async syncWalkie(): Promise<void> {
+    await this.syncWalkieServer();
+    await this.syncTailnet();
+  }
+
+  /** Where this machine sits on a tailnet, if it does; read on every walkie change. */
+  tailnet: Tailnet = NO_TAILNET;
+
+  /**
+   * Keep our Tailscale Serve rule in step with the walkie: up while the
+   * walkie is on and the user asked for it, down otherwise. Only ever the
+   * rule pointing at the walkie; any other serve config is the user's.
+   */
+  async syncTailnet(): Promise<void> {
+    const port = this.settings.walkie_port || 4571;
+    const ts = this.tailnetImpl;
+    if (ts === null) return;
+    this.tailnet = await ts.status(port);
+    if (!this.tailnet.running) return;
+    const want = this.walkie !== null && this.settings.walkie_tailscale;
+    if (want && !this.tailnet.serving) {
+      const r = await ts.serve(true, port);
+      log(`tailscale: ${r.said}`);
+      this.tailnetNote = r.ok ? "" : r.said;
+    } else if (!want && this.tailnet.serving) {
+      const r = await ts.serve(false, port);
+      log(`tailscale: ${r.said}`);
+    } else return;
+    this.tailnet = await ts.status(port);
+  }
+  /** why the serve rule could not be put up, for Settings to show */
+  tailnetNote = "";
+
+  private async syncWalkieServer(): Promise<void> {
     const want = this.settings.walkie;
     if (want && !this.walkie) {
       // The canvas goes to the phone too, when there is a Room to serve: the
@@ -2664,6 +2708,20 @@ export class Daemon {
         // phone can be pointed at it, and it is not a key.
         urls: this.walkie?.urls() ?? [],
         ear: this.transcribe !== null,
+        // Away from home: the tailnet's own HTTPS name when our serve rule
+        // is up (a real certificate, no warning), else its 100.x address.
+        tailnet: {
+          ...this.tailnet,
+          want: this.settings.walkie_tailscale,
+          note: this.tailnetNote,
+          url: !this.walkie
+            ? ""
+            : this.tailnet.serving && this.tailnet.dns
+              ? `https://${this.tailnet.dns}/?t=${encodeURIComponent(walkieToken())}`
+              : this.tailnet.ip
+                ? `https://${this.tailnet.ip}:${this.settings.walkie_port || 4571}/?t=${encodeURIComponent(walkieToken())}`
+                : "",
+        },
       },
       mic: { phase: this.micPhase, device: this.micDevice, enabled: this.settings.mic },
       heard: [...this.heardLog].reverse(),

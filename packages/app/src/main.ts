@@ -816,7 +816,7 @@ ipcMain.handle(
       daemon.settings.jev = s.jev;
       daemon.settings.pc = s.pc;
     }
-    if (("walkie" in rest || "walkie_port" in rest) && daemon) {
+    if (("walkie" in rest || "walkie_port" in rest || "walkie_tailscale" in rest) && daemon) {
       daemon.settings = loadSettings();
       if ("walkie_port" in rest && daemon.walkie) {
         const w = daemon.walkie;

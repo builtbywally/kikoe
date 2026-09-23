@@ -724,6 +724,18 @@ them.
   Whisper's "youtube.com.com". **Limit**: the Room unframes sites only
   inside Electron; a phone's browser honours X-Frame-Options, so YouTube's
   card is blank on the phone and fine on the desk.
+- **Away from home: Tailscale** (`daemon/src/tailnet.ts`). The walkie
+  already answered on the machine's 100.x tailnet address, and its
+  certificate already names it, so the phone worked over Tailscale with the
+  usual warning from day one. The `walkie_tailscale` setting adds the better
+  door: `tailscale serve --bg --https=443 https+insecure://127.0.0.1:4571`,
+  a real certificate at `wm.taile841c1.ts.net`, own devices only. The rule
+  follows the walkie (off takes it down), and Kikoe only ever touches that
+  one rule. **First run on a tailnet**: Serve must be approved once — the
+  CLI prints a login.tailscale.com link and *waits*; the 8 s timeout ends the
+  wait and Settings shows the link. HTTPS certificates must also be on for
+  the tailnet (`CertDomains` in `tailscale status --json`). Tests never run
+  the real CLI (`tailnetImpl` is null under Vitest unless a test passes one).
 - **Stopping the walkie with a phone attached**: `server.close()` waits for
   every open connection, and a phone watching the canvas or listening holds
   one forever. `stop()` now ends the voice streams and calls

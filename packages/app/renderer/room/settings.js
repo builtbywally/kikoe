@@ -98,6 +98,46 @@
       "Your phone will warn you once",
       "The certificate is signed by this machine, not by an authority. Continue past it and the link keeps working.",
     );
+
+    // Away from home: the tailnet.
+    const t = w.tailnet || {};
+    $("walkie-tailscale").checked = info.settings.walkie_tailscale === true;
+    $("walkie-tailscale").disabled = !t.running;
+    if (!t.running) {
+      add(
+        "Away from home",
+        "Install Tailscale on this machine and your phone, sign both in, and the phone reaches Kik from anywhere.",
+      );
+      return;
+    }
+    if (t.url) {
+      const row = add(
+        t.serving ? "Away from home, no warning" : "Away from home",
+        t.url,
+        t.serving ? "good" : "",
+      );
+      const copy = document.createElement("button");
+      copy.className = "quiet";
+      copy.textContent = "copy";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(t.url);
+          note("walkie-note", "link copied", "good");
+        } catch {
+          note("walkie-note", "could not copy; select it by hand", "bad");
+        }
+      });
+      row.append(copy);
+    }
+    if (t.want && !t.serving)
+      add(
+        "Tailscale did not take it",
+        t.note ||
+          (t.https
+            ? "The serve rule is not up yet."
+            : "Turn on HTTPS for your tailnet: login.tailscale.com/admin/dns, then HTTPS Certificates."),
+        "bad",
+      );
   }
 
   // --- limits ---------------------------------------------------------------
@@ -714,6 +754,20 @@
       "walkie-note",
       r.error || (info.state?.walkie?.on ? "listening" : "off"),
       r.error ? "bad" : "good",
+    );
+    renderWalkie();
+  });
+
+  $("walkie-tailscale").addEventListener("change", async () => {
+    const on = $("walkie-tailscale").checked;
+    note("walkie-note", on ? "asking Tailscale…" : "taking it off your tailnet…");
+    const r = await api.save({ walkie_tailscale: on });
+    info = await api.get();
+    const t = info.state?.walkie?.tailnet || {};
+    note(
+      "walkie-note",
+      r.error || (on ? (t.serving ? "on your tailnet" : "Tailscale did not take it") : "off"),
+      r.error || (on && !t.serving) ? "bad" : "good",
     );
     renderWalkie();
   });

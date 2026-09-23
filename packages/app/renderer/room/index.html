@@ -199,6 +199,7 @@
         <p class="dim">This is the one part of Kikoe that listens on the network rather than on this machine alone, so it is off until you turn it on and the socket closes again the moment you turn it off. A browser will not hand a microphone to a plain <code>http</code> page, so Kikoe serves the page over HTTPS with a certificate it signs itself — your phone will say the connection is not private, once. That warning is the price of your voice not going through anyone else's tunnel; the audio goes straight to this machine and is transcribed here.</p>
         <p class="dim">If your phone still refuses the microphone after you continue past the warning, open <code>/cert.pem</code> on the same link, install it, and trust it in your phone's settings — then there is no warning and no doubt.</p>
         <label class="row"><input type="checkbox" id="walkie-on" /><div><b>Let my phone talk to Kik</b><span>On the local network only, while this is on.</span></div></label>
+        <label class="row"><input type="checkbox" id="walkie-tailscale" /><div><b>Reach it from anywhere, through Tailscale</b><span>Your own devices only, with a real certificate: no warning on the phone. Needs Tailscale on this machine and the phone, and HTTPS turned on for your tailnet.</span></div></label>
         <div class="rows" id="walkie-rows"></div>
         <div class="actions"><span id="walkie-note" class="note"></span></div>
       </section>
