@@ -744,6 +744,41 @@ them.
   next slice and needs its own token right; `localhost` web cards show only
   on the desk; away from home needs Tailscale (and gives a real certificate).
 
+## Thinking through Claude Code (2026-09-23)
+
+The user: "for the thinking aspect, I want to use a Claude session in the
+background", and "whenever Claude is thinking, Kik should give me filler
+speech, like give me two seconds to think about this, or start a different
+subject". The API account had been at 402 for days.
+
+- **`daemon/src/codebrain.ts`, provider `claude-code`.** A `Brain` subclass
+  that runs `claude -p` headless per thought: `--system-prompt-file` (the
+  whole brainSystem), stream-json with partial messages so clauses are
+  spoken as they arrive, `--tools ""` (Kik's head edits nothing),
+  `--strict-mcp-config`, and a settings file with `disableAllHooks` — or
+  Kik would narrate its own thinking as an agent at work. The prompt is the
+  recent conversation plus the new sentence, on stdin. Needs no key; the
+  binary is `agents.bin()`.
+- **Kik's tools reach it over MCP**: `ToolServer` is a loopback JSON-RPC
+  server (initialize, tools/list, tools/call, ping) on a random port with a
+  random token, alive for one reply, `--allowedTools mcp__kik`. Each call
+  runs the same `BrainTool.run` the API head would. Verified live: "remember
+  that we ship on Fridays" called `remember` through it.
+- **Measured**: a bare `claude -p` is ~6.6 s (Haiku); with the tool server
+  and a small prompt the first word was 3.7 s; with Kik's full system prompt
+  7.2 s to the first word, 9.2 s done. The API head is ~1 s.
+- **The fillers**: two beats. At ~0.9 s a line that says it is thinking
+  ("Give me a second to think about that."), and 4.5 s later, if still
+  thinking, something real from the board (`meanwhile()`: an agent waiting
+  or failed, not repeated within ten minutes) or "Still thinking." Live:
+  +1.0 s, +5.3 s, answer at +7.4 s. A hello gets a filler too on this head.
+- **What stays on the rules with this head** (`thinksSlowly()`): event
+  narration, the minute check-in and the inner note. Every thought is a
+  process and several seconds of the user's subscription, so only what the
+  user asks for, and the designer, goes through it.
+- The user's config was switched to `brain_provider: "claude-code"` on
+  2026-09-23 at their request (it was `openrouter`).
+
 **Jev does not build web pages.** A demo of "Jev building a page live" is
 Jev choosing and an LLM (or code) writing; Jev returns no text. The fast
 page in Kikoe is `design_artifact` with `quick: true` on Haiku.

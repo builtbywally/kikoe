@@ -41,6 +41,7 @@ import {
 } from "@kikoe/core";
 import { Agents } from "./agents.js";
 import { Brain, type BrainTool, PERSONA } from "./brain.js";
+import { CODE_PROVIDER, CodeBrain } from "./codebrain.js";
 import {
   HOME,
   LOGS,
@@ -137,6 +138,15 @@ const CORRECTION =
   /^(no|nope|wrong|thats wrong|that is wrong|not that|not what i|i said|i didnt say|i did not say|i meant|actually i meant|actually i said|actually no|you misheard|you got that wrong|thats not)\b/;
 /** what Kik says while the model is still thinking */
 const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
+/** the first beat when the thinking is slow (Claude Code): it says it is thinking */
+const THINKING = [
+  "Give me a second to think about that.",
+  "Let me think about that.",
+  "Good question. One moment.",
+  "Hm, let me look into that.",
+];
+/** the second beat, when nothing on the board is worth saying instead */
+const STILL = ["Still thinking.", "Almost there.", "Bear with me."];
 
 /**
  * What the user said with the name cut off, in their own spelling.
@@ -464,7 +474,13 @@ export class Daemon {
     }
     // A model in the head phrases what is worth saying, in its own words.
     // Permissions stay stock: they must be instant.
-    if (lines.length && this.settings.brain_narrates && this.brain() && this.brainSpeaksFor(e)) {
+    if (
+      lines.length &&
+      this.settings.brain_narrates &&
+      this.brain() &&
+      !this.thinksSlowly() &&
+      this.brainSpeaksFor(e)
+    ) {
       void this.brainNarrate(e, lines);
       lines = [];
     }
@@ -807,6 +823,28 @@ export class Daemon {
 
   // --- the switchboard ---------------------------------------------------------------
 
+  /**
+   * Something real to say while thinking, in place of a second "hm": an
+   * agent waiting on the user, or one that failed. Never the same thing twice
+   * in ten minutes; null when the board has nothing worth it.
+   */
+  private meanwhile(): string | null {
+    const s = Object.values(this.tracker.snapshot());
+    const waiting = s.find((x) => x.status === "waiting");
+    const failed = s.find((x) => x.status === "failed");
+    const line = waiting
+      ? `Meanwhile, ${waiting.label} is waiting on you.`
+      : failed
+        ? `Meanwhile, ${failed.label} hit an error.`
+        : null;
+    if (!line) return null;
+    if (this.lastMeanwhile.text === line && Date.now() - this.lastMeanwhile.at < 600_000)
+      return null;
+    this.lastMeanwhile = { text: line, at: Date.now() };
+    return line;
+  }
+  private lastMeanwhile = { text: "", at: 0 };
+
   /** when Kik last said its model account is out of credit */
   private creditNoticeAt = 0;
 
@@ -955,6 +993,16 @@ export class Daemon {
     return l.said;
   }
 
+  /**
+   * Is the head Claude Code? Then every thought is a process and four to
+   * seven seconds on the user's subscription, so only what the user asks for
+   * goes through it: the conversation and the designer. Narration, the
+   * minute check-in and the inner note stay on the rules.
+   */
+  private thinksSlowly(): boolean {
+    return (this.settings.brain_provider || "anthropic") === CODE_PROVIDER;
+  }
+
   private brainSpeaksFor(e: ev.AgentEvent): boolean {
     if (e.severity < ev.SEV_MILESTONE) return false;
     return (
@@ -1005,7 +1053,7 @@ export class Daemon {
    */
   async checkIn(): Promise<void> {
     const brain = this.brain();
-    if (!brain || !this.settings.brain_checkin) return;
+    if (!brain || !this.settings.brain_checkin || this.thinksSlowly()) return;
     if (this.eventsSeen === this.eventsAtCheckin) return;
     if (!Object.keys(this.tracker.snapshot()).length) return;
     const lastSaid = this.history[this.history.length - 1]?.ts ?? 0;
@@ -1202,7 +1250,7 @@ export class Daemon {
    * rewritten against the picture. Off the reply path.
    */
   reflectSoon(): void {
-    if (this.reflectTimer || !this.brain()) return;
+    if (this.reflectTimer || !this.brain() || this.thinksSlowly()) return;
     const wait = Math.max(this.reflectMs, this.reflectedAt + this.reflectMs * 6 - Date.now());
     this.reflectTimer = setTimeout(() => {
       this.reflectTimer = null;
@@ -1776,9 +1824,28 @@ export class Daemon {
   }
 
   brain(): Brain | null {
-    const key = this.brainKey();
-    if (!this.settings.brain || !key) return null;
+    if (!this.settings.brain) return null;
     const provider = this.settings.brain_provider || "anthropic";
+    // Claude Code on the user's subscription: no key, only the binary.
+    if (provider === CODE_PROVIDER) {
+      if (
+        this.brainCache?.provider === CODE_PROVIDER &&
+        this.brainCache.model === this.settings.brain_model
+      )
+        return this.brainCache;
+      const bin = this.agents.bin();
+      if (!bin) return null;
+      this.brainCache = new CodeBrain({
+        bin,
+        model: this.settings.brain_model,
+        dir: path.join(HOME, "brain"),
+        log,
+      });
+      if (this.persistBoard) this.brainCache.seed(this.conversationFromDisk());
+      return this.brainCache;
+    }
+    const key = this.brainKey();
+    if (!key) return null;
     if (
       !this.brainCache ||
       this.brainCache.model !== this.settings.brain_model ||
@@ -1854,21 +1921,41 @@ export class Daemon {
       this.corrected = Date.now();
       log("correction: the user is putting Kik right");
     }
-    // While the model thinks, a person would say "hm". One short sound if
-    // the first clause is slow; a hello needs none.
-    let filler: NodeJS.Timeout | null =
-      kind === "social"
-        ? null
-        : setTimeout(() => {
-            filler = null;
-            const pick = FILLERS.filter((f) => f !== this.lastFiller);
-            const f = pick[Math.floor(Math.random() * pick.length)] ?? "Hm.";
-            this.lastFiller = f;
-            this.say(f, ev.SEV_MILESTONE, "head");
-          }, this.fillerMs);
+    // While the model thinks, a person would say something. Asked for in the
+    // user's words: "give me two seconds to think about this", "or it could
+    // start a different subject". So two beats: a line that says it is
+    // thinking, and if it is still thinking, something real from the board
+    // rather than a second "hm". Through Claude Code the wait is four to
+    // seven seconds, so the first beat comes sooner and a hello gets one too.
+    const slow = brain.provider === CODE_PROVIDER;
+    const pickFrom = (list: string[]) => {
+      const pick = list.filter((f) => f !== this.lastFiller);
+      const f = pick[Math.floor(Math.random() * pick.length)] ?? list[0] ?? "Hm.";
+      this.lastFiller = f;
+      return f;
+    };
+    const timers: NodeJS.Timeout[] = [];
+    if (kind !== "social" || slow) {
+      timers.push(
+        setTimeout(
+          () =>
+            this.say(
+              pickFrom(slow && kind !== "social" ? THINKING : FILLERS),
+              ev.SEV_MILESTONE,
+              "head",
+            ),
+          slow ? Math.min(this.fillerMs, 900) : this.fillerMs,
+        ),
+      );
+      timers.push(
+        setTimeout(
+          () => this.say(this.meanwhile() ?? pickFrom(STILL), ev.SEV_MILESTONE, "head"),
+          (slow ? Math.min(this.fillerMs, 900) : this.fillerMs) + 4500,
+        ),
+      );
+    }
     const stopFiller = () => {
-      if (filler) clearTimeout(filler);
-      filler = null;
+      for (const t of timers.splice(0)) clearTimeout(t);
     };
     try {
       said = await brain.reply(text, {
@@ -3177,6 +3264,12 @@ export class Daemon {
         if (lines.length) this.arbiter.submitAll(lines);
       }, 500),
       setInterval(() => this.board.sweep(), 5000),
+      // Serve waits on a one-time approval in the Tailscale console; once the
+      // user clicks it, the rule goes up on its own within two minutes.
+      setInterval(() => {
+        if (this.walkie && this.settings.walkie_tailscale && !this.tailnet.serving)
+          void this.syncTailnet();
+      }, 120_000),
       setInterval(() => {
         const dropped = unloadIdleEngines();
         if (dropped.length) log(`unloaded idle model: ${dropped.join(", ")}`);
