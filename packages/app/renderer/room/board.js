@@ -93,6 +93,20 @@
       maxX = Math.max(maxX, x + f.offsetWidth);
       maxY = Math.max(maxY, y + f.offsetHeight);
     }
+    // A phone cannot show a whole board at a size anyone can read, so it fits
+    // the first column to the width of the screen and the rest is a swipe
+    // away (or a pinch).
+    if (document.documentElement.dataset.phone === "true") {
+      const first = frames.reduce((a, b) =>
+        Number.parseFloat(a.style.left) <= Number.parseFloat(b.style.left) ? a : b,
+      );
+      const x = Number.parseFloat(first.style.left);
+      const y = Number.parseFloat(first.style.top);
+      zoom = Math.max(MIN_ZOOM, Math.min(1, (rect.width - 24) / first.offsetWidth));
+      panX = 12 - x * zoom;
+      panY = 56 - (y - 28) * zoom;
+      return apply();
+    }
     const w = maxX - minX + PAD * 2;
     const h = maxY - minY + PAD * 2;
     zoom = Math.max(FIT_FLOOR, Math.min(1, (rect.width - LEFT * 2) / w, (rect.height - 300) / h));
@@ -104,11 +118,37 @@
   // --- pan and zoom -------------------------------------------------------------
 
   let dragging = null;
+  // Two fingers are a pinch: zoom about the point between them, and pan with
+  // it. Tracked here because pointer events arrive one finger at a time.
+  const fingers = new Map();
+  let pinch = null;
+  const between = () => {
+    const [a, b] = [...fingers.values()];
+    const rect = canvas.getBoundingClientRect();
+    return {
+      d: Math.hypot(a.x - b.x, a.y - b.y),
+      x: (a.x + b.x) / 2 - rect.left,
+      y: (a.y + b.y) / 2 - rect.top,
+    };
+  };
+  // A viewer (the phone, a second screen) cannot move a card, so a finger on
+  // one pans the canvas instead of failing to drag it.
+  const readOnly = () => document.documentElement.dataset.readonly === "true";
   canvas.addEventListener("pointerdown", (e) => {
     const pin = e.target.closest(".pin");
     if (e.target.closest("button, a, select, input")) return;
+    if (e.pointerType === "touch") {
+      fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (fingers.size === 2) {
+        if (dragging?.kind === "pin") dragging.pin.classList.remove("dragging");
+        dragging = null;
+        pinch = between();
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
     const start = { x: e.clientX, y: e.clientY, panX, panY };
-    if (pin && e.button === 0) {
+    if (pin && e.button === 0 && !readOnly()) {
       const pos = positions.get(pin.dataset.id) ?? { x: 0, y: 0 };
       dragging = { kind: "pin", pin, start, from: { ...pos } };
       pin.classList.add("dragging");
@@ -122,6 +162,16 @@
     }
   });
   canvas.addEventListener("pointermove", (e) => {
+    if (fingers.has(e.pointerId)) fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && fingers.size === 2) {
+      const now = between();
+      panX += now.x - pinch.x;
+      panY += now.y - pinch.y;
+      if (pinch.d > 0) zoomAt(zoom * (now.d / pinch.d), now.x, now.y);
+      else apply();
+      pinch = now;
+      return;
+    }
     if (!dragging) return;
     const dx = e.clientX - dragging.start.x;
     const dy = e.clientY - dragging.start.y;
@@ -152,8 +202,18 @@
     canvas.classList.remove("panning");
     dragging = null;
   };
-  canvas.addEventListener("pointerup", endDrag);
-  canvas.addEventListener("pointercancel", endDrag);
+  const lift = (e) => {
+    fingers.delete(e.pointerId);
+    if (pinch) {
+      // Lifting one finger of a pinch ends it; the other does not start a pan
+      // from where the pinch left it, which would jump.
+      if (fingers.size < 2) pinch = null;
+      return;
+    }
+    endDrag();
+  };
+  canvas.addEventListener("pointerup", lift);
+  canvas.addEventListener("pointercancel", lift);
   canvas.addEventListener(
     "wheel",
     (e) => {

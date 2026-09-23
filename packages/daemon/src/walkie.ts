@@ -26,6 +26,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import https from "node:https";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
@@ -44,7 +45,29 @@ export interface WalkieOptions {
   token: string;
   /** raw 16 kHz mono PCM from the phone; resolves with what was heard */
   onAudio: (pcm: Int16Array) => Promise<string> | string;
+  /**
+   * The canvas on the phone: the daemon's loopback port and its *viewer*
+   * token. The phone's reads are passed through with that token, so the
+   * daemon's own rule — a viewer may look and may not touch — is what holds,
+   * not a second copy of it here.
+   */
+  room?: { port: number; viewer: string };
+  /** a sentence typed on the phone; the same power as saying it */
+  onText?: (text: string) => Promise<string> | string;
   log?: (line: string) => void;
+}
+
+/** What the phone may read through us: the viewer's routes, and nothing that acts. */
+export const ROOM_READS = ["/state", "/sessions", "/stream", "/pins", "/backdrop", "/usage"];
+
+/** Is this path one the phone may read through the proxy? */
+export function proxiable(pathname: string): boolean {
+  return (
+    ROOM_READS.includes(pathname) ||
+    pathname === "/room" ||
+    pathname.startsWith("/room/") ||
+    pathname.startsWith("/artifact/")
+  );
 }
 
 export interface Cert {
@@ -244,7 +267,25 @@ export class Walkie {
       }
       return;
     }
-    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+    // With the canvas on, the bare address is the Room: what you see on the
+    // desk, with a button to talk. The button-only page stays at /talk.
+    if (
+      req.method === "GET" &&
+      this.opts.room &&
+      (url.pathname === "/" || url.pathname === "/index.html")
+    ) {
+      res.writeHead(302, { ...headers, location: "/room/?phone=1" });
+      res.end();
+      return;
+    }
+    if (req.method === "GET" && this.opts.room && proxiable(url.pathname)) {
+      this.proxy(req, res, url, headers);
+      return;
+    }
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/talk")
+    ) {
       const body = page(this.opts.token);
       res.writeHead(200, {
         ...headers,
@@ -252,6 +293,30 @@ export class Walkie {
         "cache-control": "no-store",
       });
       res.end(body);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/say" && this.opts.onText) {
+      let raw = "";
+      for await (const c of req) {
+        raw += c;
+        if (raw.length > 4000) break;
+      }
+      let text = "";
+      try {
+        text = String(JSON.parse(raw || "{}").text ?? "")
+          .trim()
+          .slice(0, 1000);
+      } catch {
+        /* not json */
+      }
+      if (!text) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "nothing to say" }));
+        return;
+      }
+      const kind = await this.opts.onText(text);
+      res.writeHead(200, { ...headers, "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, kind }));
       return;
     }
     if (req.method === "POST" && url.pathname === "/audio") {
@@ -291,6 +356,58 @@ export class Walkie {
     }
     res.writeHead(404, { "content-type": "text/plain" });
     res.end("no");
+  }
+
+  /**
+   * One read, passed to the daemon on loopback as a viewer.
+   *
+   * Whatever token the phone's page put in the address is replaced by the
+   * viewer's, so the walkie token never reaches the daemon and the phone can
+   * never be more than a viewer there. The event stream is piped as it comes:
+   * nothing is buffered, so a card lands on the phone when it lands on the desk.
+   */
+  private proxy(
+    req: import("node:http").IncomingMessage,
+    res: import("node:http").ServerResponse,
+    url: URL,
+    headers: Record<string, string>,
+  ): void {
+    const room = this.opts.room;
+    if (!room) return;
+    const q = new URLSearchParams(url.search);
+    q.delete("t");
+    if (q.has("token") || url.pathname === "/stream" || url.pathname === "/backdrop")
+      q.set("token", room.viewer);
+    const search = q.toString();
+    const up = http.request(
+      {
+        host: "127.0.0.1",
+        port: room.port,
+        path: `${url.pathname}${search ? `?${search}` : ""}`,
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${room.viewer}`,
+          accept: String(req.headers.accept ?? "*/*"),
+        },
+      },
+      (r) => {
+        const out: Record<string, string | string[]> = { ...headers };
+        for (const [k, v] of Object.entries(r.headers)) {
+          if (v === undefined || k === "set-cookie" || k === "connection") continue;
+          out[k] = v;
+        }
+        res.writeHead(r.statusCode ?? 502, out);
+        r.pipe(res);
+      },
+    );
+    up.on("error", (e) => {
+      this.log(`walkie: the room is unreachable: ${e.message}`);
+      if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
+      res.end("Kikoe is not answering");
+    });
+    // A phone that closes the page must not leave a stream open on the daemon.
+    res.on("close", () => up.destroy());
+    up.end();
   }
 }
 

@@ -1606,10 +1606,19 @@ export class Daemon {
   async syncWalkie(): Promise<void> {
     const want = this.settings.walkie;
     if (want && !this.walkie) {
+      // The canvas goes to the phone too, when there is a Room to serve: the
+      // phone reads through the walkie as a viewer and talks as the walkie.
+      const bound = this.server?.address();
+      const daemonPort = bound && typeof bound === "object" ? bound.port : this.settings.port;
       this.walkie = new Walkie({
         port: this.settings.walkie_port || 4571,
         token: walkieToken(),
         onAudio: (pcm) => this.walkieHeard(pcm),
+        onText: (text) => {
+          log(`walkie: typed ${text.split(/\s+/).length} words`);
+          return this.typed(text).kind;
+        },
+        ...(this.roomDir ? { room: { port: daemonPort, viewer: this.viewer } } : {}),
         log,
       });
       try {

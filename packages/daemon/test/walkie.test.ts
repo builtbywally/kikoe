@@ -187,3 +187,152 @@ describe("the server", () => {
     expect((await req(`/?t=${TOKEN}`)).status).toBe(200);
   }, 30_000);
 });
+
+describe("the canvas on the phone", () => {
+  const PHONE = PORT + 211;
+  const VIEWER = "v-viewer-token";
+  // A stand-in for the daemon: records what reached it and as whom.
+  const seen: Array<{ method: string; path: string; auth: string }> = [];
+  let fakeDaemon: import("node:http").Server;
+  let phone: InstanceType<typeof import("../src/walkie.js").Walkie>;
+  const typed: string[] = [];
+
+  function get(
+    p: string,
+    opts: { method?: string; body?: string; cookie?: string } = {},
+  ): Promise<{ status: number; body: string; location: string; type: string }> {
+    return new Promise((resolve, reject) => {
+      const r = https.request(
+        {
+          host: "127.0.0.1",
+          port: PHONE,
+          path: p,
+          method: opts.method ?? "GET",
+          rejectUnauthorized: false,
+          headers: {
+            cookie: opts.cookie ?? `${mod.COOKIE}=${TOKEN}`,
+            ...(opts.body ? { "content-type": "application/json" } : {}),
+          },
+        },
+        (res) => {
+          let out = "";
+          res.on("data", (c) => {
+            out += c;
+            // an event stream never ends; the first event is enough
+            if (String(res.headers["content-type"]).includes("event-stream")) {
+              res.destroy();
+              resolve({
+                status: res.statusCode ?? 0,
+                body: out,
+                location: "",
+                type: "event-stream",
+              });
+            }
+          });
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              body: out,
+              location: String(res.headers.location ?? ""),
+              type: String(res.headers["content-type"] ?? ""),
+            }),
+          );
+        },
+      );
+      r.on("error", reject);
+      if (opts.body) r.write(opts.body);
+      r.end();
+    });
+  }
+
+  beforeAll(async () => {
+    const http = await import("node:http");
+    fakeDaemon = http.createServer((q, s) => {
+      seen.push({
+        method: q.method ?? "",
+        path: q.url ?? "",
+        auth: String(q.headers.authorization),
+      });
+      if (q.url?.startsWith("/stream")) {
+        s.writeHead(200, { "content-type": "text/event-stream" });
+        s.write('data: {"type":"hello"}\n\n');
+        return;
+      }
+      s.writeHead(200, { "content-type": "application/json" });
+      s.end(JSON.stringify({ path: q.url }));
+    });
+    await new Promise<void>((r) => fakeDaemon.listen(0, "127.0.0.1", () => r()));
+    const addr = fakeDaemon.address();
+    const port = typeof addr === "object" && addr ? addr.port : 0;
+    phone = new mod.Walkie({
+      port: PHONE,
+      token: TOKEN,
+      onAudio: () => "",
+      onText: (t) => {
+        typed.push(t);
+        return "chat";
+      },
+      room: { port, viewer: VIEWER },
+    });
+    await phone.start();
+  }, 30_000);
+
+  afterAll(async () => {
+    await phone.stop();
+    await new Promise<void>((r) => fakeDaemon.close(() => r()));
+  });
+
+  it("opens on the canvas, not the bare button", async () => {
+    const r = await get(`/?t=${TOKEN}`);
+    expect(r.status).toBe(302);
+    expect(r.location).toBe("/room/?phone=1");
+    // the button alone is still there
+    expect((await get("/talk")).body).toContain("hold to talk");
+  });
+
+  it("reads from the daemon as a viewer, never with the walkie token", async () => {
+    seen.length = 0;
+    const r = await get("/state");
+    expect(r.status).toBe(200);
+    expect(seen[0]?.auth).toBe(`Bearer ${VIEWER}`);
+    expect(JSON.stringify(seen)).not.toContain(TOKEN);
+  });
+
+  it("swaps whatever token the page sent for the viewer's on the live stream", async () => {
+    seen.length = 0;
+    const r = await get(`/stream?token=${TOKEN}&t=${TOKEN}`);
+    expect(r.body).toContain("hello");
+    expect(seen[0]?.path).toBe(`/stream?token=${VIEWER}`);
+  });
+
+  it("passes on nothing that acts", async () => {
+    seen.length = 0;
+    for (const p of ["/pins/abc/answer", "/pins/clear", "/answer", "/speak", "/show"])
+      expect((await get(p, { method: "POST", body: "{}" })).status).toBe(404);
+    expect((await get("/hook/claude")).status).toBe(404);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("lets nobody in without the token, canvas included", async () => {
+    seen.length = 0;
+    expect((await get("/room/", { cookie: "" })).status).toBe(401);
+    expect((await get("/state", { cookie: "" })).status).toBe(401);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("takes a typed sentence the way it takes a spoken one", async () => {
+    const r = await get("/say", {
+      method: "POST",
+      body: JSON.stringify({ text: "what's it doing" }),
+    });
+    expect(r.status).toBe(200);
+    expect(typed).toContain("what's it doing");
+  });
+
+  it("serves the room and its artifacts through the same door", async () => {
+    seen.length = 0;
+    await get("/room/index.html?phone=1");
+    await get("/artifact/p123");
+    expect(seen.map((s) => s.path.split("?")[0])).toEqual(["/room/index.html", "/artifact/p123"]);
+  });
+});

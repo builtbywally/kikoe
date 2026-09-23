@@ -655,6 +655,47 @@ typed questions in, probabilities out, no text generated. So they cannot
   "what number did you remember?" goes to Kik. The fix is a line of state
   about the standing session, not a better model.
 
+## The canvas on the phone (2026-09-23)
+
+The user's vision: the infinite canvas streamed to the phone, talk to the
+phone, everything still done on the PC. The walkie was already a phone
+microphone and the browser Room already ran on a second screen; this joins
+them.
+
+- **The walkie serves the Room.** With a Room to serve, `/` on the walkie
+  redirects to `/room/?phone=1` (the button-only page stays at `/talk`).
+  The Room's reads — `/room/*`, `/artifact/*`, `/state`, `/stream`, `/pins`,
+  `/backdrop`, `/usage` — are proxied to the daemon on loopback **with the
+  viewer token**, swapped in for whatever the page sent. So the daemon's own
+  rule, a viewer may look and may not touch, is what holds; the walkie token
+  never reaches the daemon; and nothing that acts is proxied (a test posts to
+  every acting route and checks the daemon saw nothing). The event stream is
+  piped unbuffered and closed on the daemon side when the phone goes.
+- **Talking**: `phone.js` puts a hold-to-talk button over the canvas and
+  posts PCM to the walkie's `/audio`, the same path as before. Typing in the
+  canvas's box posts to the walkie's own `/say`, which calls `typed()` —
+  the same power as speaking, which the walkie token already had.
+- **Two browser-side traps, both fixed**: the Room's CSP had
+  `connect-src http://127.0.0.1:*` only, so on the phone every fetch and the
+  stream were refused (`'self'` added); and `fit()` fitted the whole board at
+  a floor of 0.85, cutting cards off on a phone — the phone fits the first
+  column to its width. A finger on a card pans (a viewer cannot drag), and
+  two fingers pinch-zoom about their midpoint.
+- **Verified** over the LAN address with an Electron window at 390×844
+  (`~/orca/projects/laya-vs-jev/shots/phone-shot.js`): the canvas, the
+  backdrop and the cards render; typing "what is the agent doing right now"
+  went walkie → Jev (kik 0.87) → rules (the model account is at 402) →
+  the answer on the phone's card, spoken on the desk. **Not verified**: a real
+  phone's microphone through the new button — same capture code and route as
+  the walkie page, but it needs a phone in hand.
+- **Electron trap**: `electron.exe script.js https://…` exits 127 before
+  running anything; Electron will not start with a URL on its command line.
+  Pass it through the environment. And a `/c/...` script path from Git Bash
+  does the same; `cd` to the folder and use a relative path.
+- Not done, by design: acting from the phone (approve, card buttons) is the
+  next slice and needs its own token right; `localhost` web cards show only
+  on the desk; away from home needs Tailscale (and gives a real certificate).
+
 **Jev does not build web pages.** A demo of "Jev building a page live" is
 Jev choosing and an LLM (or code) writing; Jev returns no text. The fast
 page in Kikoe is `design_artifact` with `quick: true` on Haiku.

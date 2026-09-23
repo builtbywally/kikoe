@@ -229,9 +229,12 @@ Gaps:
   file, ask what a change did, from the card itself. What is still missing
   from flow 3 is the voice half: "read me the diff", "apply hunks two and
   four".
-- **Answering from the couch, half of it.** The phone can now *talk* to Kik
-  (`docs/HANDOVER.md`, "The walkie-talkie"). It still cannot see the canvas
-  or answer a permission by tapping; that is the rest of flow 2.
+- **Answering from the couch, most of it.** The phone can *talk* to Kik
+  (`docs/HANDOVER.md`, "The walkie-talkie") and, since 2026-09-23, *see*
+  the canvas live, pinch and pan it, and type to Kik ("The canvas on the
+  phone"). It still cannot answer a permission or press a card's button by
+  tapping, and it works on the home network only; that is the rest of
+  flow 2.
 - **Commands by voice, through Jev (2026-09-23).** "Open a new Claude
   session in storefront and tell it to do one, two, three, four" starts a
   fresh session there with exactly that job; "tell it to…" reaches the

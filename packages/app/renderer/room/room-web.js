@@ -11,8 +11,13 @@
   if (window.room) return;
   const params = new URLSearchParams(location.search);
   const token = params.get("token") || "";
-  const readOnly = token.startsWith("v-");
+  // On the phone the page comes through the walkie, which is signed in by
+  // its cookie and reads from the daemon as a viewer; the page itself holds
+  // no token at all. It watches and talks; it does not act (yet).
+  const phone = params.get("phone") === "1";
+  const readOnly = token.startsWith("v-") || phone;
   if (readOnly) document.documentElement.dataset.readonly = "true";
+  if (phone) document.documentElement.dataset.phone = "true";
   const base = location.origin;
   const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
   const post = (path, body) =>
@@ -63,6 +68,8 @@
     clearBoard: () => post("/pins/clear"),
     actOnPin: (id, action) => post(`/pins/${id}/act`, { action }),
     updatePin: (id, patch) => post(`/pins/${encodeURIComponent(id)}/update`, patch),
+    // On the phone, /say is the walkie's own: typing is talking, as a viewer
+    // could not; the daemon's /say is never reached from here.
     sayToKik: (text) => post("/say", { text }),
     native: false,
     artifactBase: base,
