@@ -1497,19 +1497,20 @@ html[data-phone="true"] .zoom-hud {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
-  width: 88px;
-  height: 88px;
+  position: relative;
+  width: 112px;
+  height: 112px;
+  padding: 0;
   border-radius: 50%;
-  border: none;
-  background: radial-gradient(circle at 34% 30%, #e0805a, var(--ember) 62%, #8f3f22);
-  color: #1a0f0a;
-  font: 600 13px / 1.15 var(--sans);
-  box-shadow: 0 12px 40px rgba(210, 104, 63, 0.3);
-  transition: transform 0.12s ease;
+  border: 1px solid rgba(210, 104, 63, 0.55);
+  background: radial-gradient(circle, rgba(210, 104, 63, 0.2) 0%, rgba(20, 16, 14, 0.9) 70%);
+  box-shadow: 0 12px 40px rgba(210, 104, 63, 0.25);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 #phone-talk[data-on="1"] {
-  transform: scale(1.12);
-  box-shadow: 0 6px 30px rgba(210, 104, 63, 0.55);
+  transform: scale(1.1);
+  border-color: var(--ember);
+  box-shadow: 0 0 0 6px rgba(210, 104, 63, 0.18), 0 6px 30px rgba(210, 104, 63, 0.55);
 }
 #phone-talk:disabled {
   filter: grayscale(0.6) brightness(0.7);
@@ -1519,9 +1520,20 @@ html[data-phone="true"] .zoom-hud {
   align-items: center;
   gap: 22px;
 }
+.phone-spacer {
+  width: 52px;
+}
 .phone-orb {
-  width: 52px !important;
-  height: 52px !important;
+  position: absolute;
+  inset: 8px;
+  width: 96px !important;
+  height: 96px !important;
+  pointer-events: none;
+}
+.phone-hint {
+  font: 12px var(--mono);
+  color: var(--dim);
+  letter-spacing: 0.04em;
 }
 #phone-sound {
   pointer-events: auto;
@@ -1572,4 +1584,31 @@ html[data-phone="true"] .zoom-hud {
   height: 16px !important;
   flex: none;
   vertical-align: -3px;
+}
+
+/* a web card on the phone: the frame, and a way out if the site refuses it */
+.web-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 420px;
+  display: flex;
+}
+.web-wrap iframe {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 420px;
+  border: 0;
+  background: #14100e;
+}
+.web-out {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(var(--bg-rgb), 0.86);
+  color: var(--paper);
+  font: 13px var(--mono);
+  text-decoration: none;
+  border: 1px solid rgba(var(--fg-rgb), 0.18);
 }

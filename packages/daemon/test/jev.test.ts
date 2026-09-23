@@ -114,6 +114,20 @@ describe("the pieces Jev chooses between", () => {
     expect(jev.findUrl("open youtube.com.com")).toBe("https://youtube.com");
   });
 
+  it("hears what to look up, and knows a video when it sees one", () => {
+    expect(
+      jev.searchQuery(
+        "Now I want you to open YouTube on the canvas and look up for low-fi. Put some chill beats.",
+      ),
+    ).toBe("low-fi chill beats");
+    expect(jev.searchQuery("play some jazz on the canvas")).toBe("jazz");
+    expect(jev.searchQuery("open youtube")).toBe("");
+    expect(jev.youtubeId("https://www.youtube.com/watch?v=CLeZyIID9Bo&t=4")).toBe("CLeZyIID9Bo");
+    expect(jev.youtubeId("https://youtu.be/CLeZyIID9Bo")).toBe("CLeZyIID9Bo");
+    expect(jev.isYoutube("https://www.youtube.com")).toBe(true);
+    expect(jev.isYoutube("https://notyoutube.com")).toBe(false);
+  });
+
   it("passes on the user's spelling with only the name cut off", () => {
     expect(dmod.spokenRest("Kikoe, open github.com please", "open github com please")).toBe(
       "open github.com please",
@@ -284,6 +298,29 @@ describe("the switchboard in the daemon", () => {
     d.hear("kikoe open youtube");
     await tick();
     expect(launched[0]?.args.join(" ")).toContain("youtube.com");
+    await d.close();
+  });
+
+  it("looks YouTube up and shows the player, which a phone will frame", async () => {
+    const asked: string[] = [];
+    const d = new dmod.Daemon({
+      settings: { ...cfg.DEFAULTS, tts: "none", port: 0 },
+      audio: false,
+      persistBoard: false,
+      jevKey: "",
+      fetchImpl: (async (url: string) => {
+        asked.push(String(url));
+        return new Response('..."videoId":"CLeZyIID9Bo","thumbnail"...', { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    const said = await d.showOnCanvas("https://www.youtube.com", "lofi chill beats");
+    expect(said).toMatch(/on the canvas/);
+    expect(asked[0]).toContain("search_query=lofi%20chill%20beats");
+    const card = d.board.list().find((p) => p.kind === "web");
+    expect(card?.body).toBe("https://www.youtube.com/embed/CLeZyIID9Bo?autoplay=1&rel=0");
+    // a video link needs no search: it becomes its own player
+    await d.showOnCanvas("https://youtu.be/dQw4w9WgXcQ");
+    expect(d.board.list().some((p) => p.body.includes("/embed/dQw4w9WgXcQ"))).toBe(true);
     await d.close();
   });
 

@@ -109,6 +109,56 @@ export function findUrl(text: string): string {
   return /^https?:/i.test(found) ? found : `https://${found}`;
 }
 
+/** Words that are about where or how to show something, not what to look for. */
+const NOT_A_QUERY = new Set(
+  "put some me on the canvas board here youtube please play for a an and to in of it up now i want you open look search find".split(
+    " ",
+  ),
+);
+
+/**
+ * What to look for, when a sentence asks for something to be looked up:
+ * "open YouTube on the canvas and look up lofi, put some chill beats" is
+ * "lofi chill beats". The words after the first look-up verb, less the ones
+ * about the canvas; "" when nothing is being looked for.
+ */
+export function searchQuery(text: string): string {
+  const m =
+    /\b(?:look(?:ing)? up|search(?:ing)? for|search|find|play|put on|listen to)\s+(.+)$/i.exec(
+      text,
+    );
+  if (!m?.[1]) return "";
+  const words = m[1]
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !NOT_A_QUERY.has(w));
+  return words.slice(0, 8).join(" ");
+}
+
+/** A YouTube video id in an address, or "". */
+export function youtubeId(url: string): string {
+  const m =
+    /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/i.exec(
+      url,
+    );
+  return m?.[1] ?? "";
+}
+
+/** Is this address YouTube at all? */
+export function isYoutube(url: string): boolean {
+  return /(^|\.|\/\/)(youtube\.com|youtu\.be)(\/|$)/i.test(url);
+}
+
+/**
+ * The player for a video, which unlike youtube.com itself may be shown inside
+ * another page — so it plays on the phone too, where a browser honours
+ * YouTube's refusal to be framed.
+ */
+export function youtubeEmbed(id: string): string {
+  return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`;
+}
+
 /** Words after "open" that are never a site's name. */
 const NOT_A_SITE = new Set(
   "a an the my it this that these those up canvas board here browser terminal folder editor vs code new session claude agent project localhost me something".split(

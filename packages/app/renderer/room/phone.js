@@ -16,11 +16,16 @@
     '<div class="phone-said" id="phone-said"></div>' +
     '<div class="phone-row">' +
     '<button type="button" id="phone-sound" aria-pressed="false" title="hear Kik on this phone">sound<br>off</button>' +
-    '<button type="button" id="phone-talk" aria-label="hold to talk to Kik">hold to talk</button>' +
-    '<canvas id="phone-orb" class="phone-orb" aria-label="what Kik is doing"></canvas>' +
-    "</div>";
+    // The orb is the button: hold it to talk; the rest of the time it shows
+    // what Kik is doing. Asked for by the user, in place of a plain button.
+    '<button type="button" id="phone-talk" aria-label="hold to talk to Kik">' +
+    '<canvas id="phone-orb" class="phone-orb" aria-hidden="true"></canvas></button>' +
+    '<span class="phone-spacer"></span>' +
+    "</div>" +
+    '<div class="phone-hint" id="phone-hint">hold to talk</div>';
   document.body.appendChild(wrap);
   const talk = wrap.querySelector("#phone-talk");
+  const hint = wrap.querySelector("#phone-hint");
   // Kik's state at a glance, as a thought-orb: the Room's setOrb tells it,
   // and holding the button is listening, whatever the desk says.
   const orb = window.KikOrb?.create(wrap.querySelector("#phone-orb"), { size: 64, dark: true });
@@ -221,7 +226,7 @@
     orb?.set("listening");
     if (!pressedAt) pressedAt = performance.now();
     talk.dataset.on = "1";
-    talk.textContent = "listening";
+    hint.textContent = "listening";
     show("");
     navigator.vibrate?.(12);
   }
@@ -233,7 +238,7 @@
     e?.preventDefault();
     if (!recording || tail) return;
     talk.dataset.on = "0";
-    talk.textContent = "hold to talk";
+    hint.textContent = "hold to talk";
     held = performance.now() - pressedAt;
     tail = setTimeout(() => {
       pressedAt = 0;

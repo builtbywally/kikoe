@@ -828,6 +828,18 @@ daemon only serves that folder to the phone; the island loads `../room/`.
 `**/vendor/**` is out of Biome's reach. Known: the markdown card renders
 tables as raw text, which the thinking session's detail often uses.
 
+**YouTube on the phone** (the user, 2026-09-23: "open YouTube and look up
+lofi… it couldn't reach the web"). Jev routed it right; the card was blank
+because youtube.com sends `X-Frame-Options: SAMEORIGIN`, which the desk app
+strips and a phone's browser obeys. Now a YouTube ask becomes YouTube's
+player (`/embed/<id>`, which may be framed): `searchQuery()` pulls "low-fi
+chill beats" out of the sentence, `youtubeSearch()` reads the first
+`videoId` off the results page (no API key; if YouTube changes the page Kik
+says it found nothing), and any YouTube link given to the canvas becomes its
+player too. Other sites that refuse framing still show blank on the phone;
+phone web cards carry an "open ↗" link for that. The phone's orb is now the
+talk button itself (the user asked), with "hold to talk" beneath it.
+
 **Jev does not build web pages.** A demo of "Jev building a page live" is
 Jev choosing and an LLM (or code) writing; Jev returns no text. The fast
 page in Kikoe is `design_artifact` with `quick: true` on Haiku.

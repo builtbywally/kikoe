@@ -55,7 +55,7 @@ import {
   walkieToken,
 } from "./config.js";
 import { Hub } from "./hub.js";
-import { type Command, Jev } from "./jev.js";
+import { type Command, Jev, isYoutube, searchQuery, youtubeEmbed, youtubeId } from "./jev.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
 import { LiveBrain } from "./livebrain.js";
 import { launch, launchFor } from "./pc.js";
@@ -1080,7 +1080,7 @@ export class Daemon {
         said = sentence(this.openOnPc(c, project));
         break;
       case "canvas":
-        said = sentence(this.showOnCanvas(c.url));
+        said = sentence(await this.showOnCanvas(c.url, searchQuery(spokenRest(clean, d.text))));
         break;
       case "think": {
         // Straight to the thinking session: the talking one would only have
@@ -1112,13 +1112,27 @@ export class Daemon {
    * here: in the Room, on whichever screen is looking. The same card the
    * model's create_artifact makes, so it looks and behaves the same.
    */
-  showOnCanvas(url: string): string {
-    if (!/^https?:\/\//i.test(url)) return "which site?";
-    const name = url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/.*$/, "");
+  async showOnCanvas(url: string, query = ""): Promise<string> {
+    // YouTube will not be shown inside another page on a phone, and its
+    // homepage never can be; its player can. So a YouTube ask becomes the
+    // player: the video named, or the top result for what was asked for.
+    let body = url;
+    let title = url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/.*$/, "");
+    if (isYoutube(url) || (query && !url)) {
+      const id = youtubeId(url) || (query ? await this.youtubeSearch(query) : "");
+      if (id) {
+        body = youtubeEmbed(id);
+        title = query ? `youtube · ${query}` : "youtube";
+      } else if (query) {
+        return `I couldn't find ${query} on YouTube`;
+      }
+    }
+    if (!/^https?:\/\//i.test(body)) return "which site?";
+    const name = title;
     const pin = this.board.add({
       kind: "web",
       title: name,
-      body: url,
+      body,
       project: this.projects.current.id,
       repo: "kik",
       by: "kik",
@@ -1128,6 +1142,34 @@ export class Daemon {
     this.hub.publish("focus", { id: pin.id });
     log(`canvas: ${name} as ${pin.id}`);
     return `${name} is on the canvas`;
+  }
+
+  /**
+   * The top YouTube video for a query, read from the results page: the first
+   * video id in it. No key and no API; if YouTube changes its page, this
+   * finds nothing and Kik says so rather than showing the wrong thing.
+   */
+  async youtubeSearch(query: string): Promise<string> {
+    try {
+      const r = await this.fetchImpl(
+        `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36",
+            "accept-language": "en",
+          },
+          signal: AbortSignal.timeout(6000),
+        },
+      );
+      const html = await r.text();
+      const id = /"videoId":"([\w-]{11})"/.exec(html)?.[1] ?? "";
+      log(`youtube: "${query}" -> ${id || "nothing"}`);
+      return id;
+    } catch (e) {
+      log(`youtube: search failed: ${(e as Error).message}`);
+      return "";
+    }
   }
 
   /** The editor, a folder, a terminal or a site, from a fixed menu. */
@@ -2332,6 +2374,9 @@ export class Daemon {
               body = `http://${/^\d+$/.test(body) ? `localhost:${body}` : body}`;
             if (!/^https?:\/\//i.test(body))
               return "web needs a URL starting with http:// or https://";
+            // a video link becomes its player, which plays on the phone too
+            const vid = youtubeId(body);
+            if (vid) body = youtubeEmbed(vid);
           }
           if (kind === "html") body = withKit(body);
           if (kind === "diagram") {

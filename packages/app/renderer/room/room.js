@@ -468,10 +468,33 @@ function renderBody(pin) {
       // A live page: an app on localhost, a site, a browser. Its own origin,
       // its own scripts; it can never reach the Room.
       const f = document.createElement("iframe");
-      f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups");
-      f.setAttribute("allow", "clipboard-read; clipboard-write");
+      f.setAttribute(
+        "sandbox",
+        "allow-scripts allow-same-origin allow-forms allow-popups allow-presentation",
+      );
+      // a video player on the canvas plays, and can go full screen
+      f.setAttribute(
+        "allow",
+        "clipboard-read; clipboard-write; autoplay; encrypted-media; fullscreen; picture-in-picture",
+      );
+      f.setAttribute("allowfullscreen", "");
       f.src = pin.body.trim();
       f.title = pin.title || pin.body;
+      // On a phone a site may refuse to be shown inside the canvas (the desk
+      // app lifts that; a phone's browser cannot), and a viewer has no card
+      // footer: so the card carries its own way out.
+      if (document.documentElement.dataset.phone === "true") {
+        const wrap = document.createElement("div");
+        wrap.className = "web-wrap";
+        const out = document.createElement("a");
+        out.className = "web-out";
+        out.href = pin.body.trim();
+        out.target = "_blank";
+        out.rel = "noopener";
+        out.textContent = "open ↗";
+        wrap.append(f, out);
+        return wrap;
+      }
       return f;
     }
     case "react":
