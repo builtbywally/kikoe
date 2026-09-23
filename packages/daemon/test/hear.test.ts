@@ -99,3 +99,55 @@ describe("the ear, through the daemon", () => {
     expect(mod.similar("what time is it", "It wants to push to main. Shall I?")).toBe(false);
   });
 });
+
+describe("what the phone taught it (2026-09-23)", () => {
+  it("drops a transcript that is only a sound Whisper named", async () => {
+    const d = quiet();
+    for (const t of ["[buzzing]", "(", "(music)", "[BLANK_AUDIO]", "*coughs*"])
+      expect(d.hear(t, {}, { force: true, decided: true }).kind).toBe("empty");
+    expect(d.heardLog).toHaveLength(0);
+    await d.close();
+  });
+
+  it("passes no instruction that is one word said over and over", async () => {
+    const d = quiet();
+    expect(d.instruct("what what what what")).toMatch(/didn't catch enough/);
+    expect(d.instruct("the the the fix fix")).toMatch(/didn't catch enough/);
+    expect(d.instructions).toHaveLength(0);
+    await d.close();
+  });
+
+  it("answers 'how are you' as a question, not with 'Here.'", async () => {
+    const core = await import("@kikoe/core");
+    expect(core.headSocial("hey", "hey how are you")).toMatch(/good/i);
+    expect(core.headSocial("hey", "hey hows it going")).toMatch(/good/i);
+    expect(core.headSocial("hey")).toBe("Hey.");
+    // the bare name is a call, and "Here." answers a call
+    expect(core.headSocial("hello")).toBe("Here.");
+  });
+
+  it("says once why it has gone simple when the model account is out of credit", async () => {
+    const broke = (async () =>
+      new Response(
+        JSON.stringify({ type: "error", error: { type: "billing_error", message: "credits" } }),
+        { status: 402 },
+      )) as typeof fetch;
+    const d = new mod.Daemon({
+      audio: false,
+      persistBoard: false,
+      anthropicKey: "k",
+      jevKey: "",
+      fetchImpl: broke,
+      settings: { ...cfg.DEFAULTS, tts: "none", brain: true },
+    });
+    d.hear("kikoe hey how are you");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(d.heardLog.at(-1)?.said).toMatch(/out of credit/);
+    expect(d.heardLog.at(-1)?.said).toMatch(/good/i);
+    d.hear("kikoe hey how are you");
+    await new Promise((r) => setTimeout(r, 50));
+    // once, not every time
+    expect(d.heardLog.at(-1)?.said).not.toMatch(/out of credit/);
+    await d.close();
+  });
+});

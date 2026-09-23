@@ -702,6 +702,18 @@ them.
   2.3 s of speech, RMS 0.25. The phone remembers the choice, but a phone
   will not play audio a page started by itself, so after a reload the first
   tap anywhere unlocks it.
+- **What the first real phone test showed** (the user, 2026-09-23 05:17),
+  all fixed the same hour: sentences arrived cut off ("hey how's it go")
+  because recording stopped the instant the finger lifted — the page now
+  keeps 0.4 s from before the press and runs 0.45 s past the release, and a
+  tap under 0.3 s held sends nothing; Whisper's "[buzzing]" and a lone "("
+  were routed as speech — `hear()` now drops a transcript that is only a
+  noise tag; "what what what what" (four words, one idea) reached the WM
+  Studio agent through the no-model fallback — `instruct()` now wants three
+  *different* words; every hello got "Here." because the model account is
+  at 402 — the rules now answer "how are you" and "hey", and Kik says once
+  an hour that it is out of credit; and the session card repeated the Kik
+  card line for line — it now shows only what reached the agent.
 - **Stopping the walkie with a phone attached**: `server.close()` waits for
   every open connection, and a phone watching the canvas or listening holds
   one forever. `stop()` now ends the voice streams and calls

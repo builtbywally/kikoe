@@ -111,12 +111,22 @@ export function answer(text: string, sessions: SessionSnapshot[]): string {
 }
 
 /** A word back for a social turn: not a summary of a repository. */
-export function social(intent: string): string {
+export function social(intent: string, text = ""): string {
+  // "Hey, how are you" is a question, and "Here." is no answer to it. Heard
+  // over and over on the phone the day the model account ran dry.
+  if (
+    /\bhow (are|r) (you|ya|u)\b|\bhow('?s| is) it go|\bhow (you|ya) doing\b|\bhows? things\b/i.test(
+      text,
+    )
+  )
+    return "Good, thanks. Quiet on my side.";
   switch (intent) {
     case "hello":
+      // the bare name: answering a call
+      return "Here.";
     case "hi":
     case "hey":
-      return "Here.";
+      return "Hey.";
     case "thanks":
     case "thank":
       return "Anytime.";

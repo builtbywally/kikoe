@@ -747,10 +747,17 @@ function sessionBody() {
   const wrap = document.createElement("div");
   wrap.className = "thread";
 
-  // What you said and what Kik said, with the time each happened.
+  // What you said to the agent and what Kik said about it, with the time each
+  // happened. Only what reached the agent: a hello or a question Kik answered
+  // itself is the conversation card's, and showing it here too made two cards
+  // saying the same thing (seen on the phone, where they sit one above the other).
+  const toAgent = (h) =>
+    h.kind === "work" ||
+    ["agent", "new_session", "instruct", "work"].includes(h.intent) ||
+    /^(passed it to|queued for|started an agent)/i.test(h.said || "");
   const said = [...(state?.heard ?? [])]
     .reverse()
-    .filter((h) => h.text && h.kind !== "overheard")
+    .filter((h) => h.text && h.kind !== "overheard" && toAgent(h))
     .map((h) => ({ at: Number(h.ts ?? 0), who: "you", text: h.text, said: h.said || "" }));
 
   // What the agent did, read off the work cards rather than kept twice.

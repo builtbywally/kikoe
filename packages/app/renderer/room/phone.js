@@ -114,6 +114,15 @@
   let ctx = null;
   let chunks = [];
   let recording = false;
+  /** the last moment before the press, kept while not recording */
+  let before = [];
+  const PRE_ROLL_S = 0.4;
+  /** how long recording runs on after the finger lifts */
+  const TAIL_MS = 450;
+  let tail = null;
+  /** when the button went down, and how long it was held */
+  let pressedAt = 0;
+  let held = 0;
   let clear = null;
 
   function show(text, ms = 4000) {
@@ -163,9 +172,22 @@
     const src = ctx.createMediaStreamSource(stream);
     // A ScriptProcessor, not a worklet: a worklet needs its own module URL,
     // and this page must load everything from the one origin it trusts.
-    const node = ctx.createScriptProcessor(4096, 1, 1);
+    const node = ctx.createScriptProcessor(2048, 1, 1);
     node.onaudioprocess = (e) => {
-      if (recording) chunks.push(downsample(e.inputBuffer.getChannelData(0), ctx.sampleRate, RATE));
+      const piece = downsample(e.inputBuffer.getChannelData(0), ctx.sampleRate, RATE);
+      if (recording) {
+        chunks.push(piece);
+        return;
+      }
+      // Not recording: keep the last moment anyway, so a word begun as the
+      // finger lands is not missing its first syllable.
+      before.push(piece);
+      let kept = 0;
+      for (const c of before) kept += c.length;
+      while (before.length > 1 && kept - before[0].length > RATE * PRE_ROLL_S) {
+        kept -= before[0].length;
+        before.shift();
+      }
     };
     src.connect(node);
     const mute = ctx.createGain();
@@ -179,23 +201,48 @@
     e?.preventDefault();
     if (!ctx || recording) return;
     if (ctx.state === "suspended") ctx.resume();
-    chunks = [];
+    if (tail) {
+      // pressed again inside the tail: one clip, not two
+      clearTimeout(tail);
+      tail = null;
+    } else {
+      chunks = before;
+    }
+    before = [];
     recording = true;
+    if (!pressedAt) pressedAt = performance.now();
     talk.dataset.on = "1";
     talk.textContent = "listening";
     show("");
     navigator.vibrate?.(12);
   }
 
-  async function stop(e) {
+  // People let go as the last word leaves their mouth, and the phone still
+  // has a buffer of it in flight: "hey how's it going" arrived as "hey how's
+  // it go". So recording runs on a little after the finger lifts.
+  function stop(e) {
     e?.preventDefault();
-    if (!recording) return;
-    recording = false;
+    if (!recording || tail) return;
     talk.dataset.on = "0";
     talk.textContent = "hold to talk";
+    held = performance.now() - pressedAt;
+    tail = setTimeout(() => {
+      pressedAt = 0;
+      tail = null;
+      recording = false;
+      void send();
+    }, TAIL_MS);
+  }
+
+  async function send() {
     let total = 0;
     for (const c of chunks) total += c.length;
-    if (total < RATE * 0.25) return show("too short");
+    // The held time, not the clip: the clip always carries the pre-roll and
+    // the tail, so a tap would otherwise send most of a second of room noise.
+    if (held < 300 || total < RATE * 0.25) {
+      chunks = [];
+      return show("hold it while you talk");
+    }
     const pcm = new Int16Array(total);
     let i = 0;
     for (const c of chunks)

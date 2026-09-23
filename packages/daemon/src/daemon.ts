@@ -641,6 +641,13 @@ export class Daemon {
     opts: { force?: boolean; decided?: boolean } = {},
   ): { kind: string; intent: string; said?: string } {
     const clean = text.trim();
+    // Whisper names sounds it cannot read as words: "[buzzing]", "(music)",
+    // or a lone "(". Nothing was said, so nothing is routed, answered or kept.
+    if (clean && !/\p{L}/u.test(clean.replace(/\[[^\]]*\]|\([^)]*\)|\*[^*]*\*/g, ""))) {
+      log(`heard only a noise tag, dropped (${clean.length} chars)`);
+      this.hub.publish("mic", { phase: "idle" });
+      return { kind: "empty", intent: "" };
+    }
     // Half duplex: while the speaker plays, and for a moment after, the mic
     // hears the speaker. A transcript that echoes our own line is dropped.
     const recently =
@@ -765,7 +772,7 @@ export class Daemon {
         said = headAnswer(d.text, Object.values(this.tracker.snapshot()));
         break;
       case "social":
-        said = headSocial(d.intent);
+        said = headSocial(d.intent, d.text);
         break;
       case "work":
         // This used to be "say it to the terminal", which was true when
@@ -788,6 +795,9 @@ export class Daemon {
   }
 
   // --- the switchboard ---------------------------------------------------------------
+
+  /** when Kik last said its model account is out of credit */
+  private creditNoticeAt = 0;
 
   /** A command that stopped to ask "which project?", waiting for the name. */
   private askedProject: { command: Command; until: number } | null = null;
@@ -1813,9 +1823,17 @@ export class Daemon {
       // whole Claude on the user's own subscription and Kik going quiet
       // while a perfectly good mind sits idle in the next room is silly.
       const sessions = Object.values(this.tracker.snapshot());
+      // Out of credit looks, from the chair, like Kik going simple for no
+      // reason: every hello answered the same. Say why, once an hour.
+      const broke = /\b(402|billing|credit)/i.test((e as Error).message);
+      const why =
+        broke && Date.now() - this.creditNoticeAt > 3600_000
+          ? "My thinking account is out of credit, so I'm on simple answers. "
+          : "";
+      if (why) this.creditNoticeAt = Date.now();
       said =
         kind === "social"
-          ? headSocial(intent)
+          ? headSocial(intent, text)
           : kind === "question" && headKnows(text)
             ? headAnswer(text, sessions)
             : this.settings.agents
@@ -1823,6 +1841,7 @@ export class Daemon {
               : kind === "question"
                 ? headAnswer(text, sessions)
                 : "I can't reach the model right now. Say that to the terminal.";
+      said = why + said;
       record(kind, intent, said);
       this.say(said, ev.SEV_ATTENTION, "head");
     } finally {
@@ -2307,7 +2326,11 @@ export class Daemon {
 
   instruct(text: string, repo?: string): string {
     const words = text.trim().split(/\s+/).filter(Boolean);
-    if (words.length < Daemon.MIN_INSTRUCTION_WORDS) {
+    // "what what what what" is four words and one idea, and it reached a real
+    // agent from the phone. Count the different words, not the words.
+    const distinct = new Set(words.map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")));
+    distinct.delete("");
+    if (words.length < Daemon.MIN_INSTRUCTION_WORDS || distinct.size < 3) {
       return "I didn't catch enough of that to pass on; say it again?";
     }
     const sessions = Object.values(this.tracker.snapshot());
