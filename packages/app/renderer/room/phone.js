@@ -17,10 +17,18 @@
     '<div class="phone-row">' +
     '<button type="button" id="phone-sound" aria-pressed="false" title="hear Kik on this phone">sound<br>off</button>' +
     '<button type="button" id="phone-talk" aria-label="hold to talk to Kik">hold to talk</button>' +
-    '<span class="phone-spacer"></span>' +
+    '<canvas id="phone-orb" class="phone-orb" aria-label="what Kik is doing"></canvas>' +
     "</div>";
   document.body.appendChild(wrap);
   const talk = wrap.querySelector("#phone-talk");
+  // Kik's state at a glance, as a thought-orb: the Room's setOrb tells it,
+  // and holding the button is listening, whatever the desk says.
+  const orb = window.KikOrb?.create(wrap.querySelector("#phone-orb"), { size: 64, dark: true });
+  let deskVerb = "breathing";
+  window.addEventListener("kik-orb", (e) => {
+    deskVerb = e.detail;
+    if (!recording) orb?.set(deskVerb);
+  });
   const said = wrap.querySelector("#phone-said");
   const sound = wrap.querySelector("#phone-sound");
 
@@ -210,6 +218,7 @@
     }
     before = [];
     recording = true;
+    orb?.set("listening");
     if (!pressedAt) pressedAt = performance.now();
     talk.dataset.on = "1";
     talk.textContent = "listening";
@@ -230,6 +239,7 @@
       pressedAt = 0;
       tail = null;
       recording = false;
+      orb?.set(deskVerb);
       void send();
     }, TAIL_MS);
   }

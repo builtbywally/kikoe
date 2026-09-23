@@ -948,3 +948,19 @@ body {
     background: rgba(245, 241, 236, 0.97);
   }
 }
+
+/* Thinking orbs: the dotted 20-pixel orb in place of the ember dot. The
+   dot's glow stays faintly behind it; its ring animations still run. */
+.orb-mini:has(.orb-dots) {
+  width: 20px;
+  height: 20px;
+  background: radial-gradient(circle, rgba(210, 104, 63, 0.22) 0%, rgba(210, 104, 63, 0) 72%);
+  box-shadow: none;
+  filter: none;
+}
+.orb-mini .orb-dots {
+  position: absolute;
+  inset: 0;
+  width: 20px !important;
+  height: 20px !important;
+}

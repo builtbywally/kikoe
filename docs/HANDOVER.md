@@ -809,6 +809,25 @@ whole flow, written for the user; the parts the next session needs:
 - Tests start no real Claude: `codeSpawn` (daemon) and `spawnImpl` (heads)
   take a fake, `livebrain.test.ts` has one that speaks stream-json.
 
+## Thinking orbs (2026-09-23)
+
+Asked for by name: [Jakubantalik/thinking-orbs](https://github.com/Jakubantalik/thinking-orbs)
+(MIT) — dotted thought-orbs, nine animated states, two tuned sizes, plain
+2D canvas. Only its engine is used: `scripts/build-orbs.mjs` bundles
+`../thinking-orbs/src/engine` into `renderer/room/vendor/thinking-orbs.js`
+(14 KB, licence in the header; clone the repo beside kikoe to rebuild).
+`renderer/room/orbs.js` replaces the React component: one shared clock and
+animation frame, stops when hidden, a still frame under reduced motion,
+`KikOrb.forKik()` maps Kik's states to orb verbs (idle→breathing,
+listening, thinking→working, speaking→composing, asking→connecting, a
+thought→solving). Where they are: the Room's big orb (setOrb drives it and
+broadcasts `kik-orb`), the headers of kik · talking / kik · thinking /
+agent cards, the phone (beside the talk button; listening while held) and
+the island's mark (20 px preset). Files live under `room/` because the
+daemon only serves that folder to the phone; the island loads `../room/`.
+`**/vendor/**` is out of Biome's reach. Known: the markdown card renders
+tables as raw text, which the thinking session's detail often uses.
+
 **Jev does not build web pages.** A demo of "Jev building a page live" is
 Jev choosing and an LLM (or code) writing; Jev returns no text. The fast
 page in Kikoe is `design_artifact` with `quick: true` on Haiku.

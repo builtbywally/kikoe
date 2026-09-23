@@ -68,6 +68,12 @@ let detailTimer = null;
 let quietTimer = null;
 let lastSpokeAt = 0;
 let current = "disconnected";
+// The mark is a thought-orb (Thinking Orbs, the 20-pixel preset): the pill's
+// state as one of its verbs. The pill is always dark, so the ink is light.
+const islandOrb = window.KikOrb?.create(document.getElementById("orb-dots"), {
+  size: 20,
+  dark: true,
+});
 
 function render(state, { label, text = "", quote = false } = {}) {
   // Any pending fallback belongs to the state we are leaving. Without this a
@@ -77,6 +83,7 @@ function render(state, { label, text = "", quote = false } = {}) {
   holdTimer = null;
   current = state;
   el.island.dataset.state = state;
+  islandOrb?.set(window.KikOrb.forKik(state === "permission" ? "asking" : state));
   el.state.textContent = label;
   el.text.textContent = quote && text ? `“${text}”` : text;
 }

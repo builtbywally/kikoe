@@ -157,10 +157,43 @@ window
   .matchMedia("(prefers-color-scheme: dark)")
   .addEventListener("change", () => applyLook(state?.look));
 
+// The dotted thought-orb (Thinking Orbs): what Kik is doing, as one of its
+// nine verbs. The big orb, the talking card's orb and the phone's all follow
+// this one function, so they never disagree.
+const bigOrb = window.KikOrb?.create(document.getElementById("orb-dots"), { size: 64 });
+let kikVerb = "breathing";
 function setOrb(state, label) {
   el.orb.className = `orb ${state}`;
   el.orbLabel.textContent = label;
   el.body.dataset.orb = state;
+  // "speaking" with the label "thinking" is the model working, not talking
+  kikVerb = window.KikOrb?.forKik(label === "thinking" ? "thinking" : state) ?? "breathing";
+  bigOrb?.set(kikVerb);
+  cardOrbs.conversation?.set(kikVerb);
+  window.dispatchEvent(new CustomEvent("kik-orb", { detail: kikVerb }));
+}
+
+/** The small orbs in the headers of Kik's and the agent's cards, by card kind. */
+const cardOrbs = {};
+/** A 20-pixel orb for a card's header, standing in for its plain icon. */
+function cardOrb(kind) {
+  if (!window.KikOrb) return null;
+  const c = document.createElement("canvas");
+  c.className = "card-orb";
+  const verb =
+    kind === "conversation"
+      ? kikVerb
+      : kind === "thinking"
+        ? (state?.thinking ?? []).some((t) => t.status === "thinking")
+          ? "solving"
+          : "breathing"
+        : Object.values(sessions).some((s) => s.status === "working")
+          ? "working"
+          : Object.values(sessions).some((s) => s.status === "waiting")
+            ? "connecting"
+            : "breathing";
+  cardOrbs[kind] = window.KikOrb.create(c, { size: 20, state: verb });
+  return c;
 }
 
 // --- the agents ---------------------------------------------------------------
@@ -512,7 +545,12 @@ function pinCard(p) {
   icon.append(mark);
   const t = document.createElement("span");
   t.textContent = p.title || p.kind;
-  title.append(icon, t);
+  // Kik's two sessions and the agent wear a thought-orb for what they are doing
+  const live =
+    p.kind === "conversation" || p.kind === "thinking" || p.kind === "session"
+      ? cardOrb(p.kind)
+      : null;
+  title.append(live ?? icon, t);
   const when = document.createElement("span");
   when.className = "age";
   when.textContent =

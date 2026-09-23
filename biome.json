@@ -10,5 +10,5 @@
       "style": { "noNonNullAssertion": "off", "useTemplate": "off" }
     }
   },
-  "files": { "ignore": ["dist", "node_modules", "evals", "models", "out"] }
+  "files": { "ignore": ["dist", "node_modules", "evals", "models", "out", "**/vendor/**"] }
 }

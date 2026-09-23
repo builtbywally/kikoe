@@ -1519,8 +1519,9 @@ html[data-phone="true"] .zoom-hud {
   align-items: center;
   gap: 22px;
 }
-.phone-spacer {
-  width: 52px;
+.phone-orb {
+  width: 52px !important;
+  height: 52px !important;
 }
 #phone-sound {
   pointer-events: auto;
@@ -1546,4 +1547,29 @@ html[data-phone="true"] .zoom-hud {
   50% {
     opacity: 0.45;
   }
+}
+
+/* Thinking orbs (github.com/Jakubantalik/thinking-orbs): the dotted
+   thought-orb stands in for the ember sphere, which stays as a faint glow
+   behind it; the rings for listening and speaking keep working. */
+.orb:has(.orb-dots) {
+  background: radial-gradient(circle, rgba(210, 104, 63, 0.16) 0%, rgba(210, 104, 63, 0) 70%);
+  box-shadow: none;
+  filter: none;
+  animation: none;
+}
+.orb:has(.orb-dots)::before {
+  display: none;
+}
+.orb-dots {
+  position: absolute;
+  inset: 0;
+  width: 108px !important;
+  height: 108px !important;
+}
+.card-orb {
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  vertical-align: -3px;
 }
