@@ -1500,6 +1500,18 @@ body[data-has-pins="true"] .line {
 html[data-phone="true"] .board {
   touch-action: none;
 }
+/* A live page on a phone takes no touches until its card is tapped: a
+   finger that lands on it moves the canvas. The card in use shows it. */
+html[data-phone="true"] .pin iframe {
+  pointer-events: none;
+}
+html[data-phone="true"] .pin.live iframe {
+  pointer-events: auto;
+}
+html[data-phone="true"] .pin.live {
+  border-color: var(--ember);
+  box-shadow: 0 0 0 1px var(--ember), 0 24px 60px rgba(var(--shadow-rgb), 0.45);
+}
 /* On a phone, as few big layers as possible. A layer of its own for the
    backdrop (and one kept for the cards at rest) was tried on 2026-09-24 and
    the phone, short of GPU memory, dropped tiles of it: the backdrop showed

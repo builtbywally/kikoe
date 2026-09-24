@@ -283,6 +283,26 @@
   const readOnly = () => document.documentElement.dataset.readonly === "true";
   /** the last few pan samples, for the speed a fling leaves with */
   let trail = [];
+
+  // Touch, the way a map on a web page works (2026-09-24, from the phone: "I
+  // can't move the screen or things easily"). On a phone the cards fill the
+  // screen and most of them are live pages, and a finger that landed on one
+  // went into the page, so the canvas would not move. Now a finger anywhere
+  // moves the canvas; a tap on a card makes it the one in use (its page
+  // takes touches, a long card scrolls under the finger) until a tap on the
+  // canvas lets it go; a double tap on the canvas zooms in, and out again.
+  /** the id of the card in use; an id, since a live card is rebuilt on every update */
+  let liveId = "";
+  /** a touch that has not moved yet: a tap if it lifts soon */
+  let tap = null;
+  let lastTap = null;
+  function setLive(pin) {
+    const id = pin?.dataset.id ?? "";
+    if (liveId === id) return;
+    els.get(liveId)?.classList.remove("live");
+    liveId = id;
+    els.get(liveId)?.classList.add("live");
+  }
   canvas.addEventListener("pointerdown", (e) => {
     stopGlide();
     stopCoast();
@@ -293,8 +313,24 @@
       if (fingers.size === 2) {
         if (dragging?.kind === "pin") dragging.pin.classList.remove("dragging");
         dragging = null;
+        tap = null;
         pinch = between();
         canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+      tap = { x: e.clientX, y: e.clientY, t: performance.now(), pin };
+      // The card in use: its own content takes the finger. A long one
+      // scrolls; anything else (buttons, its page) is its to handle.
+      if (pin && pin.dataset.id === liveId) {
+        const body = e.target.closest(".pin-body");
+        if (body && body.scrollHeight > body.clientHeight + 2) {
+          dragging = {
+            kind: "scroll",
+            body,
+            start: { x: e.clientX, y: e.clientY, top: body.scrollTop },
+          };
+          canvas.setPointerCapture(e.pointerId);
+        }
         return;
       }
     }
@@ -327,9 +363,14 @@
       pinch = now;
       return;
     }
+    if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) tap = null;
     if (!dragging) return;
     const dx = e.clientX - dragging.start.x;
     const dy = e.clientY - dragging.start.y;
+    if (dragging.kind === "scroll") {
+      dragging.body.scrollTop = dragging.start.top - dy;
+      return;
+    }
     if (dragging.kind === "pan") {
       panX = dragging.start.panX + dx;
       panY = dragging.start.panY + dy;
@@ -380,6 +421,25 @@
       return;
     }
     endDrag();
+    const t = tap;
+    tap = null;
+    if (!t || e.type !== "pointerup" || performance.now() - t.t > 350) return;
+    if (t.pin) {
+      setLive(t.pin);
+      lastTap = null;
+      return;
+    }
+    // a tap on the canvas lets the card in use go; two of them zoom
+    setLive(null);
+    const now = performance.now();
+    if (lastTap && now - lastTap.t < 320 && Math.hypot(t.x - lastTap.x, t.y - lastTap.y) < 40) {
+      lastTap = null;
+      const rect = canvas.getBoundingClientRect();
+      if (zoom < 0.95) glideZoomAt(Math.min(1.4, zoom * 1.8), t.x - rect.left, t.y - rect.top);
+      else fit(true);
+      return;
+    }
+    lastTap = { x: t.x, y: t.y, t: now };
   };
   canvas.addEventListener("pointerup", lift);
   canvas.addEventListener("pointercancel", lift);
@@ -670,6 +730,9 @@
     layoutFrames();
     if (first) fit(false);
     else apply();
+    // the card in use stays in use through a rebuild, and is let go if it went
+    if (liveId && !els.has(liveId)) liveId = "";
+    els.get(liveId)?.classList.add("live");
 
     if (!moves() || first) return;
     // New cards arrive; cards the layout pushed aside slide to where they are.

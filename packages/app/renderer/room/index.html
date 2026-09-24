@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; frame-src 'self' data: about: http: https:; connect-src 'self' http://127.0.0.1:*;" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- The canvas zooms itself; a browser zooming the whole page on a pinch
+       outside it (the title bar, the talk button) fought it. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#14100e" />
   <title>Kikoe</title>
   <link rel="stylesheet" href="../fonts/fonts.css" />

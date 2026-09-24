@@ -1020,3 +1020,25 @@ Three causes, all fixed:
    (`queued`, `enqueuePermission`, `nextPermission`, `expirePermission`,
    `Arbiter.wake()` to let a held question speak). Irreversible is never
    auto-approvable: there is no "always allow", and nothing may add one.
+
+## Touch on the phone, like a map on a web page (2026-09-24)
+
+The user: "the touch controls on the phone aren't that good, I can't move
+the screen or things easily." On a phone the cards fill the screen and most
+are live pages, and a finger that landed on one went into the page. Now
+(`board.js`, the "Touch" block): a live page takes no touches
+(`pointer-events: none` on phone iframes) until its card is **tapped**,
+which makes it the card in use (ember outline, `liveId`, kept through a
+rebuild); a drag on the card in use scrolls a long card's body; a tap on the
+canvas lets it go; a **double tap** on the canvas zooms in, and again to
+fit; a tap is under 10 px and 350 ms. The viewport meta now forbids the
+browser's own page zoom, which fought the canvas's pinch outside it.
+Verified in Chrome emulating a 390×844 touch phone against the live board:
+a drag that began on a card moved and coasted, a tap made it live, a tap on
+the canvas let it go. Not yet tried on the user's phone.
+
+**Search reuses the open card** (same day, the user: "when I tell you to
+search something it should have context of if you already have a window
+on"): `showOnCanvas` updates the newest web card of the same site
+(`siteOf`) instead of adding one, a search with no site named uses the last
+canvas site (half an hour), and known site names are dropped from the query.
