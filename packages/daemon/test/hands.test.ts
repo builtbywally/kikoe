@@ -170,6 +170,27 @@ describe("Kik's hands, behind the gate", () => {
     expect(did).toEqual([]);
   });
 
+  it("says a window runs as administrator, instead of typing into nothing", async () => {
+    const { d, did, tool, pending } = rig();
+    const h = d.hands() as unknown as { front: () => Promise<unknown> };
+    h.front = async () => ({ pid: 3, name: "cmd", title: "Administrator: cmd", admin: true });
+    expect(await tool("type_text")?.run({ text: "dir" })).toMatch(/administrator/);
+    expect(pending()).toBeNull();
+    expect(did).toEqual([]);
+  });
+
+  it("knows the user's own folders by name, and not a bare word", async () => {
+    const pc = await import("../src/pc.js");
+    const home = path.join("C:", "Users", "me");
+    expect(pc.knownFolder("open my downloads", home)?.dir).toBe(path.join(home, "Downloads"));
+    expect(pc.knownFolder("show me the documents folder", home)?.dir).toBe(
+      path.join(home, "Documents"),
+    );
+    expect(pc.knownFolder("open my desktop folder", home)?.dir).toBe(path.join(home, "Desktop"));
+    expect(pc.knownFolder("open spotify on the desktop", home)).toBeNull();
+    expect(pc.knownFolder("play music", home)).toBeNull();
+  });
+
   it("asks every time for what cannot be undone, yes or no before", async () => {
     const { d, did, tool, pending } = rig();
     const typed = tool("type_text")?.run({ text: "hi" }) as Promise<string>;

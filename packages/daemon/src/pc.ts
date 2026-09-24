@@ -10,6 +10,8 @@
  */
 
 import { spawn } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import type { Opener } from "./jev.js";
 
 export interface Launch {
@@ -22,6 +24,36 @@ export interface Launch {
 }
 
 const HOME_PAGE = "https://www.google.com";
+
+/** The folders people name by name: "open my downloads". */
+const KNOWN_FOLDERS: [string, string, string][] = [
+  ["downloads?", "Downloads", "your downloads"],
+  ["documents?", "Documents", "your documents"],
+  ["desktop", "Desktop", "your desktop"],
+  ["pictures|photos", "Pictures", "your pictures"],
+  ["music", "Music", "your music"],
+  ["videos?", "Videos", "your videos"],
+];
+
+/**
+ * A folder the sentence names ("open my downloads", "show me the desktop
+ * folder"), as a path under home and a name to say, or null. Only these few,
+ * and only the user's own: a sentence never becomes a path by itself.
+ */
+export function knownFolder(
+  text: string,
+  home: string = os.homedir(),
+): { dir: string; name: string } | null {
+  // "open Spotify on the desktop" means the screen, not the folder
+  const t = text.replace(/\b(on|to)\s+(the|my)\s+desktop\b/gi, "");
+  for (const [word, sub, name] of KNOWN_FOLDERS) {
+    // "my downloads", "the downloads folder": never the bare word, since
+    // "play music" is not a request for a folder
+    const re = new RegExp(`\\b(my|the)\\s+(${word})\\b|\\b(${word})\\s+folder\\b`, "i");
+    if (re.test(t)) return { dir: path.join(home, sub), name };
+  }
+  return null;
+}
 
 /** The program and arguments for one target, or a reason it cannot be opened. */
 export function launchFor(

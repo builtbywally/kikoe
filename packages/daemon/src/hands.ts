@@ -24,6 +24,12 @@ export interface Win {
   pid: number;
   name: string;
   title: string;
+  /**
+   * The window runs as administrator. Windows will not let a normal process
+   * type into it (UIPI): keys sent to it vanish without an error, so Kik
+   * would say "done" about nothing. Only `front` fills this in.
+   */
+  admin?: boolean;
 }
 export interface Control {
   type: string;
@@ -164,7 +170,7 @@ const SCRIPTS = {
   windows:
     "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | ForEach-Object { [pscustomobject]@{ pid = $_.Id; name = $_.ProcessName; title = $_.MainWindowTitle } }",
   front:
-    "$h = [Kik.U32]::GetForegroundWindow(); $p = 0; [void][Kik.U32]::GetWindowThreadProcessId($h, [ref]$p); $x = Get-Process -Id $p; [pscustomobject]@{ pid = $x.Id; name = $x.ProcessName; title = $x.MainWindowTitle }",
+    "$h = [Kik.U32]::GetForegroundWindow(); $p = 0; [void][Kik.U32]::GetWindowThreadProcessId($h, [ref]$p); $x = Get-Process -Id $p; $adm = $false; try { $null = $x.get_Handle() } catch { $adm = $true }; [pscustomobject]@{ pid = $x.Id; name = $x.ProcessName; title = $x.MainWindowTitle; admin = $adm }",
   // Windows only lets a process that just had input take the foreground; a
   // tap of Alt is the documented way to be that process.
   focus:

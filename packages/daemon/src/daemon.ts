@@ -72,7 +72,7 @@ import {
 } from "./jev.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
 import { LiveBrain } from "./livebrain.js";
-import { launch, launchFor } from "./pc.js";
+import { knownFolder, launch, launchFor } from "./pc.js";
 import { Reminders, clockTime, duration, whenSaid } from "./reminders.js";
 
 /** What Kik's hands can do; the real one is a kept PowerShell (hands.ts). */
@@ -1401,6 +1401,15 @@ export class Daemon {
         said = sentence(this.instruct(c.task, project?.name, c.hard >= HARD));
         break;
       case "open": {
+        // "open my downloads": the user's own folders, before any project's.
+        const folder =
+          c.open !== "website" && c.open !== "browser" && !project ? knownFolder(clean) : null;
+        if (folder) {
+          said = sentence(
+            this.openOnPc({ ...c, open: "explorer" }, { name: folder.name, roots: [folder.dir] }),
+          );
+          break;
+        }
         if (c.open === "app" && c.app) {
           said = sentence(await this.openApp(c.app));
           break;
@@ -2539,6 +2548,10 @@ export class Daemon {
     const hands = this.hands();
     if (!hands) return "my hands are switched off in Settings";
     const front = scope ? null : await hands.front().catch(() => null);
+    // Windows drops keys sent to an administrator's window without a word,
+    // so saying "done" would be a lie. Say why instead.
+    if (front?.admin)
+      return `not done: ${front.title || front.name} is running as administrator, and Windows won't let me type into it`;
     const key = (scope ?? front?.name ?? "").toLowerCase();
     const grade = gradeOf("write", `${what} ${detail}`);
     const standing = grade === "write" && key !== "" && (this.grants.get(key) ?? 0) > Date.now();
