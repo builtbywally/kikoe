@@ -198,6 +198,16 @@ export function spokenRest(raw: string, routed: string): string {
   return routed || raw.trim();
 }
 
+/** The site an address belongs to: "youtube.com" for the site and its player alike. */
+export function siteOf(url: string): string {
+  try {
+    const h = new URL(url).hostname.toLowerCase().replace(/^(www|m)\./, "");
+    return h === "youtu.be" ? "youtube.com" : h;
+  } catch {
+    return "";
+  }
+}
+
 /** The local calendar day of a timestamp, as YYYY-MM-DD. */
 export function dayOf(ms: number): string {
   const d = new Date(ms);
@@ -1108,6 +1118,22 @@ export class Daemon {
     }
     const said = spokenRest(clean, d.text);
     const toPc = wantsThePc(said);
+    // "Search lo-fi" with no site said means the site already open: the last
+    // one put on the canvas, if it was in the last half hour.
+    if (
+      (c.action === "open" || c.action === "canvas") &&
+      !c.url &&
+      searchQuery(said) &&
+      this.lastCanvasSite &&
+      Date.now() - this.lastCanvasSite.at < 30 * 60_000
+    ) {
+      const site = siteOf(this.lastCanvasSite.url);
+      if (site) {
+        c.url = `https://www.${site}`;
+        c.open = "website";
+        log(`jev: no site named; searching the open one, ${site}`);
+      }
+    }
     // "On the desktop, please" right after a card: the site on that card, on
     // the PC. Without this the follow-up had no address in it and did nothing.
     if (toPc && c.action === "open" && !c.url && this.lastCanvasSite) {
@@ -1248,6 +1274,21 @@ export class Daemon {
     }
     if (!/^https?:\/\//i.test(body)) return "which site?";
     const name = title;
+    // A site already on the canvas is where the next look-up goes: "open
+    // YouTube", then "search lo-fi on YouTube", made a second card beside
+    // the first, the way no one uses a browser.
+    const site = siteOf(body);
+    const open = this.board
+      .list(this.projects.current.id)
+      .filter((p) => p.kind === "web" && siteOf(p.body) === site)
+      .sort((a, b) => b.updated - a.updated)[0];
+    if (open) {
+      this.board.update(open.id, { body, title: name });
+      this.hub.publish("focus", { id: open.id });
+      log(`canvas: ${name} in the open card ${open.id}`);
+      this.lastCanvasSite = { url: url || body, at: Date.now() };
+      return `${name} is on the canvas`;
+    }
     const pin = this.board.add({
       kind: "web",
       title: name,

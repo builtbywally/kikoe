@@ -134,7 +134,8 @@ export function searchQuery(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
-    .filter((w) => w && !NOT_A_QUERY.has(w));
+    // "search for kikoe on github" is looking for kikoe, not "kikoe github"
+    .filter((w) => w && !NOT_A_QUERY.has(w) && !(w in SITES));
   return words.slice(0, 8).join(" ");
 }
 

@@ -376,6 +376,26 @@ describe("the switchboard in the daemon", () => {
     await d.close();
   });
 
+  it("searches in the card already open for that site, not a new one", async () => {
+    // Heard from the phone on 2026-09-24: "Open YouTube", then "Search lo-fi
+    // on YouTube", made two cards.
+    const { d } = daemon({ action: "canvas" });
+    d.typed("open github.com here", "phone");
+    await tick();
+    d.typed("search for kikoe on github", "phone");
+    await tick();
+    const web = d.board.list().filter((p) => p.kind === "web");
+    expect(web).toHaveLength(1);
+    expect(web[0]?.body).toBe("https://github.com/search?q=kikoe");
+    // and with no site said, the one just used
+    d.typed("search for jev", "phone");
+    await tick();
+    const after = d.board.list().filter((p) => p.kind === "web");
+    expect(after).toHaveLength(1);
+    expect(after[0]?.body).toBe("https://github.com/search?q=jev");
+    await d.close();
+  });
+
   it("knows when a sentence names the computer", () => {
     for (const t of [
       "pull up Chrome on my computer",
