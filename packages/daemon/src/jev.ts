@@ -218,21 +218,38 @@ export function siteByName(text: string, exclude: string[] = []): string {
   const where = /\b(?:from|on|at)\s+([a-z0-9][\w-]*)/gi;
   for (const m of text.matchAll(where)) {
     const w = word(m[1] ?? "");
-    if (w && !skip.has(w) && !/^(the|my|your|this|that)$/.test(w)) return `https://www.${w}.com`;
+    if (w.length >= 4 && !skip.has(w) && !COMMON.has(w)) return `https://www.${w}.com`;
   }
+  // Nothing more is guessed. "Open <word>" used to become <word>.com, and the
+  // log has low-fi.com, file.com and picture.com to show for it (2026-09-24);
+  // a sentence that names no site is searched instead (`searchFor`).
+  return "";
+}
+
+/** Words after "on" or "at" that are places, not sites: "on the tv", "at the top". */
+const COMMON = new Set(
+  "the my your this that tv top bottom left right side front back phone laptop desk wall table home work".split(
+    " ",
+  ),
+);
+
+/**
+ * What to search for when a sentence names no site: the words after the
+ * verb, less those about where to show it. "Open lo-fi on the canvas" is
+ * "lo-fi". "" when there is nothing but the verb.
+ */
+export function searchFor(text: string): string {
   const m =
-    /\b(?:open|show|go to|bring up|pull up|load|put|launch|browse)\s+((?:[a-z0-9][\w-]*\s*){1,4})/i.exec(
+    /\b(?:open|show( me)?|go to|bring up|pull up|load|put|launch|browse|find|look up|search( for)?)\s+(.+)$/i.exec(
       text,
     );
-  if (!m?.[1]) return "";
-  for (const raw of m[1].trim().split(/\s+/)) {
-    const w = word(raw);
-    // "a picture of a cupcake": what follows "of" is the subject, not a site
-    if (w === "of") break;
-    if (!w || skip.has(w) || /^(on|in|at|for|to|from)$/.test(w)) continue;
-    return `https://www.${w}.com`;
-  }
-  return "";
+  if (!m?.[3]) return "";
+  const words = m[3]
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !NOT_A_QUERY.has(w) && !NOT_A_SITE.has(w));
+  return words.slice(0, 8).join(" ");
 }
 
 /**

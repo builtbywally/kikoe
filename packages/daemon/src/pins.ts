@@ -286,6 +286,7 @@ export class Board {
     const [pin] = this.pins.splice(i, 1);
     this.waiters.get(id)?.("");
     this.waiters.delete(id);
+    if (pin) this.toBin([pin]);
     this.emit({ op: "remove", id, pin });
     return true;
   }
@@ -298,8 +299,57 @@ export class Board {
       this.waiters.delete(p.id);
     }
     this.pins = this.pins.filter((p) => p.sticky);
+    this.toBin(gone.filter((p) => p.stream === "board"));
     this.emit({ op: "clear" });
     return gone.length;
+  }
+
+  // --- the bin: nothing Kik takes off the canvas is gone for an hour ---------------
+  //
+  // "Close all windows that are currently on the board" once removed six
+  // cards, a kept one and a design finished two minutes before among them,
+  // with no way back (2026-09-24). Removed cards now wait here; removals a
+  // few seconds apart are one batch, so "undo" brings back what one sentence
+  // took away.
+  private bin: Array<{ batch: number; at: number; pin: Pin }> = [];
+  private lastBinAt = 0;
+  private batch = 0;
+  static readonly BIN_S = 3600;
+
+  private toBin(pins: Pin[]): void {
+    if (!pins.length) return;
+    const now = this.now();
+    if (now - this.lastBinAt > 5) this.batch++;
+    this.lastBinAt = now;
+    for (const pin of pins) this.bin.push({ batch: this.batch, at: now, pin });
+    this.bin = this.bin.filter((b) => now - b.at < Board.BIN_S);
+  }
+
+  /** How many cards the last removal took, if it can still be undone. */
+  binned(): number {
+    const now = this.now();
+    const live = this.bin.filter((b) => now - b.at < Board.BIN_S);
+    const last = live[live.length - 1]?.batch;
+    return last === undefined ? 0 : live.filter((b) => b.batch === last).length;
+  }
+
+  /** Put back what the last removal took. Returns how many came back. */
+  restore(): number {
+    const now = this.now();
+    this.bin = this.bin.filter((b) => now - b.at < Board.BIN_S);
+    const last = this.bin[this.bin.length - 1]?.batch;
+    if (last === undefined) return 0;
+    const back = this.bin.filter((b) => b.batch === last);
+    this.bin = this.bin.filter((b) => b.batch !== last);
+    for (const { pin } of back) {
+      if (this.pins.some((p) => p.id === pin.id)) continue;
+      // a fresh life, so a card brought back is not gone again a minute later
+      pin.created = now;
+      pin.updated = now;
+      this.pins.push(pin);
+      this.emit({ op: "add", pin });
+    }
+    return back.length;
   }
 
   /**

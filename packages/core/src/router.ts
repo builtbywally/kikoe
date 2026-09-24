@@ -95,15 +95,31 @@ const CONTROLS: Array<[RegExp, string, (m: RegExpExecArray) => string]> = [
     () => "",
   ],
   [/^(resume|continue|carry on|unpause)\b/, "resume", () => ""],
-  [/^(clear|wipe|clean) (the )?board\b/, "board", () => "clear"],
+  // "clear the canvas", and what Whisper makes of it ("clear the cameras",
+  // "clear the boards"), and "close all the windows on the board": all the
+  // same wish, and all heard on 2026-09-24. Cleared cards go to a bin, so a
+  // mishearing costs an "undo", not the work.
+  [
+    /^(clear|wipe|clean|empty)( out)? (the |my )?(board|boards|canvas|canvases|cameras|camera|screen)\b|^(close|remove|clear) (all|every|everything)\b.*\b(on|from) (the |my )?(board|canvas|screen)\b/,
+    "board",
+    () => "clear",
+  ],
+  [
+    /^(undo( that)?|bring (it|them|that|those) back|put (it|them) back|restore (it|them|the cards?))\b/,
+    "board",
+    () => "undo",
+  ],
   [/^(show|open|bring up)( me)? (the )?(board|control room|sessions)\b/, "board", () => "show"],
   [/^(hide|close) (the )?(board|control room)\b|^back to the room\b/, "board", () => "hide"],
   [/^(go|be|switch to|set) (silent|attention|normal|verbose)\b/, "mode", (m) => m[2] ?? ""],
   [/^(quieter|less|fewer|shush)\b/, "mode", () => "attention"],
   [/^(louder|more|chattier|talk more)\b/, "mode", () => "verbose"],
   [/^(repeat|say (that|it) again|what did you say|again)\b/, "repeat", () => ""],
-  [/^(switch|talk|go) to (\S+)\b/, "focus", (m) => m[2] ?? ""],
+  // before "go to X": it used to open a project called "sleep"
   [/^(shut down|shutdown|quit kikoe|goodbye kikoe|go to sleep)$/, "shutdown", () => ""],
+  // A project only if X is one; the daemon checks and, if not, hands the
+  // sentence on ("switch to chrome" is a window, not a board).
+  [/^(switch|talk|go) to (\S+)\b/, "focus", (m) => m[2] ?? ""],
 ];
 
 // The normalizer drops apostrophes, so "what's" arrives as "whats".

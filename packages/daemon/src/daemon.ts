@@ -61,6 +61,7 @@ import {
   type Command,
   Jev,
   isYoutube,
+  searchFor,
   searchQuery,
   siteSearch,
   wantsThePc,
@@ -203,6 +204,39 @@ export function spokenRest(raw: string, routed: string): string {
     if (normalize(rest) === routed) return rest.replace(/^[\s,.!?]+/, "");
   }
   return routed || raw.trim();
+}
+
+/**
+ * Whisper, stuck, repeats itself: "what what what what", or one sentence five
+ * times over a long clip. A run of the same phrase (one to eight words) three
+ * or more times becomes one. Two in a row is left alone: people do say
+ * "no, no".
+ */
+export function collapseRepeats(text: string): string {
+  const words = text.trim().split(/\s+/);
+  const norm = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+  for (let n = 1; n <= 8; n++) {
+    for (let i = 0; i + n * 3 <= words.length; i++) {
+      const phrase = words
+        .slice(i, i + n)
+        .map(norm)
+        .join(" ");
+      if (!phrase) continue;
+      let reps = 1;
+      while (
+        words
+          .slice(i + reps * n, i + (reps + 1) * n)
+          .map(norm)
+          .join(" ") === phrase
+      )
+        reps++;
+      if (reps >= 3) {
+        words.splice(i + n, (reps - 1) * n);
+        return collapseRepeats(words.join(" "));
+      }
+    }
+  }
+  return words.join(" ");
 }
 
 /** The site an address belongs to: "youtube.com" for the site and its player alike. */
@@ -802,7 +836,7 @@ export class Daemon {
       pre?: Promise<Command | null>;
     } = {},
   ): { kind: string; intent: string; said?: string } {
-    const clean = text.trim();
+    const clean = collapseRepeats(text.trim());
     // Whisper names sounds it cannot read as words: "[buzzing]", "(music)",
     // or a lone "(". Nothing was said, so nothing is routed, answered or kept.
     if (clean && !/\p{L}/u.test(clean.replace(/\[[^\]]*\]|\([^)]*\)|\*[^*]*\*/g, ""))) {
@@ -824,13 +858,21 @@ export class Daemon {
     const offered = this.board.asking()?.ask ?? [];
     const aliases = [...new Set([this.settings.wake_name, ...DEFAULT_ALIASES])];
     const attending = Date.now() < this.attentionUntil || opts.force === true;
-    const d = route(clean, {
+    let d = route(clean, {
       aliases,
       awaitingAnswer: awaiting,
       offered,
       attending,
-      youQuestions: this.settings.hear_you !== false,
+      // A sentence with "you" in it used to count as said to Kik outright,
+      // which is how a game in the room reached an agent 181 times. With Jev
+      // there, it is judged like any other nameless sentence; the rule is
+      // kept only for when there is no Jev to ask.
+      youQuestions: this.settings.hear_you !== false && this.jev() === null,
     });
+    // "switch to X" is a board only if X is a project: "switch to chrome" is
+    // a window, and goes on to the switchboard.
+    if (d.kind === "control" && d.intent === "focus" && !this.projects.resolve(d.arg))
+      d = { ...d, kind: "work", intent: "instruct", arg: "" };
     if (d.addressed) this.attentionUntil = 0;
     // The name on its own opens the window: "kikoe" ... "what's it doing".
     if (d.kind === "social" && d.intent === "hello" && !d.text) this.openWindow(clean, "");
@@ -1177,6 +1219,20 @@ export class Daemon {
         c.open = "website";
       }
     }
+    // A site nobody named is not guessed (it made low-fi.com and file.com):
+    // what was asked for is searched for, and Kik says so.
+    if (
+      !c.url &&
+      (c.action === "canvas" ||
+        (c.action === "open" && (c.open === "website" || c.open === "browser")))
+    ) {
+      const q = searchFor(said);
+      if (q) {
+        c.url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+        c.open = "website";
+        log(`jev: no site named; searching Google for "${q}"`);
+      }
+    }
     // From the phone, "open YouTube" in the desk's browser helps nobody on
     // the couch; the canvas is the screen they are holding. Unless they said
     // where: "on my computer", "on the desktop", "in Chrome" mean the PC.
@@ -1298,6 +1354,9 @@ export class Daemon {
     // player: the video named, or the top result for what was asked for.
     let body = url;
     let title = url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/.*$/, "");
+    // a search says what it looked for, so "google.com" is not all Kik says
+    const q = /[?&](?:q|query|search_query|k|search)=([^&]+)/.exec(url)?.[1];
+    if (q) title = `${title.replace(/\.com$/, "")} · ${decodeURIComponent(q.replace(/\+/g, " "))}`;
     if (isYoutube(url) || (query && !url)) {
       const id = youtubeId(url) || (query ? await this.youtubeSearch(query) : "");
       if (id) {
@@ -2925,9 +2984,23 @@ export class Daemon {
       },
       {
         name: "remove_artifact",
-        description: "Take one thing off the canvas.",
+        description:
+          "Take one thing off the canvas. It waits in a bin for an hour; restore_artifacts brings back what was last removed. Only remove what the user asked to go: a card they kept, or something just made, is theirs, so ask first when a request is vague like 'close all windows'.",
         input_schema: { type: "object", properties: { id: str("the pin id") }, required: ["id"] },
-        run: (i) => (this.board.remove(String(i.id ?? "")) ? "removed" : "no such pin"),
+        run: (i) =>
+          this.board.remove(String(i.id ?? ""))
+            ? "removed (in the bin for an hour)"
+            : "no such pin",
+      },
+      {
+        name: "restore_artifacts",
+        description:
+          "Bring back what was last taken off the canvas (a clear, or the cards removed a moment ago), from the bin. Use it for 'undo', 'bring them back', 'I didn't mean that'.",
+        input_schema: { type: "object", properties: {} },
+        run: () => {
+          const n = this.board.restore();
+          return n ? `brought back ${n}` : "the bin is empty";
+        },
       },
       {
         name: "start_agent",
@@ -3053,11 +3126,12 @@ export class Daemon {
       },
       {
         name: "clear_board",
-        description: "Clear everything off the board.",
+        description:
+          "Clear everything off the board except kept cards. What goes waits in a bin for an hour (restore_artifacts); tell the user they can say undo.",
         input_schema: { type: "object", properties: {} },
         run: () => {
-          this.board.clear();
-          return "cleared";
+          const n = this.board.clear();
+          return `cleared ${n} (in the bin for an hour; undo brings them back)`;
         },
       },
       {
@@ -3069,14 +3143,16 @@ export class Daemon {
           required: ["title", "body"],
         },
         run: (i) => {
+          // A note is pinned to be read later, so it does not fade away first.
           this.board.add({
             kind: "text",
             title: String(i.title ?? "note"),
             body: String(i.body ?? ""),
             project: this.projects.current.id,
             repo: "kikoe",
+            sticky: true,
           });
-          return "pinned";
+          return "pinned (kept)";
         },
       },
     ];
@@ -3268,8 +3344,12 @@ export class Daemon {
         return arg === "silent" ? undefined : `${arg}.`;
       case "board":
         if (arg === "clear") {
-          this.board.clear();
-          return "Cleared.";
+          const n = this.board.clear();
+          return n ? "Cleared. Say undo to bring them back." : "It's already clear.";
+        }
+        if (arg === "undo") {
+          const n = this.board.restore();
+          return n ? `Back: ${n === 1 ? "one card" : `${n} cards`}.` : "Nothing to bring back.";
         }
         this.hub.publish("view", { view: arg === "show" ? "control" : "room" });
         return undefined;
