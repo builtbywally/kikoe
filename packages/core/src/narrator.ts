@@ -150,6 +150,21 @@ const TEST_FAILED = /(\d+)\s+(?:failed|failing|failures?|errors?)\b/i;
 
 const WORD_SPLIT = /[\s|&;]+/;
 
+/**
+ * What an agent can ask to do that cannot be taken back: deleting, sending,
+ * paying, force-pushing. A question about one of these says so first, so a
+ * "yes" said half-listening is not the same yes as for an edit. Matched on
+ * words, with a tool's underscores read as spaces (gmail's send_draft,
+ * calendar's delete_event).
+ */
+const CANNOT_UNDO =
+  /\b(delete|deletes|deleting|remove|rm|rmdir|del|erase|wipe|trash|send|sends|sending|submit|publish|post|tweet|reply all|buy|purchase|pay|payment|checkout|order|transfer|wire|shutdown|shut down|reboot|restart|uninstall|drop table|drop database|truncate|force push|push --force|push -f|reset --hard|overwrite|cancel (?:the )?(?:order|subscription|meeting|event))\b/i;
+
+/** Whether a permission question is about something that cannot be undone. */
+export function cannotUndo(tool: string, detail: string): boolean {
+  return CANNOT_UNDO.test(`${tool} ${detail}`.replace(/[_]+/g, " "));
+}
+
 function headOf(cmd: string): string {
   const trimmed = (cmd ?? "").trim();
   if (!trimmed) return "";
@@ -367,6 +382,17 @@ export class Narrator {
    * and produce word salad.
    */
   private permissionPhrase(e: ev.AgentEvent): string {
+    const ask = this.permissionAsk(e);
+    // The command a shell would run, or the tool's own name: never a file's
+    // contents, where "delete" or "post" is only code.
+    const tool = (e.tool ?? "").toLowerCase();
+    const detail = SHELL_TOOLS.has(tool) ? this.cmdArg(e) : EDIT_TOOLS.has(tool) ? "" : e.text;
+    return cannotUndo(EDIT_TOOLS.has(tool) ? "" : (e.tool ?? ""), detail ?? "")
+      ? `This one can't be undone. ${ask}`
+      : ask;
+  }
+
+  private permissionAsk(e: ev.AgentEvent): string {
     const body = firstSentences(this.sc(e.text), 1, 160);
     if (body) {
       const m = PERMISSION_ASK.exec(body);

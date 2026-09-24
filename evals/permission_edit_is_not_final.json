@@ -1,0 +1,10 @@
+{
+  "name": "an edit is not called final because its code says delete",
+  "why": "The words in a file's contents are code, not an action: an edit adding a DELETE route is still just an edit, and crying wolf on it would teach the user to ignore the warning.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PermissionRequest", "tool_name": "Edit",
+     "tool_input": {"file_path": "/repo/storefront/src/api.ts", "old_string": "a", "new_string": "router.delete('/post', send)"}}
+  ],
+  "expect": {"spoken": 1, "ends_with": "?", "excludes": ["can't be undone"]}
+}

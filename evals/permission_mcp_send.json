@@ -1,0 +1,10 @@
+{
+  "name": "sending an email through a tool says it cannot be undone",
+  "why": "The desk asks for gmail's send and calendar's delete by tool name; the underscores are read as spaces so the name is heard as the action it is.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PermissionRequest", "tool_name": "mcp__gmail__send_draft",
+     "tool_input": {"draft_id": "r-123"}}
+  ],
+  "expect": {"spoken": 1, "ends_with": "?", "contains_any": ["can't be undone"]}
+}

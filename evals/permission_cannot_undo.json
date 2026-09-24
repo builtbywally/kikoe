@@ -1,0 +1,10 @@
+{
+  "name": "a permission that cannot be undone says so first",
+  "why": "A yes said half-listening should not cost a folder or a sent email. Deleting, sending and force-pushing are named as what they are before the question.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+     "tool_input": {"command": "git push --force origin main"}}
+  ],
+  "expect": {"spoken": 1, "ends_with": "?", "contains_any": ["can't be undone"]}
+}
