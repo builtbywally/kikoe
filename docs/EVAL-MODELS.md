@@ -72,3 +72,37 @@ defaults, not enough to tune prompts. The "go ahead" prompt was dropped
 from the table: in real use it is a reflex that never reaches the model,
 and in the harness there was no held permission for either model to
 approve.
+
+## 2026-09-24: Sonnet 5 vs Haiku 4.5 as the talking session
+
+Asked again, now that Kik talks through a kept-open Claude Code session with
+thinking off (the eval script is in the session scratchpad, `voice-eval.mjs`:
+each model as a warm `claude -p --input-format stream-json` session with
+PERSONA, `MAX_THINKING_TOKENS=0`, the same eight sentences over a staged
+picture).
+
+| | first word, median | whole reply, median |
+|---|---|---|
+| Haiku 4.5 | 0.55 s | 1.3 s |
+| Sonnet 5 | 0.70 s | 1.8 s |
+
+The gap that made Haiku the choice on 2026-09-06 (1.9 s against 4.8 s over
+the API) is gone on a warm session: 0.15 s to the first word, not something
+one hears. What remains is the words:
+
+- Sonnet sounded like someone: "Going fine — storefront's mostly green…",
+  "That's a you question, not a me question… Go to bed, this'll still be
+  here." Haiku: "I don't have enough context to answer that one."
+- On a correction ("no, I meant the billing tests"), Haiku invented results
+  for billing tests that never ran and spoke a raw `<remember>` tag; Sonnet
+  said nothing was running on billing and offered to start it.
+- Its Lebanese was more natural ("منيح… ثمانتعش تست… لسا فاشلين").
+- Sonnet still leans on the one open issue (the push, in every reply); less
+  than the API run's lecturing, but watch it.
+
+**Talking is Sonnet 5, thinking off.** The work models, set the same day at
+the user's request: coding agents `agent_model` Opus 5.5, the thinking
+session Opus, the designer Opus 5.5, and what Jev scores hard (a `hard`
+score of 1.4 or more out of 2: deep design, architecture, open research, a
+large change) goes to `deep_model`, Fable 5.1. Full model ids, because the
+API head does not take Claude Code's short names.

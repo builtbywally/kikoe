@@ -126,6 +126,8 @@ export class Agents {
     prompt: string,
     session: string,
     fresh: boolean,
+    /** the model to work with ("opus", "fable"); "" is Claude Code's own default */
+    model = "",
   ): { ok: boolean; said: string } {
     const bin = this.bin();
     if (!bin) {
@@ -159,11 +161,12 @@ export class Agents {
     // nothing to match afterwards: --session-id opens it the first time and
     // --resume continues it every time after. That is what makes yesterday's
     // conversation still be there this morning.
-    const args = session
-      ? fresh
-        ? ["-p", "--session-id", session, prompt]
-        : ["-p", "--resume", session, prompt]
-      : ["-p", prompt];
+    const args = [
+      "-p",
+      ...(model ? ["--model", model] : []),
+      ...(session ? (fresh ? ["--session-id", session] : ["--resume", session]) : []),
+      prompt,
+    ];
     const child = spawn(bin, args, {
       cwd,
       windowsHide: true,

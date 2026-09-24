@@ -29,6 +29,7 @@ interface Script {
   project?: string;
   projectSure?: number;
   directed?: number;
+  hard?: number;
 }
 
 /** A fetch that answers like Jev, from a script, and counts what it was asked. */
@@ -50,6 +51,8 @@ function fakeJev(script: Script, seen: Array<Record<string, unknown>> = []) {
       if (id === "project")
         answers.project = choice(script.project ?? "none", script.projectSure ?? 0.9);
       if (id === "directed") answers.directed = { type: "noul", noul: script.directed ?? 0.9 };
+      if (id === "hard")
+        answers.hard = { type: "score", score: script.hard ?? 0, probabilities: {}, confidence: 1 };
     }
     return new Response(JSON.stringify({ model: "jev-1.13.0", answers }), { status: 200 });
   }) as typeof fetch;
@@ -60,7 +63,7 @@ function daemon(
   extra: { brainKey?: string; seen?: Array<Record<string, unknown>> } = {},
 ) {
   const launched: Array<{ bin: string; args: string[] }> = [];
-  const started: Array<{ project: string; prompt: string; fresh: boolean }> = [];
+  const started: Array<{ project: string; prompt: string; fresh: boolean; model?: string }> = [];
   const d = new dmod.Daemon({
     settings: { ...cfg.DEFAULTS, tts: "none", port: 0 },
     audio: false,
@@ -77,8 +80,8 @@ function daemon(
     d.projects.ensure(name, dir);
   }
   // never a real Claude Code from a test
-  d.agents.start = (project, _cwd, prompt, _session, fresh) => {
-    started.push({ project, prompt, fresh });
+  d.agents.start = (project, _cwd, prompt, _session, fresh, model) => {
+    started.push({ project, prompt, fresh, model });
     return { ok: true, said: fresh ? `started an agent in ${project}` : `passed it to ${project}` };
   };
   return { d, launched, started };
@@ -442,6 +445,19 @@ describe("the switchboard in the daemon", () => {
     await tick();
     expect(cut).toEqual(["cut"]);
     await d.close();
+  });
+
+  it("gives a hard job the deep model and an ordinary one the work model", async () => {
+    const easy = daemon({ action: "agent", hard: 0.2 });
+    easy.d.hear("kikoe add a retry to the fetch in api.ts");
+    await tick();
+    expect(easy.started[0]?.model).toBe("claude-opus-5-5");
+    await easy.d.close();
+    const deep = daemon({ action: "agent", hard: 2 });
+    deep.d.hear("kikoe redesign the whole storage layer to use sqlite with migrations");
+    await tick();
+    expect(deep.started[0]?.model).toBe("claude-fable-5-1");
+    await deep.d.close();
   });
 
   it("knows when a sentence names the computer", () => {

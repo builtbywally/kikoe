@@ -176,6 +176,12 @@ const CORRECTION =
  */
 const BACKCHANNEL =
   /^(yeah|yes|yep|yup|mm+|mhm+|hmm+|uh[- ]?huh|okay|ok|right|sure|cool|nice|got it|i see|go on|true|exactly|oh|ah)[.!,]*( (yeah|yes|okay|ok|right|sure))?[.!]*$/i;
+/**
+ * Jev's difficulty score (0 to 2) at which the deep model takes over. Set
+ * between "real thought" (1) and "hard" (2), so only asks that lean hard
+ * get it: it is the slowest and dearest model.
+ */
+const HARD = 1.4;
 /** what Kik says while the model is still thinking */
 const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
 /** One question handed to the thinking session. */
@@ -1083,7 +1089,7 @@ export class Daemon {
    * session carries on; the answer is spoken when it lands and its detail, if
    * any, goes on the canvas. The "kik · thinking" card shows it working.
    */
-  think(question: string, context = ""): string {
+  think(question: string, context = "", hard = false): string {
     const bin = this.agents.bin();
     if (!bin) return "there is no Claude Code on this machine to think with";
     const q = question.trim();
@@ -1102,7 +1108,8 @@ export class Daemon {
     };
     this.thoughts = [t, ...this.thoughts].slice(0, 8);
     this.publishThoughts();
-    const model = this.settings.think_model || "opus";
+    // Opus to think with; Fable for what was judged hard (the user, 2026-09-24)
+    const model = hard ? this.settings.deep_model || "fable" : this.settings.think_model || "opus";
     const thinker = new CodeBrain({
       bin,
       model,
@@ -1341,10 +1348,12 @@ export class Daemon {
     let said: string;
     switch (c.action) {
       case "new_session":
-        said = sentence(this.startAgent(project?.name ?? "", c.task, { fresh: true }));
+        said = sentence(
+          this.startAgent(project?.name ?? "", c.task, { fresh: true, hard: c.hard >= HARD }),
+        );
         break;
       case "agent":
-        said = sentence(this.instruct(c.task, project?.name));
+        said = sentence(this.instruct(c.task, project?.name, c.hard >= HARD));
         break;
       case "open": {
         if (c.open === "app" && c.app) {
@@ -1375,7 +1384,7 @@ export class Daemon {
       case "think": {
         // Straight to the thinking session: the talking one would only have
         // handed it over. Said before it starts, so the user knows at once.
-        const r = this.think(spokenRest(clean, d.text));
+        const r = this.think(spokenRest(clean, d.text), "", c.hard >= HARD);
         said = /^thinking started/.test(r)
           ? "On it. I'll think that through and come back to you."
           : sentence(r);
@@ -2803,10 +2812,16 @@ export class Daemon {
                 context: str(
                   "what you know that bears on it: the situation, constraints, what was said",
                 ),
+                hard: {
+                  type: "boolean",
+                  description:
+                    "true for a deep design or architecture question, open-ended research, or a plan with many parts: it gets the strongest model",
+                },
               },
               required: ["question"],
             },
-            run: (i) => this.think(String(i.question ?? ""), String(i.context ?? "")),
+            run: (i) =>
+              this.think(String(i.question ?? ""), String(i.context ?? ""), i.hard === true),
           },
         ]
       : [];
@@ -3407,7 +3422,7 @@ export class Daemon {
    */
   private static readonly MIN_INSTRUCTION_WORDS = 4;
 
-  instruct(text: string, repo?: string): string {
+  instruct(text: string, repo?: string, hard = false): string {
     const words = text.trim().split(/\s+/).filter(Boolean);
     // "what what what what" is four words and one idea, and it reached a real
     // agent from the phone. Count the different words, not the words.
@@ -3424,14 +3439,14 @@ export class Daemon {
     // Nothing to hand it to used to be the end of the sentence, which meant
     // the first instruction of the day always failed and you opened a
     // terminal. Now it is a reason to start one.
-    if (!target) return this.startAgent(repo ?? "", text);
+    if (!target) return this.startAgent(repo ?? "", text, { hard });
     const s = sessions.find((x) => x.repo === target);
     // Mid-turn, the queue is the only way in: a second `-p` cannot interrupt
     // a turn already running, and the Stop hook hands this over the moment
     // it ends. Idle, there is nothing to wait for — say it straight into the
     // conversation and it starts now.
     if (s && s.status !== "working" && this.settings.agents) {
-      const said = this.startAgent(target, text);
+      const said = this.startAgent(target, text, { hard });
       if (!/^(started|passed)/.test(said)) return said;
       log(`instruction sent to ${target}: ${text}`);
       return said;
@@ -3449,7 +3464,7 @@ export class Daemon {
    * the canvas — because the session Kik starts is an ordinary one. What is
    * new is only that nobody had to open a terminal to begin it.
    */
-  startAgent(name: string, prompt: string, opts: { fresh?: boolean } = {}): string {
+  startAgent(name: string, prompt: string, opts: { fresh?: boolean; hard?: boolean } = {}): string {
     if (!this.settings.agents) return "starting agents is switched off in Settings";
     const project = name
       ? (this.projects.resolve(name) ?? this.projects.current)
@@ -3473,7 +3488,9 @@ export class Daemon {
     // already there" costs an id and nothing else.
     const fresh = !project.session;
     const session = this.projects.sessionFor(project.id);
-    const { ok, said } = this.agents.start(project.id, cwd, task, session, fresh);
+    // Opus for the work, Fable for what Jev judged hard (the user, 2026-09-24)
+    const model = opts.hard ? this.settings.deep_model : this.settings.agent_model;
+    const { ok, said } = this.agents.start(project.id, cwd, task, session, fresh, model);
     if (ok) this.saveProjects();
     if (ok) {
       // Show it happening: the board the work will land on is the one to be

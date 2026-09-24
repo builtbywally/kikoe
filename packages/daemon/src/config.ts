@@ -112,6 +112,14 @@ export interface Settings {
   jev: boolean;
   /** Kik may open the editor, a folder, a terminal or a website on this PC */
   pc: boolean;
+  /** the model a coding agent works with, and the thinking session thinks with */
+  agent_model: string;
+  /**
+   * The model for what Jev judges hard: a deep design, an architecture or
+   * research question, a large change. Used instead of agent_model and
+   * think_model for those.
+   */
+  deep_model: string;
   /**
    * Kik's hands (docs/OS.md, L1): switch windows, open apps, type, press
    * keys and buttons, read what is in the window in front. Off until turned
@@ -152,12 +160,12 @@ export const DEFAULTS: Settings = {
   backdrop_blur: true,
   backdrop_image: "",
   brain: false,
-  brain_model: "claude-haiku-4-5-20251001",
+  brain_model: "claude-sonnet-5",
   brain_provider: "anthropic",
   brain_narrates: true,
   brain_checkin: true,
   brain_greets: true,
-  artifact_model: "claude-sonnet-5",
+  artifact_model: "claude-opus-5-5",
   think_model: "opus",
   walkie: false,
   walkie_port: 4571,
@@ -166,6 +174,8 @@ export const DEFAULTS: Settings = {
   claude_bin: "",
   jev: true,
   pc: true,
+  agent_model: "claude-opus-5-5",
+  deep_model: "claude-fable-5-1",
   hands: false,
   usage: true,
   usage_off: [],

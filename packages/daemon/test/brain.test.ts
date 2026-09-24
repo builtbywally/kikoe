@@ -849,7 +849,7 @@ describe("the designer", () => {
     d.hear("kik compare cats and dogs visually");
     await new Promise((r) => setTimeout(r, 80));
     const design = sent[1];
-    expect(design?.model).toBe("claude-sonnet-5");
+    expect(design?.model).toBe("claude-opus-5-5");
     expect(String(design?.system)).toContain("You design and build screens");
     expect(JSON.stringify(design?.messages)).toContain("cats and dogs");
     const pin = d.board.list().find((p) => p.kind === "react");

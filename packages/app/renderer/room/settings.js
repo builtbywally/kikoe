@@ -235,7 +235,7 @@
     $("hear-you").checked = s.hear_you !== false;
     $("barge-in").checked = Boolean(s.barge_in);
     $("brain").checked = Boolean(s.brain);
-    $("brain-model").value = s.brain_model || "claude-haiku-4-5-20251001";
+    $("brain-model").value = s.brain_model || "claude-sonnet-5";
     $("brain-provider").value = s.brain_provider || "anthropic";
     $("brain-narrates").checked = s.brain_narrates !== false;
     $("brain-checkin").checked = s.brain_checkin !== false;
@@ -243,7 +243,7 @@
     $("jev").checked = s.jev !== false;
     $("pc").checked = s.pc !== false;
     $("hands").checked = s.hands === true;
-    $("artifact-model").value = s.artifact_model || "claude-sonnet-5";
+    $("artifact-model").value = s.artifact_model || "claude-opus-5-5";
     $("anthropic-key").placeholder = info.hasAnthropicKey
       ? "key saved in the keychain (paste to replace)"
       : "Anthropic API key (stored in the OS keychain)";

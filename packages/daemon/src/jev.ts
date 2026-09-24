@@ -40,7 +40,14 @@ export interface Choice {
   probabilities: Record<string, number>;
   confidence: number;
 }
-type Answer = Noul | Choice;
+export interface Score {
+  type: "score";
+  /** the probability-weighted level, 0 to levels - 1 */
+  score: number;
+  probabilities: Record<string, number>;
+  confidence: number;
+}
+type Answer = Noul | Choice | Score;
 
 /** What to do with an addressed sentence. */
 export type Action =
@@ -88,6 +95,12 @@ export interface Command {
   url: string;
   /** the app the sentence names, for `open: app` */
   app: string;
+  /**
+   * How hard the ask is, 0 to 2: a quick answer or small change, real thought
+   * or a few steps, or deep (a design, architecture, research, a large change).
+   * The daemon gives a hard one the deep model.
+   */
+  hard: number;
 }
 
 export interface CommandContext {
@@ -515,6 +528,15 @@ export class Jev {
           "Which option is exactly the job the user wants the coding agent to do, without the words about opening a session, choosing a project or talking to Kik?",
         criteria: Object.fromEntries(tasks.map((t, i) => [`t${i}`, t])),
       },
+      hard: {
+        type: "score",
+        instructions: "How hard is what the user asks for in the `sentence`, for whoever does it?",
+        criteria: [
+          "quick: a short answer, a lookup, a small well-defined change",
+          "real thought or a few steps: a comparison, a fix that needs investigating, a feature of modest size",
+          "hard: a deep design or architecture question, open-ended research, a large change across many files, a plan with many moving parts",
+        ],
+      },
       open: {
         type: "choice",
         instructions: "If the user wants something opened on their computer, what?",
@@ -576,6 +598,7 @@ export class Jev {
     if (!action) return null;
     const task = pick("task");
     const open = pick("open");
+    const hard = a.hard;
     const project = pick("project");
     const taskIdx = Number((task?.choice ?? "t0").slice(1));
     const projectName = project && project.choice !== "none" ? project.choice : "";
@@ -589,6 +612,7 @@ export class Jev {
       // an app is not a website: "open spotify" as an app must not become spotify.com
       url: open?.choice === "app" ? findUrl(text) : findUrl(text) || siteByName(text, projects),
       app: appName(text),
+      hard: hard?.type === "score" ? Number(hard.score) : 0,
     };
   }
 }
