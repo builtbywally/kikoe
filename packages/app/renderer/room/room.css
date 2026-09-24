@@ -1577,13 +1577,26 @@ html[data-phone="true"] .zoom-hud {
   border: none;
   outline: none;
   -webkit-tap-highlight-color: transparent;
-  background: radial-gradient(circle, rgba(210, 104, 63, 0.2) 0%, rgba(20, 16, 14, 0.9) 70%);
-  box-shadow: 0 12px 40px rgba(210, 104, 63, 0.25);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  /* The disc fades out to nothing at its edge and glows from within. A dark
+     disc with an orange shadow outside it still read as an orange ring on
+     the phone (2026-09-24), border or no border. */
+  background: radial-gradient(
+    circle,
+    rgba(210, 104, 63, 0.22) 0%,
+    rgba(20, 16, 14, 0.6) 48%,
+    rgba(20, 16, 14, 0) 71%
+  );
+  box-shadow: none;
+  transition: transform 0.12s ease, background 0.2s ease;
 }
 #phone-talk[data-on="1"] {
   transform: scale(1.1);
-  box-shadow: 0 6px 34px rgba(210, 104, 63, 0.6);
+  background: radial-gradient(
+    circle,
+    rgba(210, 104, 63, 0.45) 0%,
+    rgba(210, 104, 63, 0.12) 50%,
+    rgba(20, 16, 14, 0) 71%
+  );
 }
 #phone-talk:disabled {
   filter: grayscale(0.6) brightness(0.7);
