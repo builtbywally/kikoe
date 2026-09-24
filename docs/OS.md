@@ -12,7 +12,7 @@ It is not a new question. Day one already set the frame, in
 > **Kikoe is not a tool. It is an operating environment for productive,
 > creative people.**
 
-And on 2026-09-07 `Astra.md` researched the missing half — a machine Kik can
+And on 2026-09-07 `ASTRA.md` researched the missing half — a machine Kik can
 actually operate — and stopped one library rename short of building it. This
 document joins those two and says where the road goes.
 
@@ -104,7 +104,7 @@ Each rung is useful on its own, ships on its own, and is reversible.
 
 - **L0 — today.** Ears, voice, canvas, agents, memory, limits.
 - **L1 — hands and eyes.** Kik can operate this machine: open apps, focus
-  windows, press keys, read the screen. `Astra.md`'s Piece A, folded into Kik
+  windows, press keys, read the screen. `ASTRA.md`'s Piece A, folded into Kik
   rather than run as a second listener with a second wake word.
 - **L2 — the canvas eats the desktop.** Every open window becomes a live card.
   Kik replaces Alt-Tab, Start and Explorer in practice. Windows still boots
@@ -181,7 +181,7 @@ scope, no rules, no persistence. The only scope-like construct in the codebase
 is the `full` / `viewer` token split at `daemon.ts:1955`, and that is transport
 auth, not agent capability.
 
-`Astra.md`'s own Risk 1 is honest that skipped permissions plus a mouse will
+`ASTRA.md`'s own Risk 1 is honest that skipped permissions plus a mouse will
 eventually click something expensive. The rule:
 
 | class | behaviour |
@@ -216,7 +216,7 @@ where builds break silently: under `npx`, electron-builder drops them from
 'sherpa-onnx-node'". A third native addon buys a third way for the installer
 to fail.
 
-Windows gives all of `Astra.md`'s Piece A through **PowerShell plus inline C#
+Windows gives all of `ASTRA.md`'s Piece A through **PowerShell plus inline C#
 (`Add-Type`)**, with no compiled dependency. There is already precedent in the
 codebase: `daemon/src/tts.ts:390-401` shells to PowerShell with `-Command` and
 an established quote-escaping pattern (`text.replace(/'/g, "''")`).
@@ -245,11 +245,11 @@ Gate 1.
 The UI Automation tree gives Kik the semantic contents of any Windows app —
 buttons and fields by name — for almost no tokens. Screenshots are the
 expensive, imprecise fallback. Hotkeys and PowerShell beat clicking wherever
-both work. `Astra.md` reaches the same conclusion from the other direction.
+both work. `ASTRA.md` reaches the same conclusion from the other direction.
 
 ### Fold Astra in, do not run it alongside
 
-`Astra.md` as drafted adds a *second* thing that hears you, with a second wake
+`ASTRA.md` as drafted adds a *second* thing that hears you, with a second wake
 word and a second speech model — its own Risk 2. Kik already hears, already
 knows when it is being addressed, already speaks, already shows. **It needs
 hands, not a twin.** The two draft scripts in `C:\Users\USER\astra\` become

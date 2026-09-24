@@ -37,14 +37,7 @@ importers:
         specifier: ^26.0.0
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
 
-  packages/cli:
-    dependencies:
-      '@kikoe/core':
-        specifier: workspace:*
-        version: link:../core
-      '@kikoe/daemon':
-        specifier: workspace:*
-        version: link:../daemon
+  packages/cli: {}
 
   packages/core: {}
 

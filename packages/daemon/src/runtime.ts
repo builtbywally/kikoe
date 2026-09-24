@@ -11,7 +11,7 @@
  * loopback only, and it opens one page, never the daemon's API.
  */
 
-import { KIT_CSS, withKit } from "./kit.js";
+import { withKit } from "./kit.js";
 import type { Pin } from "./pins.js";
 
 /** What a served artifact may load. Scripts and styles from the allowlist; images from anywhere. */
@@ -191,6 +191,3 @@ Format. Plain JSX, one file, no TypeScript. Start with imports only for react, l
 Design. Dark by default: page bg #14100e, cards #181815 with a 1px border of white at 14 percent, text #f5f1ec, muted text at 60 percent, one accent #d2683f (ember) used for the single primary action and small highlights, never for large fills. Radii 12px on cards, 10px on controls. A type scale of four sizes at most; headings tight, body 15px with generous line height. Space on an 8px grid; more space between groups than within them. Every screen has one clear primary action and a visible hierarchy; secondary actions are quiet. Real copy in the user's domain, never lorem ipsum, never "Item 1". Show states the brief implies: empty, loading, error, success. Tables align numbers right in a mono face. Interactive means interactive: toggles toggle, tabs switch, forms validate, lists filter, counters count. Width-aware: works from 390px to 1280px. No emoji as icons. No gratuitous animation; a 150ms transition on hover and state is enough.
 
 Quality bar: a designer at a good product company would sign off on it. If the brief is a comparison or a report, lead with the answer, then the evidence. If it is a tool, the first thing on screen is the thing the user came to do.`;
-
-/** The reference the kit page gets when the model writes HTML instead. */
-export const KIT_REFERENCE_CSS = KIT_CSS;

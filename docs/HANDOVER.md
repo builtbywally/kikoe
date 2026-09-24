@@ -843,3 +843,34 @@ talk button itself (the user asked), with "hold to talk" beneath it.
 **Jev does not build web pages.** A demo of "Jev building a page live" is
 Jev choosing and an LLM (or code) writing; Jev returns no text. The fast
 page in Kikoe is `design_artifact` with `quick: true` on Haiku.
+
+## The README, and a cleanup (2026-09-24)
+
+- **The README was rewritten** from the day-one "Phase 0" text: what Kik
+  does, what you can say, the pipeline as a Mermaid diagram, the three
+  sessions, the phone, install, keys, the installer's traps, the change
+  loop, the layout, the docs index and the principles. Its images live in
+  `docs/images` and come from **`bash scripts/readme-images.sh`**: the
+  desk from the `--screenshot` harness, the phone from a second Kikoe on a
+  throwaway `KIKOE_HOME` staged through hooks and `/show`, captured by
+  `scripts/phone-shot.cjs`. Never publish a shot of the real board.
+- **Trap found making them**: a Kikoe with `walkie_tailscale: false` takes
+  the tailnet serve rule *down* on start, even from a throwaway home — it is
+  one machine-wide rule. Starting the real app puts it back
+  (`tailscale serve status` shows `wm.taile841c1.ts.net → 4571`).
+- **Removed, each checked unreferenced**: `packages/daemon/proto/` (three
+  prototype scripts), `packages/cli/src/index.ts` (`export {}`), the CLI's
+  `@kikoe/core` and `@kikoe/daemon` dependencies (it imports only `node:`),
+  `CollectingSink`, `needsHuman`, `KIT_REFERENCE_CSS`, `docs/UPGRADES.md`
+  (the day-one ranked list, orphaned), and the ClaudeTalks wordmark,
+  lockups and pre-orb app icons in `brand/` (`BRAND.md` is now Kikoe's).
+  The three Instrument Sans files were the same bytes; there is one, with
+  `font-weight: 400 600`. `Astra.md` moved to `docs/ASTRA.md`.
+- **Left on purpose**: `evals/fleet` and `evals/impulse` (no test reads them
+  yet; `PLAN.md` calls them the acceptance contract), the unused
+  re-exports in `core` and `daemon` indexes (`@kikoe/daemon` is published),
+  `cold.yml` failing by design on commands still `PLANNED`.
+- **Found, not fixed**: `electron-builder.yml` and `main.ts:455` want
+  `build/trayTemplate.png` on macOS and it does not exist; the app requires
+  `audify` and `sherpa-onnx-node` without declaring them (works because
+  `.npmrc` hoists); `docs/VOICE.md` still names ClaudeTalks's Python files.

@@ -210,10 +210,6 @@ export function toJSON(e: AgentEvent): string {
   return JSON.stringify(e);
 }
 
-export function needsHuman(e: AgentEvent): boolean {
-  return e.severity >= SEV_ATTENTION;
-}
-
 /** Short spoken label for which agent this is. */
 export function label(e: AgentEvent): string {
   return e.repo || e.source;

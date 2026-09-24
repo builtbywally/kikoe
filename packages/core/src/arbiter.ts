@@ -40,19 +40,6 @@ export interface SpeechSink {
   speak(text: string, signal: AbortSignal, u?: Utterance): Promise<void>;
 }
 
-/** Records what would have been said. Tests and the no-audio demo. */
-export class CollectingSink implements SpeechSink {
-  spoken: string[] = [];
-  cancels = 0;
-  async speak(text: string, signal: AbortSignal): Promise<void> {
-    if (signal.aborted) {
-      this.cancels++;
-      return;
-    }
-    this.spoken.push(text);
-  }
-}
-
 export type SpeechPhase = "speaking" | "quiet" | "interrupted";
 export interface SpeechInfo {
   text?: string;

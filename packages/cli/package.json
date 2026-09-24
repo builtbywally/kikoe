@@ -15,9 +15,5 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/builtbywally/kikoe.git"
-  },
-  "dependencies": {
-    "@kikoe/core": "workspace:*",
-    "@kikoe/daemon": "workspace:*"
   }
 }
