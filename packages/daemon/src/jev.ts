@@ -45,7 +45,26 @@ type Answer = Noul | Choice;
 /** What to do with an addressed sentence. */
 export type Action = "kik" | "think" | "agent" | "new_session" | "open" | "canvas" | "stop_agent";
 /** What can be opened on the PC. A fixed list: Jev picks, it never names a program. */
-export type Opener = "vscode" | "explorer" | "terminal" | "browser" | "website";
+export type Opener = "vscode" | "explorer" | "terminal" | "browser" | "website" | "app";
+
+/**
+ * The app a sentence names: "open notepad", "switch to chrome", "launch
+ * visual studio code". The words after the verb, up to where the sentence
+ * says where or what next. "" when there is none.
+ */
+export function appName(text: string): string {
+  const m =
+    /\b(?:open|launch|start|run|pull up|bring up|switch to|go to|show me)\s+(?:the |my |up )*(.+)$/i.exec(
+      text,
+    );
+  if (!m?.[1]) return "";
+  const cut = m[1]
+    .replace(/[.?!,].*$/, "")
+    .replace(/\s+\b(on|in|at|for|and|then|so|please|now|here|with|to)\b.*$/i, "")
+    .replace(/\b(app|application|program|window)\b/gi, "")
+    .trim();
+  return cut.split(/\s+/).slice(0, 4).join(" ");
+}
 
 export interface Command {
   action: Action;
@@ -59,6 +78,8 @@ export interface Command {
   open: Opener;
   /** a web address found in the sentence, for `open: website` */
   url: string;
+  /** the app the sentence names, for `open: app` */
+  app: string;
 }
 
 export interface CommandContext {
@@ -468,6 +489,7 @@ export class Jev {
           terminal: "a terminal or command prompt",
           browser: "a web browser, with nothing more specific",
           website: "a particular website or web address",
+          app: "an application on this computer by its name — Notepad, Spotify, Word, Excel, Calculator, Settings, Discord, Photoshop — or switching to one already open",
         },
       },
     };
@@ -529,7 +551,9 @@ export class Jev {
       projectSure: project ? (project.probabilities[project.choice] ?? 0) : 0,
       task: tasks[taskIdx] ?? tasks[0] ?? text,
       open: (open?.choice ?? "browser") as Opener,
-      url: findUrl(text) || siteByName(text, projects),
+      // an app is not a website: "open spotify" as an app must not become spotify.com
+      url: open?.choice === "app" ? findUrl(text) : findUrl(text) || siteByName(text, projects),
+      app: appName(text),
     };
   }
 }

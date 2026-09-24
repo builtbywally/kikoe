@@ -75,7 +75,16 @@ import { launch, launchFor } from "./pc.js";
 /** What Kik's hands can do; the real one is a kept PowerShell (hands.ts). */
 export type HandsLike = Pick<
   Hands,
-  "windows" | "front" | "focus" | "open" | "type" | "press" | "controls" | "pressControl" | "close"
+  | "windows"
+  | "front"
+  | "focus"
+  | "open"
+  | "type"
+  | "press"
+  | "controls"
+  | "pressControl"
+  | "screenshot"
+  | "close"
 >;
 import { Board } from "./pins.js";
 import { Projects, slug } from "./projects.js";
@@ -1308,6 +1317,10 @@ export class Daemon {
         said = sentence(this.instruct(c.task, project?.name));
         break;
       case "open": {
+        if (c.open === "app" && c.app) {
+          said = sentence(await this.openApp(c.app));
+          break;
+        }
         // A named site and a subject open the site's search, not its front page.
         const rest = spokenRest(clean, d.text);
         said = sentence(this.openOnPc({ ...c, url: siteSearch(c.url, rest) }, project));
@@ -1433,6 +1446,36 @@ export class Daemon {
   }
 
   /** The editor, a folder, a terminal or a site, from a fixed menu. */
+  /**
+   * An app by name, with the hands: brought to the front if it is already
+   * open, started if not. Asked first, like anything the hands do.
+   */
+  async openApp(name: string): Promise<string> {
+    const hands = this.hands();
+    if (!hands)
+      return `I can't open ${name} with my hands switched off. Settings, "Let Kik use this PC"`;
+    const low = name.toLowerCase();
+    const open = (await hands.windows().catch(() => [])).find(
+      (w) => w.name.toLowerCase().includes(low) || w.title.toLowerCase().includes(low),
+    );
+    if (open)
+      return this.withLeave(
+        `switch to ${open.title || open.name}`,
+        "",
+        async () => {
+          const w = await hands.focus(low);
+          return w ? `${w.name} is in front` : `I couldn't bring ${name} forward`;
+        },
+        "switching windows",
+      );
+    return this.withLeave(
+      `open ${name}`,
+      "",
+      async () => `${await hands.open(name)}`,
+      `open ${low}`,
+    );
+  }
+
   openOnPc(c: Command, named?: { name: string; roots: string[] }): string {
     if (!this.settings.pc) return "opening things on this PC is switched off in Settings";
     const p = named ?? this.projects.current;
@@ -2659,6 +2702,28 @@ export class Daemon {
               JSON.stringify({ window: await hands.front(), controls: await hands.controls() }),
           },
           {
+            name: "show_screen",
+            description:
+              "Put a picture of the PC's screen on the canvas, for the user to see from the phone or when asked what is on screen. Free to call; nothing changes.",
+            input_schema: { type: "object", properties: {} },
+            run: async () => {
+              const img = await hands.screenshot();
+              if (!img.startsWith("data:image/")) return "I couldn't take the screenshot";
+              const pin = this.board.add({
+                kind: "image",
+                title: "the screen",
+                body: img,
+                project: this.projects.current.id,
+                repo: "kik",
+                by: "kik",
+                size: "wide",
+                ttl_s: 1800,
+              });
+              this.hub.publish("focus", { id: pin.id });
+              return "the screen is on the canvas";
+            },
+          },
+          {
             name: "focus_window",
             description:
               "Bring a window to the front, by part of its title or its app's name as list_windows gave them. The user is asked first.",
@@ -2714,7 +2779,7 @@ export class Daemon {
           {
             name: "press_keys",
             description:
-              "Press a key or a chord in the window in front: enter, tab, esc, backspace, up, down, ctrl+s, ctrl+t, ctrl+l, alt+tab, ctrl+shift+t, f5. The user is asked first.",
+              "Press a key or a chord: enter, tab, esc, backspace, up, down, ctrl+s, ctrl+t, ctrl+l, alt+tab, ctrl+shift+t, f5; the Windows key and its chords (win, win+d for the desktop, win+e for files); and the media keys: play, pause, next, previous, mute, volume up, volume down. The user is asked first.",
             input_schema: {
               type: "object",
               properties: { keys: str("the key or chord, like ctrl+s") },

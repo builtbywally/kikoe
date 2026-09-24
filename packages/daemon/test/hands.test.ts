@@ -72,6 +72,25 @@ function rig(on = true) {
   return { d, did, tool, pending };
 }
 
+describe("apps, and the keys SendKeys cannot press", () => {
+  it("hears the app in the sentence", async () => {
+    const jev = await import("../src/jev.js");
+    expect(jev.appName("open notepad")).toBe("notepad");
+    expect(jev.appName("Can you pull up Chrome on my computer and go to YouTube?")).toBe("Chrome");
+    expect(jev.appName("launch visual studio code please")).toBe("visual studio code");
+    expect(jev.appName("switch to spotify")).toBe("spotify");
+    expect(jev.appName("what's on the board")).toBe("");
+  });
+  it("presses the Windows key and the media keys by code", () => {
+    expect(hands.vkChord("win+d")).toEqual([0x5b, 0x44]);
+    expect(hands.vkChord("windows")).toEqual([0x5b]);
+    expect(hands.vkChord("volume up")).toEqual([0xaf]);
+    expect(hands.vkChord("Play")).toEqual([0xb3]);
+    expect(hands.vkChord("ctrl+s")).toBeNull();
+    expect(hands.vkChord("win+banana")).toBeNull();
+  });
+});
+
 describe("Kik's hands, behind the gate", () => {
   it("has no hands at all with the setting off", () => {
     const { d, tool } = rig(false);
@@ -96,6 +115,26 @@ describe("Kik's hands, behind the gate", () => {
     d.answerPermission(true, id);
     expect(await done).toBe("typed");
     expect(did).toEqual(["type hello"]);
+  });
+
+  it("opens an app that is not open, and brings forward one that is", async () => {
+    const { d, did, pending } = rig();
+    const opening = d.openApp("calculator");
+    await tick();
+    d.answerPermission(true, pending()?.id ?? "");
+    await opening;
+    expect(did).toEqual(["open calculator"]);
+    // notepad is already open (the fake lists it): it is switched to, not started again
+    const switching = d.openApp("notepad");
+    await tick();
+    d.answerPermission(true, pending()?.id ?? "");
+    await switching;
+    expect(did).toEqual(["open calculator", "focus notepad"]);
+  });
+
+  it("says how to turn the hands on, rather than failing", async () => {
+    const { d } = rig(false);
+    expect(await d.openApp("notepad")).toMatch(/Let Kik use this PC/);
   });
 
   it("a no is a no", async () => {

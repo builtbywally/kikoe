@@ -87,11 +87,73 @@ export function sendKeysChord(spec: string): string {
   return mods ? `${mods}${k.length > 1 && !k.startsWith("{") ? `(${k})` : k}` : k;
 }
 
+/** Keys by name that only a virtual key code can press. */
+const MEDIA: Record<string, number> = {
+  play: 0xb3,
+  pause: 0xb3,
+  "play pause": 0xb3,
+  "play/pause": 0xb3,
+  next: 0xb0,
+  "next track": 0xb0,
+  previous: 0xb1,
+  "previous track": 0xb1,
+  prev: 0xb1,
+  "stop music": 0xb2,
+  mute: 0xad,
+  unmute: 0xad,
+  "volume up": 0xaf,
+  louder: 0xaf,
+  "volume down": 0xae,
+  quieter: 0xae,
+  "print screen": 0x2c,
+};
+const VK: Record<string, number> = {
+  win: 0x5b,
+  windows: 0x5b,
+  ctrl: 0x11,
+  control: 0x11,
+  shift: 0x10,
+  alt: 0x12,
+  tab: 0x09,
+  enter: 0x0d,
+  esc: 0x1b,
+  escape: 0x1b,
+  space: 0x20,
+  left: 0x25,
+  up: 0x26,
+  right: 0x27,
+  down: 0x28,
+};
+
+/**
+ * A key that SendKeys cannot press, as virtual key codes: the media and
+ * volume keys, and any chord with the Windows key ("win+d", "windows").
+ * null for everything else, which goes by SendKeys.
+ */
+export function vkChord(spec: string): number[] | null {
+  const s = spec.toLowerCase().trim();
+  const media = MEDIA[s];
+  if (media !== undefined) return [media];
+  const parts = s
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.some((p) => p === "win" || p === "windows")) return null;
+  const codes: number[] = [];
+  for (const p of parts) {
+    const c = VK[p] ?? (/^[a-z0-9]$/.test(p) ? p.toUpperCase().charCodeAt(0) : undefined);
+    if (c === undefined) return null;
+    codes.push(c);
+  }
+  return codes;
+}
+
 /** The PowerShell every command runs in: types loaded once, output in UTF-8. */
 const PRELUDE = [
   "$ErrorActionPreference = 'Stop'",
   "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
   "Add-Type -AssemblyName System.Windows.Forms",
+  "Add-Type -AssemblyName System.Drawing",
   "Add-Type -AssemblyName UIAutomationClient",
   "Add-Type -AssemblyName UIAutomationTypes",
   `Add-Type -Namespace Kik -Name U32 -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int n); [DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint p); [DllImport("user32.dll")] public static extern bool IsIconic(System.IntPtr h); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, System.UIntPtr e);'`,
@@ -115,6 +177,12 @@ const SCRIPTS = {
   // (2026-09-24), and the keys after it were typed into that dialog.
   open: String.raw`$exe = Get-Command $a -CommandType Application -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.exe', '.com' } | Select-Object -First 1; if ($exe) { Start-Process -FilePath $exe.Source; "started $($exe.Name)"; return }; foreach ($root in 'HKCU:', 'HKLM:') { $k = "$root\Software\Microsoft\Windows\CurrentVersion\App Paths\$a.exe"; if (Test-Path $k) { $p = ((Get-ItemProperty $k).'(default)' -replace '"', ''); if ($p -and (Test-Path $p)) { Start-Process -FilePath $p; "started $a"; return } } }; $s = Get-StartApps | Where-Object { $_.Name -like "*$a*" } | Select-Object -First 1; if (-not $s) { throw "no app called $a" }; Start-Process ("shell:AppsFolder\" + $s.AppID); "started $($s.Name)"`,
   keys: "[System.Windows.Forms.SendKeys]::SendWait($a); 'sent'",
+  // Keys SendKeys cannot send: the Windows key, media and volume. Virtual
+  // key codes, pressed in order and let go in reverse.
+  vk: "$codes = @($a -split ','); foreach ($c in $codes) { [Kik.U32]::keybd_event([byte][int]$c, 0, 0, [UIntPtr]::Zero) }; [array]::Reverse($codes); foreach ($c in $codes) { [Kik.U32]::keybd_event([byte][int]$c, 0, 2, [UIntPtr]::Zero) }; 'sent'",
+  // The whole screen, as a JPEG small enough for a card: 1280 wide, the
+  // quality lowered until it fits.
+  shot: "$b = [System.Windows.Forms.SystemInformation]::VirtualScreen; $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size); $w = [Math]::Min(1280, $b.Width); $h = [int]($b.Height * $w / $b.Width); $s = New-Object System.Drawing.Bitmap $bmp, $w, $h; $enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }; $p = New-Object System.Drawing.Imaging.EncoderParameters 1; $q = 70; do { $p.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]$q); $ms = New-Object IO.MemoryStream; $s.Save($ms, $enc, $p); $out = [Convert]::ToBase64String($ms.ToArray()); $q -= 15 } while ($out.Length -gt 190000 -and $q -gt 10); $g.Dispose(); $bmp.Dispose(); $s.Dispose(); 'data:image/jpeg;base64,' + $out",
   controls:
     "$root = [System.Windows.Automation.AutomationElement]::FromHandle([Kik.U32]::GetForegroundWindow()); $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition); $want = 'button','edit','menu item','hyperlink','list item','tab item','check box','combo box','radio button','document','text'; $seen = @{}; $out = @(); foreach ($e in $all) { $c = $e.Current; $t = $c.LocalizedControlType; if (-not $c.Name -or -not ($want -contains $t) -or $c.IsOffscreen) { continue }; $k = \"$t|$($c.Name)\"; if ($seen[$k]) { continue }; $seen[$k] = 1; $out += [pscustomobject]@{ type = $t; name = $c.Name.Substring(0, [Math]::Min(80, $c.Name.Length)) }; if ($out.Count -ge 80) { break } }; $out",
   // Press a control by its name: invoke it, toggle it, or select it,
@@ -260,9 +328,19 @@ export class Hands {
   }
   /** Press a key or a chord ("ctrl+s", "enter"). Refuses a key it does not know. */
   async press(spec: string): Promise<void> {
+    // the Windows key, media and volume go by virtual key; the rest by SendKeys
+    const vk = vkChord(spec);
+    if (vk) {
+      await this.run("vk", vk.join(","));
+      return;
+    }
     const k = sendKeysChord(spec);
     if (!k) throw new Error(`I don't know the key "${spec}"`);
     await this.run("keys", k);
+  }
+  /** The screen, as a data: URL a card can show. */
+  async screenshot(): Promise<string> {
+    return String((((await this.run("shot")) as string[] | null) ?? [])[0] ?? "");
   }
   /** The named buttons, fields and links of the window in front. */
   async controls(): Promise<Control[]> {
