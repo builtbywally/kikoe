@@ -8,6 +8,7 @@
  * calls, so it is never exposed on a network interface.
  */
 
+import { spawn } from "node:child_process";
 import {
   appendFileSync,
   existsSync,
@@ -477,7 +478,11 @@ export class Daemon {
   private agentSpokeAt = 0;
   eventsSeen = 0;
   /** when the user was last here and last greeted; on disk so a restart keeps it */
-  presence = { seen: 0, greeted: 0 };
+  presence = { seen: 0, greeted: 0, briefed: "" };
+  /** the calendar as the desk last read it; "" until it has */
+  agenda = { text: "", at: 0 };
+  /** the user was heard first thing and is owed the morning brief in the reply */
+  private morningDue = 0;
   private presenceTimer: NodeJS.Timeout | null = null;
   /** the user just came back and this is the first thing they said; the reply says hello */
   private returned: { after: number; at: number } | null = null;
@@ -810,6 +815,7 @@ export class Daemon {
   private enqueuePermission(p: PendingPermission): void {
     if (!this.pending) this.pending = p;
     else this.queued.push(p);
+    this.notify(`${p.repo} is waiting on you`, p.text || "a permission question", true);
   }
 
   /** The next question in line becomes the one being asked, and may be spoken. */
@@ -1426,6 +1432,11 @@ export class Daemon {
         break;
       }
       case "desk": {
+        // Today's and tomorrow's calendar is already at hand: Kik answers.
+        if (this.agendaAnswers(clean)) {
+          this.respond(d, clean, record);
+          return;
+        }
         // The user's accounts, through the desk session: the whole sentence,
         // since "what's on my calendar tomorrow" has no job to cut out of it.
         const r = this.startAgent("desk", spokenRest(clean, d.text));
@@ -1803,13 +1814,17 @@ export class Daemon {
   private presenceFile(): string {
     return path.join(HOME, "presence.json");
   }
-  private presenceFromDisk(): { seen: number; greeted: number } {
+  private presenceFromDisk(): { seen: number; greeted: number; briefed: string } {
     try {
-      if (!existsSync(this.presenceFile())) return { seen: 0, greeted: 0 };
+      if (!existsSync(this.presenceFile())) return { seen: 0, greeted: 0, briefed: "" };
       const p = JSON.parse(readFileSync(this.presenceFile(), "utf8")) as Record<string, unknown>;
-      return { seen: Number(p.seen) || 0, greeted: Number(p.greeted) || 0 };
+      return {
+        seen: Number(p.seen) || 0,
+        greeted: Number(p.greeted) || 0,
+        briefed: String(p.briefed ?? ""),
+      };
     } catch {
-      return { seen: 0, greeted: 0 };
+      return { seen: 0, greeted: 0, briefed: "" };
     }
   }
   private savePresenceSoon(): void {
@@ -1834,9 +1849,29 @@ export class Daemon {
    */
   private arrived(addressed: boolean): void {
     const now = Date.now();
-    const gap = this.presence.seen ? now - this.presence.seen : 0;
+    const before = this.presence.seen;
+    const gap = before ? now - before : 0;
     this.presence.seen = now;
     this.savePresenceSoon();
+    // The first time the user is heard on a morning, having last been heard
+    // on an earlier day: the day in brief, once.
+    const today = new Date(now).toDateString();
+    const hour = new Date(now).getHours();
+    if (
+      this.settings.morning_brief !== false &&
+      before > 0 &&
+      new Date(before).toDateString() !== today &&
+      this.presence.briefed !== today &&
+      hour >= 5 &&
+      hour < 13 &&
+      this.brain()
+    ) {
+      this.presence.briefed = today;
+      this.presence.greeted = now;
+      if (addressed) this.morningDue = now;
+      else void this.morning();
+      return;
+    }
     if (gap < AWAY_MS || now - this.presence.greeted < AWAY_MS) return;
     if (!this.settings.brain_greets || !this.brain()) return;
     this.presence.greeted = now;
@@ -1845,6 +1880,158 @@ export class Daemon {
       return;
     }
     void this.greet(gap);
+  }
+
+  /**
+   * What the day holds and what is still open, as facts for Kik to say:
+   * the calendar the desk read, reminders, what the agents were told, and
+   * (at the end of the day) what got made. Never invented: only what is here.
+   */
+  dayFacts(kind: "morning" | "wrap"): string {
+    const out: string[] = [];
+    const now = Date.now();
+    if (this.agenda.text)
+      out.push(`Calendar (read ${describeGap(now - this.agenda.at)} ago): ${this.agenda.text}`);
+    else out.push("The calendar has not been read yet.");
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    const today = this.reminders.list().filter((r) => r.at <= end.getTime());
+    if (today.length)
+      out.push(`Reminders today: ${today.map((r) => `${r.text} ${whenSaid(r.at)}`).join("; ")}.`);
+    const told = this.toldLine();
+    if (told) out.push(told);
+    const running = this.tracker.brief();
+    if (running) out.push(running);
+    if (this.instructions.length)
+      out.push(
+        `Still waiting to be passed on: ${this.instructions.map((i) => `${i.repo}: ${i.text}`).join("; ")}.`,
+      );
+    if (kind === "wrap") {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      const made = this.board
+        .list()
+        .filter((p) => p.created * 1000 >= start.getTime() && p.stream === "work");
+      const diffs = made.filter((p) => p.kind === "diff").length;
+      const runs = made.filter((p) => p.kind === "run").length;
+      if (made.length)
+        out.push(
+          `Work today still on the canvas: ${diffs} changes, ${runs} runs; the latest: ${made
+            .slice(-4)
+            .map((p) => p.title)
+            .join("; ")}.`,
+        );
+      const tomorrow = /tomorrow[^.]*\./i.exec(this.agenda.text)?.[0];
+      if (tomorrow) out.push(`Tomorrow: ${tomorrow}`);
+    }
+    return out.join("\n");
+  }
+
+  /** The morning brief, said on its own when the user is first heard today. */
+  private async morning(): Promise<void> {
+    const brain = this.brain();
+    if (!brain) return;
+    try {
+      const said = await brain.compose(
+        `It is the user's first moment at the desk today. Give them the day in brief, the way a good assistant would walking in with a coffee: good morning, then what is on the calendar today, any reminder due, and anything left open from yesterday. At most three short sentences, spoken. Use only these facts; if there is nothing, say it looks clear.\n\n${this.dayFacts("morning")}`,
+        this.brainSystem(),
+      );
+      if (!said || said.trim() === "-") return;
+      log("morning brief");
+      this.say(said, ev.SEV_MILESTONE, "head");
+      this.openWindow("", said);
+    } catch (err) {
+      log(`morning brief failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * The calendar, read by the desk in the background, so "what's on today?"
+   * is answered in a second instead of a desk session's half minute. A
+   * one-off `claude -p` in the desk folder: its own permissions (reading
+   * only needs no question), no hooks so nothing is narrated or pinned, and
+   * no session left behind.
+   */
+  async refreshAgenda(): Promise<void> {
+    if (this.settings.agenda === false || !this.settings.agents) return;
+    const bin = this.agents.bin();
+    // a .cmd shim needs a shell, which would mangle the settings JSON
+    if (!bin || /\.(cmd|bat)$/i.test(bin)) return;
+    const desk = path.join(HOME, "desk");
+    if (!existsSync(desk)) return;
+    const prompt =
+      "Read my Google Calendar: every event today and tomorrow, all calendars. Answer in plain text only, one line per day, like: Today: 10:00 Standup; 14:30 Call with Sam (Zoom). Tomorrow: nothing. Times in my local time. Read only; change nothing. If the calendar cannot be reached, answer exactly: unavailable";
+    const text = await new Promise<string>((resolve) => {
+      let out = "";
+      const child = spawn(
+        bin,
+        [
+          "-p",
+          "--model",
+          "claude-sonnet-5",
+          "--no-session-persistence",
+          "--settings",
+          JSON.stringify({ disableAllHooks: true }),
+          prompt,
+        ],
+        { cwd: desk, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      const timer = setTimeout(() => child.kill(), 180_000);
+      child.stdout?.on("data", (d: Buffer) => {
+        out += String(d);
+      });
+      child.on("error", () => resolve(""));
+      child.on("exit", () => {
+        clearTimeout(timer);
+        resolve(out.trim());
+      });
+    });
+    if (!text || /^unavailable/i.test(text) || text.length > 3000) {
+      log(`agenda: not read (${text ? text.slice(0, 80) : "no answer"})`);
+      return;
+    }
+    // the days only; the model likes to add a friendly line after them
+    const days = text.split(/\r?\n/).filter((l) => /^\s*(today|tomorrow)\b/i.test(l));
+    const agenda = (days.length ? days : [text]).join(" ").replace(/\s+/g, " ").trim();
+    this.agenda = { text: agenda, at: Date.now() };
+    try {
+      writeFileSync(path.join(HOME, "agenda.json"), JSON.stringify(this.agenda));
+    } catch {
+      /* the next hour writes it again */
+    }
+    log(`agenda: read (${this.agenda.text.length} chars)`);
+  }
+
+  /** The calendar is fresh enough to answer from, without asking the desk. */
+  agendaAnswers(said: string): boolean {
+    if (!this.agenda.text || Date.now() - this.agenda.at > 2 * 3600_000) return false;
+    return (
+      /\b(what'?s on|calendar|schedule|agenda|meetings?|am i free|busy)\b/i.test(said) &&
+      !/\b(add|create|make|book|move|reschedule|cancel|delete|invite|put)\b/i.test(said) &&
+      !/\b(next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(said)
+    );
+  }
+
+  /**
+   * A push to the user's phone, locked or not, through their private ntfy
+   * topic: what waits on them (a question) or was due (a reminder). Off
+   * unless a topic is set. Only the line itself is sent, never a key.
+   */
+  notify(title: string, body: string, urgent = false): void {
+    const topic = (this.settings.push_topic ?? "").trim();
+    if (!/^[\w-]{8,64}$/.test(topic)) return;
+    void this.fetchImpl(`https://ntfy.sh/${topic}`, {
+      method: "POST",
+      body: body.slice(0, 300),
+      headers: {
+        Title: title.replace(/[^\x20-\x7e]/g, "").slice(0, 80),
+        Priority: urgent ? "high" : "default",
+        Tags: urgent ? "question" : "bell",
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+      .then((r) => log(`push: ${title} (${r.status})`))
+      .catch((e) => log(`push failed: ${(e as Error).message}`));
   }
 
   private async greet(gap: number): Promise<void> {
@@ -2496,6 +2683,7 @@ export class Daemon {
         : `Reminder: ${r.text}.${late ? " It came due while I was off." : ""}`;
       log(`reminder ${r.id}${late ? " late" : ""}: ${r.text}`);
       this.say(line, ev.SEV_ATTENTION, "head");
+      this.notify(r.timer ? "Time's up" : "Reminder", r.text || line);
       const pin = this.board.add({
         kind: "text",
         title: r.timer ? "timer" : "reminder",
@@ -2816,6 +3004,15 @@ export class Daemon {
     // What the agents were asked, so "what did I tell it?" has an answer.
     const told = this.toldLine();
     if (told) lines.push(told);
+    // The calendar, so "what's on today?" is answered from here.
+    if (this.agenda.text)
+      lines.push(
+        `The user's calendar, as the desk read it ${describeGap(Date.now() - this.agenda.at)} ago (answer calendar questions from this; for other days or changes, use the desk): ${this.agenda.text}`,
+      );
+    if (this.morningDue && Date.now() - this.morningDue < 60_000)
+      lines.push(
+        `This is the first thing the user has said today. Answer them, then in a sentence or two give the day in brief from these facts only:\n${this.dayFacts("morning")}`,
+      );
     // What is coming, so "what did I ask you to remind me about?" needs no tool.
     const coming = this.reminders.list().slice(0, 5);
     if (coming.length)
@@ -3288,6 +3485,17 @@ export class Daemon {
           if (at) return this.remindFrom(`at ${at}${text ? ` to ${text}` : ""}`);
           return "when? give in_minutes or at";
         },
+      },
+      {
+        name: "day_brief",
+        description:
+          "The facts for a brief of the day: 'morning' for what is ahead (calendar, reminders, what was left open), 'wrap' for the end of the day (what got done, what is still open, tomorrow). Say it in two or three sentences; never add a fact that is not in it.",
+        input_schema: {
+          type: "object",
+          properties: { kind: { type: "string", enum: ["morning", "wrap"] } },
+          required: ["kind"],
+        },
+        run: (i) => this.dayFacts(i.kind === "wrap" ? "wrap" : "morning"),
       },
       {
         name: "look_up",
@@ -4368,6 +4576,21 @@ export class Daemon {
       }, 60_000),
     );
     if (this.settings.usage) this.usage.start();
+    // The calendar: from disk at once, then read fresh shortly after start and
+    // every hour, in the background.
+    try {
+      const a = JSON.parse(readFileSync(path.join(HOME, "agenda.json"), "utf8")) as {
+        text?: string;
+        at?: number;
+      };
+      if (a.text && a.at && new Date(a.at).toDateString() === new Date().toDateString())
+        this.agenda = { text: a.text, at: a.at };
+    } catch {
+      /* none yet */
+    }
+    const first = setTimeout(() => void this.refreshAgenda(), 30_000);
+    first.unref();
+    this.timers.push(setInterval(() => void this.refreshAgenda(), 3600_000));
     log(`listening on 127.0.0.1:${port}, speaker ${this.speaker.info().device}`);
     // the first sentence of the day should not be the one that pays the handshake
     this.jev()?.warm();

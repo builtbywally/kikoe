@@ -127,6 +127,16 @@ export interface Settings {
    * always is.
    */
   hands: boolean;
+  /**
+   * A private ntfy.sh topic for a locked phone: reminders and questions that
+   * wait on the user are pushed there. Empty is off. Anyone who knows the
+   * topic can read it, so it should be long and unguessable.
+   */
+  push_topic: string;
+  /** keep today's and tomorrow's calendar at hand, read by the desk each hour */
+  agenda: boolean;
+  /** the first time the user is heard in a morning, Kik gives the day in brief */
+  morning_brief: boolean;
   /** rings on the island for what is left of each assistant's limit */
   usage: boolean;
   /** providers switched off by hand; a listed id is never read at all */
@@ -177,6 +187,9 @@ export const DEFAULTS: Settings = {
   agent_model: "claude-opus-5-5",
   deep_model: "claude-fable-5-1",
   hands: false,
+  push_topic: "",
+  agenda: true,
+  morning_brief: true,
   usage: true,
   usage_off: [],
 };

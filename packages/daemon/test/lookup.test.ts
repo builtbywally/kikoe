@@ -97,3 +97,66 @@ describe("a work card by voice", () => {
     await d.close();
   });
 });
+
+describe("the day, in brief", () => {
+  const rig = (extra: Record<string, unknown> = {}) => {
+    const posts: { url: string; body: string; title: string }[] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      posts.push({
+        url: String(u),
+        body: String(init?.body ?? ""),
+        title: String((init?.headers as Record<string, string>)?.Title ?? ""),
+      });
+      return new Response("", { status: 200 });
+    }) as typeof fetch;
+    const d = new dmod.Daemon({
+      settings: { ...cfg.DEFAULTS, tts: "none", port: 0, ...extra },
+      audio: false,
+      persistBoard: false,
+      fetchImpl: f,
+    });
+    return { d, posts };
+  };
+
+  it("answers what's on today from the calendar it holds, and asks the desk for the rest", async () => {
+    const { d } = rig();
+    expect(d.agendaAnswers("what's on today")).toBe(false);
+    d.agenda = { text: "Today: 10:00 Standup. Tomorrow: nothing.", at: Date.now() };
+    expect(d.agendaAnswers("what's on my calendar today")).toBe(true);
+    expect(d.agendaAnswers("am I free this afternoon")).toBe(true);
+    expect(d.agendaAnswers("move my standup to 11")).toBe(false);
+    expect(d.agendaAnswers("what's on next week")).toBe(false);
+    d.agenda.at = Date.now() - 3 * 3600_000;
+    expect(d.agendaAnswers("what's on today")).toBe(false);
+    await d.close();
+  });
+
+  it("gives only the facts it has", async () => {
+    const { d } = rig();
+    d.agenda = { text: "Today: 10:00 Standup. Tomorrow: 9:00 Dentist.", at: Date.now() };
+    const morning = d.dayFacts("morning");
+    expect(morning).toContain("10:00 Standup");
+    d.board.add({ kind: "diff", title: "api.ts +4 -1", body: "x", repo: "kikoe", stream: "work" });
+    const wrap = d.dayFacts("wrap");
+    expect(wrap).toContain("1 changes");
+    expect(wrap).toContain("Tomorrow: 9:00 Dentist");
+    await d.close();
+  });
+
+  it("pushes to a locked phone only when a topic is set", async () => {
+    const off = rig();
+    off.d.notify("Reminder", "call the printer");
+    expect(off.posts).toHaveLength(0);
+    await off.d.close();
+    const on = rig({ push_topic: "kik-7f3a9c2e1b" });
+    on.d.notify("Reminder", "call the printer");
+    expect(on.posts[0]?.url).toBe("https://ntfy.sh/kik-7f3a9c2e1b");
+    expect(on.posts[0]?.body).toBe("call the printer");
+    // a topic that could be a path is not a topic
+    const bad = rig({ push_topic: "../../etc" });
+    bad.d.notify("x", "y");
+    expect(bad.posts).toHaveLength(0);
+    await on.d.close();
+    await bad.d.close();
+  });
+});

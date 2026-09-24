@@ -479,7 +479,13 @@ describe("memory", () => {
 
 describe("presence and the inner thread", () => {
   const settings = () =>
-    ({ ...config.DEFAULTS, tts: "none", brain: true, mic: false }) as typeof config.DEFAULTS;
+    ({
+      ...config.DEFAULTS,
+      tts: "none",
+      brain: true,
+      mic: false,
+      morning_brief: false,
+    }) as typeof config.DEFAULTS;
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   it("rewrites its inner note after an exchange and thinks from it next time", async () => {

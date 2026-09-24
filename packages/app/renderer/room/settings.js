@@ -243,6 +243,9 @@
     $("jev").checked = s.jev !== false;
     $("pc").checked = s.pc !== false;
     $("hands").checked = s.hands === true;
+    $("morning-brief").checked = s.morning_brief !== false;
+    $("agenda").checked = s.agenda !== false;
+    $("push-topic").value = s.push_topic || "";
     $("artifact-model").value = s.artifact_model || "claude-opus-5-5";
     $("anthropic-key").placeholder = info.hasAnthropicKey
       ? "key saved in the keychain (paste to replace)"
@@ -591,6 +594,9 @@
       jev: $("jev").checked,
       pc: $("pc").checked,
       hands: $("hands").checked,
+      morning_brief: $("morning-brief").checked,
+      agenda: $("agenda").checked,
+      push_topic: $("push-topic").value.trim(),
       artifact_model: $("artifact-model").value,
     };
     if (key) patch.anthropicKey = key;
