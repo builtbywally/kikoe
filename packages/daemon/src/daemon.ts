@@ -265,6 +265,35 @@ export function collapseRepeats(text: string): string {
   return words.join(" ");
 }
 
+/**
+ * A clip too long for Whisper, cut into pieces of at most `maxS` seconds at
+ * the quietest stretch near each limit (between 60% and 100% of it), so a
+ * cut falls between words. A clip that fits is returned whole.
+ */
+export function splitAtQuiet(pcm: Int16Array, rate: number, maxS = 25): Int16Array[] {
+  const max = Math.floor(rate * maxS);
+  if (pcm.length <= max) return [pcm];
+  const win = Math.floor(rate * 0.1);
+  const out: Int16Array[] = [];
+  let start = 0;
+  while (pcm.length - start > max) {
+    let best = start + max;
+    let quietest = Number.POSITIVE_INFINITY;
+    for (let at = start + Math.floor(max * 0.6); at + win <= start + max; at += win) {
+      let e = 0;
+      for (let i = at; i < at + win; i++) e += Math.abs(pcm[i] ?? 0);
+      if (e < quietest) {
+        quietest = e;
+        best = at + Math.floor(win / 2);
+      }
+    }
+    out.push(pcm.subarray(start, best));
+    start = best;
+  }
+  out.push(pcm.subarray(start));
+  return out;
+}
+
 /** The site an address belongs to: "youtube.com" for the site and its player alike. */
 export function siteOf(url: string): string {
   try {
@@ -1314,6 +1343,22 @@ export class Daemon {
     await this.carryOut(c, clean, d, record);
   }
 
+  /**
+   * What each agent was last asked, by project. "What number did you
+   * remember?" went to Kik, who could not know: only the agent it was told
+   * to could. This is the line that lets Jev and Kik see who knows what.
+   */
+  private told = new Map<string, { text: string; at: number }>();
+  toldLine(): string {
+    const recent = [...this.told.entries()]
+      .filter(([, t]) => Date.now() - t.at < 12 * 3600_000)
+      .sort((a, b) => b[1].at - a[1].at)
+      .slice(0, 3);
+    return recent
+      .map(([p, t]) => `The agent in ${p} was last told: "${t.text.slice(0, 160)}".`)
+      .join(" ");
+  }
+
   /** What Jev is told beside the sentence: the projects, what is running, the last exchange. */
   private commandContext() {
     const current = this.projects.current.name;
@@ -1326,7 +1371,7 @@ export class Daemon {
           .filter((n) => n !== current),
       ],
       current,
-      running: this.tracker.brief(),
+      running: [this.tracker.brief(), this.toldLine()].filter(Boolean).join(" "),
       last: this.lastExchange.at
         ? `User: ${this.lastExchange.you} | Kik: ${this.lastExchange.kik}`
         : "",
@@ -2394,7 +2439,13 @@ export class Daemon {
     // the handshake happens while Whisper listens, not after it
     this.jev()?.warm();
     const t0 = Date.now();
-    const text = (await this.transcribe(pcm)).trim();
+    // Whisper hears about thirty seconds at a time; a longer clip lost its
+    // end. It is cut at its quietest moments and heard piece by piece.
+    const parts = splitAtQuiet(pcm, 16000);
+    const heard: string[] = [];
+    for (const part of parts) heard.push((await this.transcribe(part)).trim());
+    const text = heard.filter(Boolean).join(" ").trim();
+    if (parts.length > 1) log(`walkie: a long clip, heard in ${parts.length} pieces`);
     log(`walkie: heard "${text}" in ${Date.now() - t0} ms`);
     if (!text) {
       this.hub.publish("mic", { phase: "idle" });
@@ -2748,6 +2799,9 @@ export class Daemon {
         );
       }
     }
+    // What the agents were asked, so "what did I tell it?" has an answer.
+    const told = this.toldLine();
+    if (told) lines.push(told);
     // What is coming, so "what did I ask you to remind me about?" needs no tool.
     const coming = this.reminders.list().slice(0, 5);
     if (coming.length)
@@ -3452,6 +3506,7 @@ export class Daemon {
       return said;
     }
     this.instructions.push({ repo: target, text, at: Date.now() });
+    this.told.set(target, { text, at: Date.now() });
     const when = s?.status === "working" ? "when its turn ends" : "with the user's next prompt";
     log(`instruction queued for ${target}: ${text}`);
     return `queued for ${target}; it gets it ${when}`;
@@ -3491,6 +3546,7 @@ export class Daemon {
     // Opus for the work, Fable for what Jev judged hard (the user, 2026-09-24)
     const model = opts.hard ? this.settings.deep_model : this.settings.agent_model;
     const { ok, said } = this.agents.start(project.id, cwd, task, session, fresh, model);
+    if (ok) this.told.set(project.name, { text: task, at: Date.now() });
     if (ok) this.saveProjects();
     if (ok) {
       // Show it happening: the board the work will land on is the one to be

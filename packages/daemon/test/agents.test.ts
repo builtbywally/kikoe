@@ -180,6 +180,22 @@ describe("acting on a card", () => {
     await d.close();
   });
 
+  it('remembers what the agent was told, so "what did I tell it?" has an answer', async () => {
+    const d = daemon();
+    const pin = d.board.add({
+      kind: "run",
+      title: "pnpm test",
+      body: "$ pnpm test\n\n18 passed, 2 failed",
+      repo: "kikoe",
+      stream: "work",
+    });
+    d.actOnPin(pin.id, "again");
+    const line = d.toldLine();
+    expect(line).toContain("kikoe");
+    expect(line).toContain("pnpm test");
+    await d.close();
+  });
+
   it("will not start an agent when the setting is off", async () => {
     const d = new dmod.Daemon({
       settings: { ...config.DEFAULTS, tts: "none", port: 0, agents: false },
@@ -194,5 +210,28 @@ describe("acting on a card", () => {
     const d = daemon();
     expect(d.startAgent("", "   ")).toMatch(/what it should do/);
     await d.close();
+  });
+});
+
+describe("a long phone clip", () => {
+  const rate = 16000;
+  const loud = (n: number) => Int16Array.from({ length: n }, (_, i) => (i % 2 ? 8000 : -8000));
+  it("is heard whole when it is short", () => {
+    const pcm = loud(rate * 10);
+    const parts = dmod.splitAtQuiet(pcm, rate);
+    expect(parts).toHaveLength(1);
+    expect(parts[0].length).toBe(pcm.length);
+  });
+  it("is cut at a pause, not mid-word", () => {
+    // 20 s of talk, half a second of quiet, 20 s of talk
+    const pcm = new Int16Array(rate * 40.5);
+    pcm.set(loud(rate * 20), 0);
+    pcm.set(loud(rate * 20), rate * 20.5);
+    const parts = dmod.splitAtQuiet(pcm, rate);
+    expect(parts.length).toBeGreaterThan(1);
+    const cut = parts[0].length / rate;
+    expect(cut).toBeGreaterThanOrEqual(20);
+    expect(cut).toBeLessThanOrEqual(20.5);
+    expect(parts.reduce((n, p) => n + p.length, 0)).toBe(pcm.length);
   });
 });
