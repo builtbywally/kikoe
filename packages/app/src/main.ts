@@ -9,6 +9,7 @@
  *   └── settings    voice, hooks, sessions, doctor; also the first-run flow
  */
 
+import { execFile } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -22,6 +23,7 @@ import {
   WHISPER_BASE,
   WHISPER_TINY,
   anthropicKeyFromFile,
+  crashSource,
   elevenKeyFromFile,
   fetchModel,
   fetchVad,
@@ -170,22 +172,71 @@ async function restartDaemon(reason = "settings"): Promise<void> {
 
 /**
  * A daemon exception is not an app crash. Log it, count it, restart the
- * daemon in place, show it in doctor. Two crashes in a minute stop the
- * retry so a broken machine does not loop the speaker.
+ * daemon in place, show it in doctor. Three crashes in a minute stop the
+ * quick retries so a broken machine does not loop the speaker.
+ *
+ * Gate 2 of docs/OS.md: giving up used to be a line in a log file, the one
+ * moment the user most needed telling; and every uncaught error in the
+ * process restarted the daemon, the app's own included. Now an app error is
+ * logged and left alone, and a daemon that gives up says so — through the
+ * system voice, since its own is the thing that stopped — shows a
+ * notification that restarts it, and tries once more a minute later.
  */
 let crashTimes: number[] = [];
+let cooling: NodeJS.Timeout | null = null;
 function onCrash(kind: string, err: unknown): void {
   const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  lastCrash = `${new Date().toISOString()} ${kind}: ${msg.slice(0, 400)}`;
-  log(`CRASH ${kind}: ${msg}`);
+  const source = crashSource(err);
+  lastCrash = `${new Date().toISOString()} ${kind} (${source}): ${msg.slice(0, 400)}`;
+  log(`CRASH ${kind} in the ${source}: ${msg}`);
+  // The app's own mistake: restarting the daemon would not fix it, and would
+  // cut off whatever Kik was saying for nothing.
+  if (source === "app") return;
   const now = Date.now();
   crashTimes = crashTimes.filter((t) => now - t < 60_000);
   crashTimes.push(now);
   if (crashTimes.length > 2) {
-    log("too many crashes in a minute; leaving the daemon down");
+    log("too many crashes in a minute; the daemon is down, trying again in a minute");
+    daemonDown();
+    if (!cooling)
+      cooling = setTimeout(() => {
+        cooling = null;
+        crashTimes = [];
+        void restartDaemon("after cooling off");
+      }, 60_000);
     return;
   }
   void restartDaemon("crash");
+}
+
+/** Say and show that Kikoe has stopped, without the daemon that stopped. */
+function daemonDown(): void {
+  const line = "Kikoe has stopped working. I'll try again in a minute.";
+  if (Notification.isSupported()) {
+    const n = new Notification({
+      title: "Kikoe stopped",
+      body: "It crashed three times in a minute. Click to start it now.",
+    });
+    n.on("click", () => {
+      crashTimes = [];
+      void restartDaemon("from the notification");
+    });
+    n.show();
+  }
+  if (noAudio) return;
+  // A fixed sentence, no user text: nothing here needs quoting beyond this.
+  if (process.platform === "win32")
+    execFile(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('${line.replace(/'/g, "''")}')`,
+      ],
+      { windowsHide: true },
+      () => {},
+    );
+  else if (process.platform === "darwin") execFile("say", [line], () => {});
 }
 process.on("uncaughtException", (e) => onCrash("uncaughtException", e));
 process.on("unhandledRejection", (e) => onCrash("unhandledRejection", e));

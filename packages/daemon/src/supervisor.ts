@@ -16,6 +16,22 @@
  *    you"), and once more when it is back, if it had said anything.
  */
 
+/**
+ * Whose fault an uncaught error was: the daemon's (it and core run inside
+ * the app's main process) or the app's own. The app used to restart the
+ * daemon for every uncaught error in the process, including its own, and to
+ * count them all towards giving up. `docs/OS.md`, gate 2.
+ */
+export function crashSource(err: unknown): "daemon" | "app" {
+  const stack = err instanceof Error ? (err.stack ?? "") : String(err);
+  // the first frame that is ours decides; node's own frames come first sometimes
+  for (const line of stack.split("\n").slice(1)) {
+    if (/[\\/](daemon|core)[\\/](dist|src)[\\/]/.test(line)) return "daemon";
+    if (/[\\/]app[\\/](dist|src)[\\/]/.test(line)) return "app";
+  }
+  return "daemon";
+}
+
 export interface SupervisorOptions {
   /** what is being kept up, for the log and the lines Kik says */
   name: string;

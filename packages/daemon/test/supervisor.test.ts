@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { Supervisor } from "../src/supervisor.js";
+import { Supervisor, crashSource } from "../src/supervisor.js";
+
+describe("whose crash it was", () => {
+  const at = (frames: string[]) => {
+    const e = new Error("boom");
+    e.stack = ["Error: boom", ...frames.map((f) => `    at x (${f}:1:1)`)].join("\n");
+    return e;
+  };
+  it("names the daemon when its code threw, from source or installed", () => {
+    expect(crashSource(at(["C:\\k\\packages\\daemon\\dist\\daemon.js"]))).toBe("daemon");
+    expect(
+      crashSource(
+        at(["C:\\P\\kikoe\\resources\\app\\node_modules\\@kikoe\\core\\dist\\arbiter.js"]),
+      ),
+    ).toBe("daemon");
+  });
+  it("names the app when its own code threw", () => {
+    expect(crashSource(at(["node:internal/x", "C:\\k\\packages\\app\\dist\\main.js"]))).toBe("app");
+  });
+  it("blames the daemon when it cannot tell, since restarting it is the safe answer", () => {
+    expect(crashSource("a string")).toBe("daemon");
+  });
+});
 
 /** A supervisor on a hand-turned clock, with every start and every line recorded. */
 function rig() {
