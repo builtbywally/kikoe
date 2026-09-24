@@ -1292,28 +1292,16 @@ body.paused .orb-mark {
   font: 12px var(--mono);
   color: var(--dim);
 }
-.tb-orb {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+/* the logo: こえ (brand/koe-paths.json), in paper, with the ember glow the
+   orb used to carry behind it */
+.tb-logo {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: radial-gradient(
-    circle at 36% 30%,
-    #f5f1ec 0%,
-    #edb893 18%,
-    #d2683f 48%,
-    #7a3a20 78%,
-    #2a1710 100%
-  );
-  box-shadow: 0 0 8px rgba(210, 104, 63, 0.35);
+  color: var(--paper);
+  filter: drop-shadow(0 0 6px rgba(210, 104, 63, 0.45));
 }
-.tb-orb svg {
-  stroke: #f5f1ec;
-  width: 11px;
-  height: 11px;
-  opacity: 0.85;
+.tb-logo svg {
+  display: block;
 }
 .tb-title {
   color: var(--paper);

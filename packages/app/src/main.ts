@@ -612,14 +612,18 @@ function syncIsland(): void {
 
 // --- tray -------------------------------------------------------------------
 
+// こえ, drawn for the size it is shown at (brand/make.mjs): the heavy cut on
+// its tile for Windows, black glyphs the menu bar tints on a Mac (its @2x
+// sibling is picked up by name). The 1024 app icon scaled to 18px lost the
+// strokes, so it is only the fallback.
 function trayIcon(): Electron.NativeImage {
-  const file = path.join(
-    RESOURCES,
-    "build",
-    process.platform === "darwin" ? "trayTemplate.png" : "icon.png",
-  );
-  const img = nativeImage.createFromPath(file);
-  return img.isEmpty() ? nativeImage.createEmpty() : img.resize({ width: 18, height: 18 });
+  const dir = path.join(RESOURCES, "build");
+  const file = path.join(dir, process.platform === "darwin" ? "trayTemplate.png" : "tray.png");
+  let img = nativeImage.createFromPath(file);
+  if (img.isEmpty()) img = nativeImage.createFromPath(path.join(dir, "icon.png"));
+  if (img.isEmpty()) return nativeImage.createEmpty();
+  if (process.platform === "darwin") img.setTemplateImage(true);
+  return img.resize({ width: 18, height: 18, quality: "best" });
 }
 
 function updateTrayTitle(text: string): void {

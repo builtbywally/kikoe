@@ -17,7 +17,7 @@ extraResources:
     to: models
   - from: build
     to: build
-    filter: ["icon.png", "trayTemplate.png"]
+    filter: ["icon.png", "tray.png", "trayTemplate.png", "trayTemplate@2x.png"]
 # No asar archive. Electron treats an .asar as a folder, and any Electron app
 # that reads into one (Orca did, 2026-09-24) holds the file open until it
 # quits; the uninstaller then cannot move it, and every update fails with
