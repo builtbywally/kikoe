@@ -55,7 +55,9 @@ import {
   viewerToken,
   walkieToken,
 } from "./config.js";
+import { ensureDesk, trustDesk } from "./desk.js";
 import { Hands } from "./hands.js";
+import { claudeDir } from "./hooks.js";
 import { Hub } from "./hub.js";
 import {
   type Command,
@@ -529,6 +531,18 @@ export class Daemon {
     if (this.persistBoard) {
       this.loadProjects();
       this.loadBoard();
+      // the desk: Kik's own session for the user's accounts (desk.ts), a
+      // project like any other, its permissions rewritten on every start
+      try {
+        const desk = ensureDesk(HOME);
+        this.projects.ensure("desk", desk);
+        // beside the Claude directory, so a test's KIKOE_CLAUDE_DIR keeps it
+        // away from the real ~/.claude.json
+        const trust = trustDesk(desk, path.join(path.dirname(claudeDir()), ".claude.json"));
+        if (trust === "trusted") log("desk: marked trusted in Claude Code, so its hooks run");
+      } catch (e) {
+        log(`desk: could not make it: ${(e as Error).message}`);
+      }
     }
     this.agents = new Agents({ bin: this.settings.claude_bin, log });
     this.work = new Work({
@@ -1345,6 +1359,17 @@ export class Daemon {
       case "canvas": {
         const rest = spokenRest(clean, d.text);
         said = sentence(await this.showOnCanvas(siteSearch(c.url, rest), searchQuery(rest)));
+        break;
+      }
+      case "desk": {
+        // The user's accounts, through the desk session: the whole sentence,
+        // since "what's on my calendar tomorrow" has no job to cut out of it.
+        const r = this.startAgent("desk", spokenRest(clean, d.text));
+        said = /^(started|passed)/.test(r)
+          ? "On it. I'll tell you what I find."
+          : /already has an agent running/.test(r)
+            ? sentence(this.instruct(spokenRest(clean, d.text), "desk"))
+            : sentence(r);
         break;
       }
       case "think": {

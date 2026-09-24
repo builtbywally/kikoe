@@ -43,7 +43,15 @@ export interface Choice {
 type Answer = Noul | Choice;
 
 /** What to do with an addressed sentence. */
-export type Action = "kik" | "think" | "agent" | "new_session" | "open" | "canvas" | "stop_agent";
+export type Action =
+  | "kik"
+  | "think"
+  | "agent"
+  | "new_session"
+  | "open"
+  | "canvas"
+  | "stop_agent"
+  | "desk";
 /** What can be opened on the PC. A fixed list: Jev picks, it never names a program. */
 export type Opener = "vscode" | "explorer" | "terminal" | "browser" | "website" | "app";
 
@@ -498,6 +506,7 @@ export class Jev {
           canvas:
             "the user asks to show or open a website or web app on the canvas, the board, or 'here' in the Room where they are looking",
           stop_agent: "the user asks to stop, kill or cancel the running agent",
+          desk: "the user's own accounts and day: their email and inbox, their calendar, meetings and free time, files in their Google Drive, Claude Docs, and designs or posts for Dolma — reading, finding, summarising, drafting a reply, booking something",
         },
       },
       task: {

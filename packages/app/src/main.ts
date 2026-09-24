@@ -149,6 +149,8 @@ async function startDaemon(): Promise<void> {
   // The phone speaks through the ear that is already loaded.
   daemon.transcribe = transcribeWithEar;
   daemon.onMicReady = () => earKeeper.ready();
+  keepHooks();
+  if (!hooksTimer) hooksTimer = setInterval(keepHooks, 5 * 60_000);
   // The phone's voice settings: what Kik says aloud, which engine, which
   // voice. The same save and swap the Settings page does, for these alone.
   daemon.phoneVoice = {
@@ -271,6 +273,45 @@ function daemonDown(): void {
 }
 process.on("uncaughtException", (e) => onCrash("uncaughtException", e));
 process.on("unhandledRejection", (e) => onCrash("unhandledRejection", e));
+
+/**
+ * Kikoe's hooks, kept in place. Found 2026-09-24: another tool rewrote
+ * ~/.claude/settings.json the day before and every one of Kikoe's hooks was
+ * gone, so for a day Kik heard nothing from any agent — no narration, no
+ * permission by voice, no cards — and nothing said so. Checked on start and
+ * every five minutes: if Kikoe was set up and its hooks are missing, they
+ * are put back beside whatever else is there (install() keeps other tools'
+ * hooks), and Kik says it once.
+ */
+let hooksRestored = false;
+let hooksTimer: NodeJS.Timeout | null = null;
+function keepHooks(): void {
+  if (!daemon || smoke || shotPath) return;
+  const s = loadSettings();
+  if (!s.onboarded) return;
+  const file = s.claude_settings || settingsPath();
+  try {
+    if (hookStatus(file).installed.length) return;
+    const r = installHooks({
+      profile: s.hook_profile,
+      file,
+      port: daemon.settings.port,
+      token: daemon.token,
+    });
+    log(
+      `hooks were missing from ${r.file}; put back (${r.events.length} events, backup ${r.backup})`,
+    );
+    if (!hooksRestored)
+      daemon.say(
+        "Something took my hooks out of Claude Code, so I couldn't hear the agents. I've put them back.",
+        3,
+        "head",
+      );
+    hooksRestored = true;
+  } catch (e) {
+    log(`hooks: could not check or restore: ${(e as Error).message}`);
+  }
+}
 
 /** Paused or silent, a permission still needs you: an OS notification carries it. */
 function toastIfQuiet(frame: Record<string, unknown>): void {
