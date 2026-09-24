@@ -981,3 +981,12 @@ Three causes, all fixed:
   phone the card world keeps its layer at rest too, and frosted cards are
   solid (backdrop blur per card per frame is the heaviest thing a phone's
   GPU does).
+- **Correction, the same evening**: the user's phone screenshot showed the
+  backdrop in its top third and black below a straight line — tiles the
+  phone's GPU dropped. The layer of its own for the backdrop, and the cards'
+  layer kept at rest, were the big textures it dropped them from (Chrome on
+  Android, 19 tabs open, several live pages on the canvas). On the phone the
+  backdrop is back in the page's own layer (always painted whole), the
+  cards' layer comes and goes with movement as on the desk, and card iframes
+  are `loading="lazy"`, so a live page far off screen costs nothing. The
+  desk keeps the backdrop layer. Not verified on the phone itself yet.

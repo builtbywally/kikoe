@@ -1500,11 +1500,13 @@ body[data-has-pins="true"] .line {
 html[data-phone="true"] .board {
   touch-action: none;
 }
-/* On a phone the cards keep a layer of their own at rest too: making and
-   dropping it around every swipe is the flicker a phone shows most, and text
-   is small enough at 3x that a zoomed raster does not go visibly soft. */
-html[data-phone="true"] .world {
-  will-change: transform;
+/* On a phone, as few big layers as possible. A layer of its own for the
+   backdrop (and one kept for the cards at rest) was tried on 2026-09-24 and
+   the phone, short of GPU memory, dropped tiles of it: the backdrop showed
+   in its top third and went black below a straight line. In the page's own
+   layer it is always painted whole. */
+html[data-phone="true"] .board[data-backdrop]::before {
+  will-change: auto;
 }
 /* Frosted glass re-blurs the backdrop behind every card on every frame, the
    heaviest thing a phone's GPU does; the phone gets the same card, solid. */

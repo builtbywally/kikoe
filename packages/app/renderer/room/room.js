@@ -481,6 +481,10 @@ function renderBody(pin) {
         "clipboard-read; clipboard-write; autoplay; encrypted-media; fullscreen; picture-in-picture",
       );
       f.setAttribute("allowfullscreen", "");
+      // A phone loads a page only near the screen: every live page is a whole
+      // browser tab's worth of memory, and a phone that runs short drops the
+      // tiles of what it is showing — the backdrop went black in bands.
+      if (document.documentElement.dataset.phone === "true") f.loading = "lazy";
       f.src = pin.body.trim();
       f.title = pin.title || pin.body;
       // On a phone a site may refuse to be shown inside the canvas (the desk
@@ -506,6 +510,7 @@ function renderBody(pin) {
       // (React, Tailwind, icons, charts from the allowlist). Its own
       // origin; it can never reach the Room.
       const f = document.createElement("iframe");
+      if (document.documentElement.dataset.phone === "true") f.loading = "lazy";
       const base = window.room.artifactBase;
       if (base) {
         f.setAttribute(
