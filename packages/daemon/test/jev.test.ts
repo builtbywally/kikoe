@@ -416,6 +416,34 @@ describe("the switchboard in the daemon", () => {
     await d2.close();
   });
 
+  it("while Kik speaks, 'yeah' carries on and a real interruption cuts in", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const { d } = daemon({}, { seen });
+    // Kik is mid-sentence
+    const a = d.arbiter as unknown as { state: () => { current: string } };
+    const real = a.state.bind(a);
+    a.state = () => ({ ...real(), current: "The tests are running, eighteen passed so far" });
+    const cut: string[] = [];
+    (d as unknown as { interrupt: () => void }).interrupt = () => cut.push("cut");
+    d.hear("yeah");
+    await tick();
+    expect(cut).toEqual([]);
+    expect(seen.some((b) => "interrupting" in (b.questions as object))).toBe(false);
+    // "which two are failing" is an interruption (the fake Jev says 0.9)
+    const f = d as unknown as { jevCache: unknown };
+    f.jevCache = new jev.Jev({
+      key: "k",
+      fetchImpl: (async () =>
+        new Response(
+          JSON.stringify({ answers: { interrupting: { type: "noul", noul: 0.93 } } }),
+        )) as typeof fetch,
+    });
+    d.hear("wait which two are failing");
+    await tick();
+    expect(cut).toEqual(["cut"]);
+    await d.close();
+  });
+
   it("knows when a sentence names the computer", () => {
     for (const t of [
       "pull up Chrome on my computer",

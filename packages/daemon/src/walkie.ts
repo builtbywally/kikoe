@@ -43,8 +43,16 @@ const COOKIE_DAYS = 180;
 export interface WalkieOptions {
   port: number;
   token: string;
-  /** raw 16 kHz mono PCM from the phone; resolves with what was heard */
-  onAudio: (pcm: Int16Array) => Promise<string> | string;
+  /**
+   * raw 16 kHz mono PCM from the phone; resolves with what was heard. `open`
+   * is a clip from the open mic rather than a held button.
+   */
+  onAudio: (pcm: Int16Array, open?: boolean) => Promise<string> | string;
+  /** Kik's voice settings, the one thing the phone may change */
+  onVoice?: {
+    get: () => Promise<unknown> | unknown;
+    set: (patch: VoicePatch) => Promise<unknown> | unknown;
+  };
   /**
    * The canvas on the phone: the daemon's loopback port and its *viewer*
    * token. The phone's reads are passed through with that token, so the
@@ -55,6 +63,27 @@ export interface WalkieOptions {
   /** a sentence typed on the phone; the same power as saying it */
   onText?: (text: string) => Promise<string> | string;
   log?: (line: string) => void;
+}
+
+/** A change to Kik's voice from the phone, and nothing else. */
+export interface VoicePatch {
+  narrate?: "silent" | "attention" | "normal" | "verbose";
+  tts?: "auto" | "eleven" | "piper" | "kokoro" | "system";
+  elevenlabs_voice?: string;
+}
+
+/** Keep only what the phone may change, and only values that mean something. */
+export function voicePatch(raw: Record<string, unknown>): VoicePatch {
+  const out: VoicePatch = {};
+  const n = String(raw.narrate ?? "");
+  if (["silent", "attention", "normal", "verbose"].includes(n))
+    out.narrate = n as NonNullable<VoicePatch["narrate"]>;
+  const t = String(raw.tts ?? "");
+  if (["auto", "eleven", "piper", "kokoro", "system"].includes(t))
+    out.tts = t as NonNullable<VoicePatch["tts"]>;
+  const v = String(raw.elevenlabs_voice ?? "");
+  if (/^[A-Za-z0-9]{8,40}$/.test(v)) out.elevenlabs_voice = v;
+  return out;
 }
 
 /** What the phone may read through us: the viewer's routes, and nothing that acts. */
@@ -380,6 +409,32 @@ export class Walkie {
       res.end(JSON.stringify({ ok: true, kind }));
       return;
     }
+    // Kik's voice, from the phone: how much it says, which engine, which
+    // voice. Only these; the phone's token can change nothing else.
+    if (url.pathname === "/phone/voice" && this.opts.onVoice) {
+      let out: unknown;
+      if (req.method === "POST") {
+        let raw = "";
+        for await (const c of req) {
+          raw += c;
+          if (raw.length > 2000) break;
+        }
+        let patch: Record<string, unknown> = {};
+        try {
+          patch = JSON.parse(raw || "{}");
+        } catch {
+          /* not json: an empty change */
+        }
+        out = await this.opts.onVoice.set(voicePatch(patch));
+      } else out = await this.opts.onVoice.get();
+      res.writeHead(200, {
+        ...headers,
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
+      res.end(JSON.stringify(out));
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/audio") {
       const chunks: Buffer[] = [];
       let size = 0;
@@ -400,10 +455,13 @@ export class Walkie {
       const buf = Buffer.concat(chunks);
       const pcm = new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 2));
       const seconds = pcm.length / WALKIE_RATE;
-      this.log(`walkie: ${seconds.toFixed(1)}s of audio`);
+      // A clip from the open mic was not a held button: it may not be for Kik
+      // at all, and is judged like anything the headset overhears.
+      const openMic = req.headers["x-kikoe-open"] === "1";
+      this.log(`walkie: ${seconds.toFixed(1)}s of audio${openMic ? " (open mic)" : ""}`);
       let heard = "";
       try {
-        heard = String(await this.opts.onAudio(pcm));
+        heard = String(await this.opts.onAudio(pcm, openMic));
       } catch (e) {
         this.log(`walkie: ${(e as Error).message}`);
       }

@@ -451,6 +451,32 @@ export class Jev {
     }
   }
 
+  /**
+   * Said while Kik was talking: is it an interruption — a question, a
+   * correction, "stop", something new for Kik — rather than agreeing,
+   * thinking aloud, or talking to someone else? The probability, or null if
+   * Jev could not be asked.
+   */
+  async interrupting(kikSaying: string, text: string): Promise<number | null> {
+    try {
+      const a = await this.ask(
+        { kik_is_saying: kikSaying.slice(0, 400), user_said: text },
+        {
+          interrupting: {
+            type: "noul",
+            instructions:
+              "Kik, a voice assistant, was in the middle of saying `kik_is_saying` when the user said `user_said` (transcribed by speech recognition). Is the user interrupting Kik — cutting in with a question, a correction, an instruction, or telling it to stop — rather than agreeing, murmuring, thinking aloud, or talking to someone else in the room?",
+          },
+        },
+      );
+      const n = a.interrupting;
+      return n?.type === "noul" ? n.noul : null;
+    } catch (e) {
+      this.log(`jev: interrupting failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
   /** What to do with an addressed sentence, or null if Jev could not be asked. */
   async command(text: string, ctx: CommandContext): Promise<Command | null> {
     const tasks = taskCandidates(text);

@@ -100,7 +100,7 @@ import {
 import { NO_TAILNET, type Tailnet, setServe, tailnetStatus } from "./tailnet.js";
 import { Ladder, type VoiceHint, loadedEngines, unloadIdleEngines } from "./tts.js";
 import { UsageStore, defaultProviders } from "./usage.js";
-import { Walkie } from "./walkie.js";
+import { type VoicePatch, Walkie } from "./walkie.js";
 import { Work } from "./work.js";
 
 const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
@@ -167,6 +167,12 @@ const AWAY_MS = 3600_000;
 /** the user putting Kik right; the reply takes it and the note records it */
 const CORRECTION =
   /^(no|nope|wrong|thats wrong|that is wrong|not that|not what i|i said|i didnt say|i did not say|i meant|actually i meant|actually i said|actually no|you misheard|you got that wrong|thats not)\b/;
+/**
+ * Listening noises, said while someone else talks: never an interruption.
+ * One or two words, no content (docs/HEARING.md, "backchannels").
+ */
+const BACKCHANNEL =
+  /^(yeah|yes|yep|yup|mm+|mhm+|hmm+|uh[- ]?huh|okay|ok|right|sure|cool|nice|got it|i see|go on|true|exactly|oh|ah)[.!,]*( (yeah|yes|okay|ok|right|sure))?[.!]*$/i;
 /** what Kik says while the model is still thinking */
 const FILLERS = ["Hm.", "One sec.", "Let me look.", "Mm."];
 /** One question handed to the thinking session. */
@@ -915,7 +921,7 @@ export class Daemon {
     };
     if (d.kind === "empty") return { kind: d.kind, intent: "" };
     if (d.kind === "overheard" && !opts.decided && this.grayZone()) {
-      void this.decideDirected(clean, meta);
+      void this.decideDirected(clean, meta, opts.via);
       return { kind: "deciding", intent: "" };
     }
     this.arrived(addressed);
@@ -1592,11 +1598,35 @@ export class Daemon {
   private async decideDirected(
     text: string,
     meta: { dur_s?: number; stt_ms?: number },
+    via?: "phone",
   ): Promise<void> {
     const brain = this.brain();
     let yes = false;
     let by = "nobody";
     let pre: Promise<Command | null> | undefined;
+    // While Kik is speaking, the question is not "was that for me" but "is
+    // that an interruption" (the user, 2026-09-24: with an open mic, "Jev
+    // needs to understand if I'm interrupting"). A backchannel — "yeah",
+    // "mm", "okay" — never is, and is not even asked about; anything else is
+    // Jev's to judge against the line being spoken.
+    const speaking = this.arbiter.state().current;
+    if (speaking) {
+      if (BACKCHANNEL.test(text.trim())) {
+        log(`heard a backchannel while Kik spoke; carrying on (${text.split(/\s+/).length} words)`);
+        return;
+      }
+      const p = (await this.jev()?.interrupting(speaking, text)) ?? null;
+      if (p !== null) {
+        // 0.7, not 0.5: on real sentences every interruption scored 0.91 or
+        // more, and "okay so where did I put my keys" 0.61. Cutting Kik off
+        // for nothing costs more than hearing it finish.
+        log(`interrupting? ${p >= 0.7 ? "yes" : "no"} by jev ${p.toFixed(2)}`);
+        if (p < 0.7) return;
+        this.interrupt();
+        this.hear(text, meta, { force: true, decided: true, ...(via ? { via } : {}) });
+        return;
+      }
+    }
     try {
       const ago = this.lastExchange.at
         ? Math.round((Date.now() - this.lastExchange.at) / 1000)
@@ -1628,7 +1658,9 @@ export class Daemon {
     this.hear(
       text,
       meta,
-      yes ? { force: true, decided: true, ...(pre ? { pre } : {}) } : { decided: true },
+      yes
+        ? { force: true, decided: true, ...(pre ? { pre } : {}), ...(via ? { via } : {}) }
+        : { decided: true },
     );
   }
 
@@ -2268,7 +2300,12 @@ export class Daemon {
       this.walkie = new Walkie({
         port: this.settings.walkie_port || 4571,
         token: walkieToken(),
-        onAudio: (pcm) => this.walkieHeard(pcm),
+        onAudio: (pcm, open) => this.walkieHeard(pcm, open === true),
+        // the voice settings, from the phone; the app fills `phoneVoice`
+        onVoice: {
+          get: () => this.phoneVoice?.get() ?? {},
+          set: (p) => this.phoneVoice?.set(p) ?? {},
+        },
         onText: (text) => {
           log(`walkie: typed ${text.split(/\s+/).length} words`);
           return this.typed(text, "phone").kind;
@@ -2298,7 +2335,13 @@ export class Daemon {
    * on a page called Kik, so the name gate and the model judgement are
    * skipped and it goes straight in as addressed.
    */
-  private async walkieHeard(pcm: Int16Array): Promise<string> {
+  /** Kik's voice settings as the phone sees and changes them; set by the app. */
+  phoneVoice?: {
+    get: () => Promise<unknown> | unknown;
+    set: (patch: VoicePatch) => Promise<unknown> | unknown;
+  };
+
+  private async walkieHeard(pcm: Int16Array, openMic = false): Promise<string> {
     if (!this.transcribe) {
       log("walkie: no ear to transcribe with");
       return "";
@@ -2313,7 +2356,10 @@ export class Daemon {
       this.hub.publish("mic", { phase: "idle" });
       return "";
     }
-    this.hear(text, {}, { force: true, decided: true, via: "phone" });
+    // A held button is its own "this is for you". The open mic is not: what
+    // it hears is judged like anything the headset overhears.
+    if (openMic) this.hear(text, {}, { via: "phone" });
+    else this.hear(text, {}, { force: true, decided: true, via: "phone" });
     return text;
   }
 

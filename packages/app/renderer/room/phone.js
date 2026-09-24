@@ -20,9 +20,21 @@
     // what Kik is doing. Asked for by the user, in place of a plain button.
     '<button type="button" id="phone-talk" aria-label="hold to talk to Kik">' +
     '<canvas id="phone-orb" class="phone-orb" aria-hidden="true"></canvas></button>' +
-    '<span class="phone-spacer"></span>' +
+    '<button type="button" id="phone-gear" aria-expanded="false" title="Kik\'s voice, and the open mic">voice</button>' +
     "</div>" +
-    '<div class="phone-hint" id="phone-hint">hold to talk</div>';
+    '<div class="phone-hint" id="phone-hint">hold to talk</div>' +
+    // Kik's voice from the phone, and the open mic (asked for 2026-09-24).
+    '<div class="phone-sheet" id="phone-sheet" hidden>' +
+    '<label class="phone-opt"><span>Hear Kik on this phone</span><input type="checkbox" id="opt-sound"></label>' +
+    '<label class="phone-opt"><span>Open mic<small>listens without holding; Kik works out what was for it</small></span><input type="checkbox" id="opt-open"></label>' +
+    '<div class="phone-opt col"><span>How much Kik says</span><div class="seg" id="opt-narrate">' +
+    '<button data-v="silent">quiet</button><button data-v="attention">what matters</button><button data-v="normal">normal</button><button data-v="verbose">everything</button>' +
+    "</div></div>" +
+    '<div class="phone-opt col"><span>Voice</span><select id="opt-tts">' +
+    '<option value="auto">best available</option><option value="eleven">ElevenLabs</option><option value="piper">Piper</option><option value="kokoro">Kokoro</option><option value="system">system</option>' +
+    '</select><select id="opt-voice"></select></div>' +
+    '<div class="phone-note" id="opt-note"></div>' +
+    "</div>";
   document.body.appendChild(wrap);
   const talk = wrap.querySelector("#phone-talk");
   const hint = wrap.querySelector("#phone-hint");
@@ -110,7 +122,73 @@
     voice.addEventListener("drop", hush);
   }
 
-  sound.addEventListener("click", () => setSound(sound.getAttribute("aria-pressed") !== "true"));
+  sound.addEventListener("click", () => {
+    setSound(sound.getAttribute("aria-pressed") !== "true");
+    optSound.checked = sound.getAttribute("aria-pressed") === "true";
+  });
+
+  // --- the voice panel ---------------------------------------------------------
+  const gear = wrap.querySelector("#phone-gear");
+  const sheet = wrap.querySelector("#phone-sheet");
+  const optSound = wrap.querySelector("#opt-sound");
+  const optOpen = wrap.querySelector("#opt-open");
+  const optNarrate = wrap.querySelector("#opt-narrate");
+  const optTts = wrap.querySelector("#opt-tts");
+  const optVoice = wrap.querySelector("#opt-voice");
+  const note = wrap.querySelector("#opt-note");
+  function fill(v) {
+    if (!v || typeof v !== "object") return;
+    for (const b of optNarrate.querySelectorAll("button"))
+      b.setAttribute("aria-pressed", b.dataset.v === v.narrate ? "true" : "false");
+    if (v.tts) optTts.value = v.tts;
+    optVoice.innerHTML = "";
+    const voices = Array.isArray(v.voices) ? v.voices : [];
+    optVoice.hidden = !voices.length;
+    for (const x of voices) {
+      const o = document.createElement("option");
+      o.value = x.id;
+      o.textContent = x.name;
+      if (x.id === v.voice) o.selected = true;
+      optVoice.append(o);
+    }
+    note.textContent = v.hasEleven ? "" : "No ElevenLabs key on the desk: Piper speaks.";
+  }
+  async function voiceCall(patch) {
+    try {
+      const r = await fetch(
+        "/phone/voice",
+        patch ? { method: "POST", body: JSON.stringify(patch) } : {},
+      );
+      fill(await r.json());
+    } catch (e) {
+      note.textContent = `could not reach Kikoe: ${e.message}`;
+    }
+  }
+  gear.addEventListener("click", () => {
+    const open = sheet.hidden;
+    sheet.hidden = !open;
+    gear.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      optSound.checked = sound.getAttribute("aria-pressed") === "true";
+      optOpen.checked = openMic;
+      void voiceCall();
+    }
+  });
+  optSound.addEventListener("change", () => setSound(optSound.checked));
+  optNarrate.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (b) void voiceCall({ narrate: b.dataset.v });
+  });
+  optTts.addEventListener("change", () => void voiceCall({ tts: optTts.value }));
+  optVoice.addEventListener("change", () => void voiceCall({ elevenlabs_voice: optVoice.value }));
+  optOpen.addEventListener("change", async () => {
+    // asked for inside the tap: a phone gives the microphone to a gesture
+    if (optOpen.checked && !(await open())) {
+      optOpen.checked = false;
+      return;
+    }
+    setOpenMic(optOpen.checked);
+  });
   let wanted = false;
   try {
     wanted = localStorage.getItem(KEY) === "1";
@@ -192,6 +270,7 @@
         chunks.push(piece);
         return;
       }
+      if (openMic && listen(piece)) return;
       // Not recording: keep the last moment anyway, so a word begun as the
       // finger lands is not missing its first syllable.
       before.push(piece);
@@ -249,14 +328,72 @@
     }, TAIL_MS);
   }
 
-  async function send() {
+  // --- the open mic --------------------------------------------------------------
+  // Listening without the button. A level-based voice detector: speech is a
+  // run of pieces well above the room's own noise, a phrase ends after 0.9 s
+  // of quiet (or at 25 s), and each phrase goes to the desk marked as open
+  // mic, where it is judged like anything the headset overhears: said to Kik,
+  // or not; an interruption of Kik, or just "yeah".
+  const OPEN_KEY = "kikoe-phone-openmic";
+  let openMic = false;
+  let floor = 0.004;
+  let loud = 0;
+  let quiet = 0;
+  let phrase = null;
+  function setOpenMic(on) {
+    openMic = on;
+    phrase = null;
+    try {
+      localStorage.setItem(OPEN_KEY, on ? "1" : "0");
+    } catch {
+      /* forgotten on reload, which is fine */
+    }
+    hint.textContent = on ? "open mic: just talk" : "hold to talk";
+    wrap.dataset.open = on ? "1" : "0";
+  }
+  const rms = (a) => {
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += a[i] * a[i];
+    return Math.sqrt(s / Math.max(1, a.length));
+  };
+  /** One piece of sound, as the open mic hears it. True if it was taken. */
+  function listen(piece) {
+    const level = rms(piece);
+    const onset = Math.max(0.015, floor * 3.5);
+    if (!phrase) {
+      // the room's own noise, learned slowly, and only while nobody speaks
+      floor = floor * 0.98 + level * 0.02;
+      loud = level > onset ? loud + 1 : 0;
+      if (loud < 3) return false;
+      phrase = { pieces: [...before, piece], samples: 0 };
+      before = [];
+      orb?.set("listening");
+      return true;
+    }
+    phrase.pieces.push(piece);
+    phrase.samples += piece.length;
+    quiet = level < onset * 0.6 ? quiet + piece.length : 0;
+    if (quiet > RATE * 0.9 || phrase.samples > RATE * 25) {
+      const p = phrase;
+      phrase = null;
+      quiet = 0;
+      loud = 0;
+      orb?.set(deskVerb);
+      chunks = p.pieces;
+      held = 10_000;
+      void send(true);
+    }
+    return true;
+  }
+
+  async function send(fromOpenMic = false) {
     let total = 0;
     for (const c of chunks) total += c.length;
     // The held time, not the clip: the clip always carries the pre-roll and
     // the tail, so a tap would otherwise send most of a second of room noise.
     if (held < 300 || total < RATE * 0.25) {
       chunks = [];
-      return show("hold it while you talk");
+      return fromOpenMic ? undefined : show("hold it while you talk");
     }
     const pcm = new Int16Array(total);
     let i = 0;
@@ -266,12 +403,15 @@
         pcm[i++] = v < 0 ? v * 0x8000 : v * 0x7fff;
       }
     chunks = [];
-    talk.disabled = true;
+    if (!fromOpenMic) talk.disabled = true;
     show("…", 0);
     try {
       const r = await fetch("/audio", {
         method: "POST",
-        headers: { "content-type": "application/octet-stream" },
+        headers: {
+          "content-type": "application/octet-stream",
+          ...(fromOpenMic ? { "x-kikoe-open": "1" } : {}),
+        },
         body: pcm.buffer,
       });
       const j = await r.json();
@@ -291,4 +431,23 @@
   talk.addEventListener("pointercancel", stop);
   talk.addEventListener("pointerleave", stop);
   talk.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  // Remembered as on: the microphone needs a tap to be given again, so the
+  // first tap anywhere opens it and the open mic carries on.
+  let openWanted = false;
+  try {
+    openWanted = localStorage.getItem(OPEN_KEY) === "1";
+  } catch {
+    /* no memory of it */
+  }
+  if (openWanted) {
+    hint.textContent = "tap anywhere for the open mic";
+    window.addEventListener(
+      "pointerdown",
+      async () => {
+        if (await open()) setOpenMic(true);
+      },
+      { once: true },
+    );
+  }
 })();

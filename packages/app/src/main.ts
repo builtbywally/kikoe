@@ -148,6 +148,34 @@ async function startDaemon(): Promise<void> {
   // The phone speaks through the ear that is already loaded.
   daemon.transcribe = transcribeWithEar;
   daemon.onMicReady = () => earKeeper.ready();
+  // The phone's voice settings: what Kik says aloud, which engine, which
+  // voice. The same save and swap the Settings page does, for these alone.
+  daemon.phoneVoice = {
+    get: phoneVoiceState,
+    set: async (patch) => {
+      if (!daemon) return phoneVoiceState();
+      if (Object.keys(patch).length) {
+        saveSettings(patch);
+        if (patch.narrate) {
+          daemon.setMode(patch.narrate);
+          daemon.settings.narrate = patch.narrate;
+        }
+        if (patch.tts || patch.elevenlabs_voice) {
+          const vs = eleven?.voices ?? [];
+          const name = vs.find((v) => v.id === patch.elevenlabs_voice)?.name;
+          if (name) saveSettings({ elevenlabs_voice_name: name });
+          daemon.reconfigure(
+            loadSettings(),
+            loadElevenKey(),
+            loadAnthropicKey(),
+            openrouterKeyFromFile(),
+          );
+        }
+        log(`phone changed the voice: ${JSON.stringify(patch)}`);
+      }
+      return phoneVoiceState();
+    },
+  };
   if (!smoke && !shotPath) await daemon.syncWalkie();
   daemon.hub.listen((frame) => {
     if (frame.type === "speech")
@@ -997,6 +1025,38 @@ ipcMain.handle("settings:demo", async () => {
   runDemo(daemon);
   return { ok: true };
 });
+/** The ElevenLabs voices, fetched once in ten minutes for the phone's list. */
+let eleven: { at: number; voices: Array<{ id: string; name: string }> } | null = null;
+async function elevenVoiceList(): Promise<Array<{ id: string; name: string }>> {
+  if (eleven && Date.now() - eleven.at < 600_000) return eleven.voices;
+  const key = loadElevenKey();
+  if (!key) return [];
+  try {
+    const r = await fetch("https://api.elevenlabs.io/v1/voices", {
+      headers: { "xi-api-key": key },
+    });
+    if (!r.ok) return eleven?.voices ?? [];
+    const j = (await r.json()) as { voices: Array<{ voice_id: string; name: string }> };
+    eleven = { at: Date.now(), voices: j.voices.map((v) => ({ id: v.voice_id, name: v.name })) };
+    return eleven.voices;
+  } catch {
+    return eleven?.voices ?? [];
+  }
+}
+
+/** What the phone's voice panel shows. */
+async function phoneVoiceState() {
+  const s = loadSettings();
+  return {
+    narrate: daemon?.narrator.mode ?? s.narrate,
+    tts: s.tts,
+    voice: s.elevenlabs_voice,
+    voiceName: s.elevenlabs_voice_name,
+    hasEleven: Boolean(loadElevenKey()),
+    voices: await elevenVoiceList(),
+  };
+}
+
 ipcMain.handle("settings:elevenVoices", async () => {
   const key = loadElevenKey();
   if (!key) return { error: "no ElevenLabs key" };

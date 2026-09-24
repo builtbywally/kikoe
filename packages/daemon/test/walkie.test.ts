@@ -404,6 +404,21 @@ describe("the canvas on the phone", () => {
     expect(seen.map((s) => s.path.split("?")[0])).toEqual(["/room/index.html", "/artifact/p123"]);
   });
 
+  it("lets the phone change Kik's voice, and nothing else", () => {
+    expect(
+      mod.voicePatch({
+        narrate: "verbose",
+        tts: "eleven",
+        elevenlabs_voice: "cgSgspJ2msm6clMCkdW9",
+      }),
+    ).toEqual({ narrate: "verbose", tts: "eleven", elevenlabs_voice: "cgSgspJ2msm6clMCkdW9" });
+    // anything else is dropped, and a bad value is no change
+    expect(mod.voicePatch({ hands: true, brain: false, narrate: "loud", tts: "rm -rf" })).toEqual(
+      {},
+    );
+    expect(mod.voicePatch({ elevenlabs_voice: "../../etc" })).toEqual({});
+  });
+
   it("serves the backdrop the Room asks for, which lives outside /room/", async () => {
     // It asks for ../backdrops/, and until 2026-09-24 the phone got a 404 and
     // a background that came and went.

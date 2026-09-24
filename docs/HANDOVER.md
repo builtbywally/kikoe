@@ -1103,3 +1103,29 @@ is what should have stood in the way, so test through it.
   play, with a site on the canvas in the last half hour, is now a search of
   that site whatever Jev called it. And the agent card no longer shows a
   sentence Kik answered itself (`toAgent` skips kind "chat").
+
+## The phone: its own voice panel, an open mic, and interruptions (2026-09-24)
+
+- **Voice panel** (phone.js, "voice" beside the orb): hear Kik on this phone,
+  open mic, how much Kik says (the four narrate modes), the engine, and the
+  ElevenLabs voice. The walkie serves `GET/POST /phone/voice`;
+  `voicePatch()` keeps only `narrate`, `tts` and `elevenlabs_voice` with
+  valid values — tested with `hands`, `brain` and junk, all dropped. The
+  app fills `Daemon.phoneVoice` (main.ts: save, `setMode`, `reconfigure` for
+  a new voice; the ElevenLabs list cached ten minutes).
+- **Open mic**: a level voice detector in the page (noise floor learned
+  while quiet, onset at 3.5× it, three pieces to start, 0.9 s of quiet or
+  25 s to end, the pre-roll kept). Clips carry `x-kikoe-open: 1`, and
+  `walkieHeard(pcm, open)` hears them unforced: judged like anything the
+  headset overhears. Remembered across reloads; the first tap re-grants the
+  microphone.
+- **Interruptions** (the user: "Jev needs to understand if I'm
+  interrupting"): while Kik speaks, a nameless sentence is not asked "was it
+  for me" but "is it an interruption" (`Jev.interrupting(kikSaying, said)`).
+  A backchannel (`BACKCHANNEL`: yeah, mm, okay, right…) is dropped without
+  asking. The cut is 0.7: on real sentences every interruption scored 0.91+
+  and "okay so where did I put my keys" 0.61. On a yes Kik stops and the
+  sentence is heard as said to it. This holds for the headset too.
+- **Cards keep their scroll** through a rebuild (board.js `scrollsOf` /
+  `keepScrolls`, applied after sizing; one at the bottom stays at the
+  bottom). They sprang back to the top on every live update.
