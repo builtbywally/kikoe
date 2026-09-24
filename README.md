@@ -45,6 +45,13 @@ come out.
 | "Open marine in VS Code" / "open github.com" / "a terminal in billiar" | Opened on the PC, from a fixed menu |
 | "Open YouTube here" | A live web card on the canvas |
 | "Switch to storefront" | The whole Room moves to that project's board |
+| "What's on today?" / "am I free this afternoon?" | Answered at once from the calendar the desk reads each hour; changes and other days go to the desk |
+| "Draft a reply to the marina client" / "any unread mail from today?" | The desk: your connected accounts through Claude Code. Reading is free, making is asked, sending is not allowed |
+| "What's the weather tomorrow in Beirut?" / "what does that page say?" | A quick look-up, answered in a sentence |
+| "Remind me in ten minutes to call the printer" | Said aloud when due, pinned, and pushed to your phone if you set a topic |
+| "Read me the diff" / "undo that" / "run it again" | The agent's latest work card, read back or handed to the agent |
+| "Open my downloads" / "switch to Chrome" / "type hello" | Your folders, and (with hands on) your windows, asked before anything changes |
+| "Wrap up the day" | What got done, what is still open, and tomorrow |
 | "Stop" / "quiet" / "stop the agent" | Reflexes: instant, never sent to a model |
 
 ## How it works

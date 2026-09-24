@@ -244,6 +244,14 @@ Gaps:
   agent without a Haiku call; "open marine in VS Code", "open github.com",
   "a terminal in billiar" open on the PC from a fixed menu. "Stop the
   agent" is a reflex. `docs/HANDOVER.md`, "Jev, the switchboard".
+- **Reviewing by voice, most of flow 3 (2026-09-24).** "Read me the diff",
+  "undo that", "run it again", "explain it" through the `work_card` tool on
+  the latest diff or run card. "Apply hunks two and four" is still missing.
+- **The day (2026-09-24).** The calendar read by the desk each hour and
+  answered at once; a morning brief the first time you are heard on a new
+  day; `day_brief` for a wrap-up; reminders and waiting questions pushed to
+  a private ntfy topic when one is set; a permission that cannot be undone
+  says so. `docs/HANDOVER.md`, "The rest of the plan".
 - **The viewport buttons did nothing but resize.** They send `wide: true`;
   neither update path mapped it to `size`, so a page never became an
   artboard. Both paths now do.

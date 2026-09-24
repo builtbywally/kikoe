@@ -69,7 +69,7 @@ either, though a launch is a write.
 | T1 | ★ "Hey Kiko, how are you?" | reflex (social) → talking session | read | works | The rules answer a hello when there is no model |
 | T2 | ★ "What's 2+2?" / "Can you give me the answer of 10 plus 10?" | Jev→kik | read | works | Jev kik 0.99–1.00, answer in ~1 s |
 | T3 | ★ "What time is it?" | Jev→kik | read | works | The local time rides in the live picture |
-| T4 | ★ "What's the weather like?" … "and what about tomorrow?" | Jev→kik | read | broken | Kik has no web and no weather source; it can only guess or decline. Typed through `/say`, probably a test |
+| T4 | ★ "What's the weather like?" … "and what about tomorrow?" | Jev→kik | read | works | `look_up` (weather): open-meteo, keyless; now, today and tomorrow in a sentence (09-24) |
 | T5 | ★ "In terms of UI/UX, what do you think about the way that dashboard looks?" | Jev→kik | read | partial | Kik cannot see your screen or a site; it knows the code of cards it made, not how they render |
 | T6 | ★ "What is your name?" / "Tell me about yourself." | Jev→kik | read | works | |
 | T7 | "Explain how Tailscale works" (general knowledge) | Jev→kik | read | works | From the model's knowledge only |
@@ -108,12 +108,12 @@ either, though a launch is a write.
 | A12 | "Yes" / "go ahead" to a permission | reflex answer | write | works | Bound to the right question before it is spoken |
 | A13 | "No" / "deny" | reflex answer | read | works | |
 | A14 | "Always allow that one" | — | write | missing | No voice path to Claude Code's allowlist; never for irreversible by rule |
-| A15 | ★ "kik, what number did I ask you to remember just now" (said to the agent) | Jev→kik | read | broken | Goes to Kik, which does not know what the agent was told; HANDOVER "still open" |
+| A15 | ★ "kik, what number did I ask you to remember just now" (said to the agent) | Jev→kik | read | works | The last job handed to each agent is kept and shown to Jev and Kik (`toldLine`, 09-24) |
 | A16 | "Tell it to also add tests" (agent busy) | Jev→agent (queued) | write | partial | Works, but nothing on the canvas shows a queued instruction (AUDIT 6) |
 | A17 | "What did it say?" / "read me its reply" | Jev→kik | read | partial | Kik has the narration and the reply card; long replies are not read out whole |
-| A18 | "Read me the diff" | — | read | missing | AUDIT flow 3 |
+| A18 | "Read me the diff" | — | read | works | `work_card` read: the latest diff or run card, read back by Kik (09-24) |
 | A19 | "Explain the change to api.ts" | card button `explain` / Jev→agent | read | partial | The button works; by voice it reaches the agent only as a new instruction |
-| A20 | "Revert that file" | card button `revert` | write | partial | Button only; no voice verb bound to a card |
+| A20 | "Revert that file" | card button `revert` | write | works | `work_card` revert, by voice, still an instruction to the agent (09-24) |
 | A21 | "Run that again" | card button `again` | write | partial | Button only |
 | A22 | "Apply hunks two and four" | — | write | missing | |
 | A23 | "Run the tests in kikoe" | Jev→agent | write | works | Result lands as a test card |
@@ -246,7 +246,7 @@ either, though a launch is a write.
 | P13 | "Take a screenshot" | — | read | missing | OS.md lists CopyFromScreen; `hands.ts` has no script for it |
 | P14 | "What's on my clipboard?" / "copy that" | — | read | missing | No clipboard read anywhere |
 | P15 | "Paste it into the email" | — | write | missing | |
-| P16 | "Open my Downloads folder" | — | write | missing | The fixed menu opens project folders only; `open_app` now starts real programs only, not paths |
+| P16 | "Open my Downloads folder" | — | write | works | `knownFolder`: Downloads, Documents, Desktop, Pictures, Music, Videos, only after "my", "the" or before "folder" (09-24) |
 | P17 | "Open the last PDF I downloaded" | — | write | missing | L3: files by meaning |
 | P18 | "Find the invoice from the tiler" | — | read | missing | L3 |
 | P19 | "Move these into the Walnut folder" | — | write | missing | |
@@ -285,7 +285,7 @@ connectors. The column says which one would serve it.
 | M4 | "Send it" | connector needed | irreversible | missing | Gmail's connector has no send; your call (section 6) |
 | M5 | "Archive those" / "label them Walnut" | agent + connector Gmail | write | missing | |
 | M6 | "Bin that newsletter" | agent + connector Gmail | irreversible | missing | `trash_thread` (it can be untrashed, but the words grade it irreversible) |
-| M7 | "What's on my calendar today?" | agent + connector Google Calendar | read | missing | `list_events` |
+| M7 | "What's on my calendar today?" | agent + connector Google Calendar | read | works | The desk reads today and tomorrow each hour in the background (`refreshAgenda`); Kik answers at once, other days go to the desk (09-24) |
 | M8 | "Book a call with Firas Thursday at three" | agent + connector Google Calendar | irreversible | missing | `create_event`; an invite goes out |
 | M9 | "Move my four o'clock to five" | agent + connector Google Calendar | irreversible | missing | Attendees are told |
 | M10 | "Find me a free hour this week" | agent + connector Google Calendar | read | missing | `suggest_time` |
@@ -356,8 +356,8 @@ connectors. The column says which one would serve it.
 | R12 | "What ideas did I have last week?" | — | read | missing | No search over notes or the journal |
 | R13 | "Who is Firas?" | Jev→kik | read | partial | Only what was remembered (`memory.md` holds "Firas Project runs on localhost:3000") |
 | R14 | "What should I work on now?" | — | read | missing | Needs calendar and tasks |
-| R15 | "Morning brief" | — | read | missing | Agents, calendar, mail, tasks in one spoken minute |
-| R16 | "Wrap up the day" | — | read | missing | ROADMAP M2: end-of-day summary |
+| R15 | "Morning brief" | — | read | partial | Said on its own the first time you are heard on a new morning, and `day_brief` on request: calendar, reminders, what agents were told. No mail or tasks yet |
+| R16 | "Wrap up the day" | — | read | partial | `day_brief` wrap: work cards today, what is still open, tomorrow's calendar. No mail or tasks yet |
 | R17 | ★ "I need you to be able to understand the sense of time… if I speak to you and then go away" | presence, journal | read | works | Shipped 2026-09-06 (hello after an hour, the journal) |
 
 ### 2.10 The phone
@@ -371,11 +371,11 @@ connectors. The column says which one would serve it.
 | F5 | "Yes" to a permission from the couch | walkie → reflex answer | write | works | By voice; see A42 for a tap |
 | F6 | "Run that again" by tapping a work card | — | write | missing | A viewer may look and not touch |
 | F7 | (away from home) | Tailscale `wm.taile841c1.ts.net` | read | works | |
-| F8 | "Tell me when the agent's done" (phone in pocket) | — | read | missing | No notification when the page is closed |
+| F8 | "Tell me when the agent's done" (phone in pocket) | — | read | partial | A private ntfy topic in Settings: reminders and questions waiting on you are pushed. Not yet the agent finishing |
 | F9 | ★ "What are you up to?" / "What's happening at the desk?" | Jev→kik | read | works | |
 | F10 | "Show me the localhost card" | — | read | missing | Localhost cards are desk only |
 | F11 | Sites that refuse framing (Unsplash, Google) | web card | read | partial | Blank on the phone; an "open ↗" link |
-| F12 | ★ a 38.6 s clip: "I want to start working on a new concept…" | walkie → Whisper | read | broken | Whisper keeps the first 30 s and drops the rest silently |
+| F12 | ★ a 38.6 s clip: "I want to start working on a new concept…" | walkie → Whisper | read | works | `splitAtQuiet` cuts a long clip at the quietest moment near each 25 s and hears it in pieces (09-24) |
 | F13 | ★ "I want you to use quiver AI. Don't use, don't use, don't use…" | walkie → Whisper | read | broken | A repetition loop from Whisper; the ask was lost |
 | F14 | Typing to Kik on the phone | walkie `/say` | read | works | |
 | F15 | "Put it on my computer" (phone) | Jev→open → PC | write | works | `wantsThePc` |
@@ -503,7 +503,7 @@ phone obeys. Now the embed player. Other sites still show blank (row F11).
 
 ### The ear
 
-**E12. A long clip is cut at thirty seconds.** *Open.* 09-24 18:37, a 38.6 s
+**E12. A long clip is cut at thirty seconds.** *Fixed 09-24: split at a pause (`splitAtQuiet`).* 09-24 18:37, a 38.6 s
 phone clip: sherpa-onnx logged "Only waves less than 30 seconds are supported…
 discard the remaining data". Nothing told you. `walkie.ts` allows 60 s
 (`MAX_CLIP_S`). Fix: split at silence under 28 s and join the text, or cap the

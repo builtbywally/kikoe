@@ -1202,3 +1202,60 @@ is what should have stood in the way, so test through it.
   (install() keeps other tools' hooks: after it, 12 Kikoe + 13 Orca) and Kik
   says so once. If Orca keeps rewriting that file, this will keep finding
   it; the real fix is on Orca's side.
+
+## The rest of the plan: brief, calendar, push, look-ups, verbs (2026-09-24)
+
+- **Long phone clips** (`splitAtQuiet`, daemon.ts): Whisper keeps 30 s and
+  drops the rest; a walkie clip is cut at the quietest 0.1 s between 15 and
+  25 s of each piece and heard piece by piece.
+- **What the agent was told** (`told`, `toldLine()`): the last job given to
+  each project, from `startAgent` and `instruct`, for twelve hours. It goes
+  into Jev's `running` context and Kik's system prompt, so "what did I tell
+  it?" is answered (A15).
+- **Folders by name** (`knownFolder`, pc.ts): Downloads, Documents, Desktop,
+  Pictures, Music, Videos, only after "my"/"the" or before "folder"; "on the
+  desktop" is the screen, not the folder. Checked in `carryOut`'s `open`
+  before any project.
+- **Administrator windows**: Windows drops keys sent to an elevated window
+  without an error. `front` now returns `admin`, and `withLeave` refuses and
+  says why. Gotcha: in PowerShell `$x.Handle` swallows the access-denied
+  error (property getters are quiet); `$x.get_Handle()` throws. Checked on
+  `wininit`.
+- **`look_up`** (lookup.ts): weather (open-meteo, keyless, geocode then
+  forecast, each with its own 10 s timeout: the forecast took 3 s once),
+  page text (redirects followed by hand, and `privateHost` refuses loopback,
+  LAN, link-local, CGNAT/Tailscale and `.ts.net`; marked as quoted data),
+  Wikipedia summaries.
+- **`work_card`**: read, revert, again, explain on the latest diff or run
+  card (or an id). Revert and again still go through `actOnPin`, so still
+  instructions to the agent.
+- **"Can't be undone"** in agent and desk permission questions
+  (`cannotUndo`, core narrator): judged from a shell command or a tool's
+  name with underscores read as spaces (`send_draft`), never from an edit's
+  contents. Three evals pin it.
+- **The calendar at hand** (`refreshAgenda`): 30 s after `listen()` and
+  hourly, a `claude -p --no-session-persistence --settings
+  {"disableAllHooks":true}` in the desk folder reads today and tomorrow (18
+  s live), keeps the Today/Tomorrow lines, and writes `~/.kikoe/agenda.json`.
+  Skipped for a `.cmd` shim (the shell would mangle the JSON). Jev's `desk`
+  action answers from it through Kik when `agendaAnswers()` (a read of
+  today/tomorrow, fresher than two hours); other days and changes still go
+  to the desk. Setting `agenda`.
+- **The morning brief**: the first time the user is heard between 5 and 13
+  h, having last been heard on an earlier day (`presence.briefed` holds the
+  date). Overheard: said on its own (`morning()`); addressed: folded into
+  the reply via `morningDue`. `day_brief` (morning or wrap) gives the facts
+  on request (`dayFacts`). Setting `morning_brief`; the brain presence tests
+  turn it off, since they fake a nine-hour gap that crosses midnight in the
+  morning.
+- **Push to a locked phone** (`notify`): a POST to `https://ntfy.sh/<topic>`
+  for each reminder and each permission question, only when `push_topic` is
+  set (8 to 64 word characters). The user installs the ntfy app and
+  subscribes to the same topic. Off by default: the user has not picked it.
+- Still open: whether hands should be on, whether Kik may ever send email
+  (drafts only now), the push topic, what "done" means for a Dolma post; the
+  agent finishing is not pushed yet; mail and tasks are not in the brief.
+- `packages/site/` and a changed `pnpm-lock.yaml` appeared in the tree from
+  another session and are not this work; `pnpm lint` fails on them
+  (`packages/site/lib/router.ts`, `Sound.tsx`), so lint was run on core,
+  daemon, app and evals for these commits.
