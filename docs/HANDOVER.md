@@ -900,3 +900,39 @@ page in Kikoe is `design_artifact` with `quick: true` on Haiku.
   `build/trayTemplate.png` on macOS and it does not exist; the app requires
   `audify` and `sherpa-onnx-node` without declaring them (works because
   `.npmrc` hoists); `docs/VOICE.md` still names ClaudeTalks's Python files.
+
+## A canvas that moves, and renders less (2026-09-24)
+
+The user: "make the canvas more dynamic and also optimize it". `board.js`
+was restructured; its header says the rules.
+
+- **Motion**, all transform and opacity (compositor only): focus and fit
+  glide (`glideTo`, 420 ms ease-out) instead of jumping; a flung pan coasts
+  and slows (`coastFrom`, time-based friction, so a slow frame does not
+  slide further); new cards fade and rise in; a card that goes fades out
+  before it is removed (`leave`); cards the layout pushes aside slide there
+  (FLIP with the Web Animations API: positions before and after a render,
+  a translate from the old place to none); frames ease to their new bounds;
+  a card lifts 2 px on hover and scales 1.5% when picked up. The zoom
+  buttons glide too. **None of it runs** under prefers-reduced-motion or in
+  a window whose document is not visible (the `--screenshot` harness), so
+  screenshots are exactly as they were.
+- **Speed**, measured with the old and new board.js on the same 80 cards
+  in Chrome: first render 29–42 ms → 9–11 ms; a render where nothing
+  changed (every stream frame, the 15 s tick) 2.4–3.4 → 1.1–1.3 ms; a card
+  arriving ~2.6 → ~2 ms with its animations. Where it came from: unchanged
+  cards are no longer built just to read their age (`pinFresh()` in
+  room.js gives the fade and the age line; `render(pins, pinCard,
+  pinFresh)`); an id → element map instead of `querySelector` per card;
+  one pass that reads every size, then placing and settling in memory, then
+  one pass that writes positions (it used to read and write card by card,
+  a layout each); frames bounded from positions and cached sizes, never
+  the DOM; dragging a card re-bounds only its own frame from sizes taken at
+  pick-up, so no layout is forced while a card is in the hand; pan, zoom and
+  the grip paint once per animation frame; the dot grid is not rewritten
+  under a backdrop that overrides it; `.pin { contain: layout style }` so
+  typing in a card lays out that card only; `will-change: transform` on the
+  world only while it moves (kept on, text went soft when zoomed in), and
+  frosted cards drop their backdrop blur while the canvas moves.
+- `contain: layout` would change what a `position: fixed` child of a card
+  is fixed to; nothing inside a card is fixed today. Keep it that way.

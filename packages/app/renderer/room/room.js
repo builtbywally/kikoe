@@ -534,18 +534,49 @@ const VIEWPORTS = [
 /** the card's head and foot around the frame */
 const CARD_CHROME = 106;
 
-function pinCard(p) {
+/**
+ * What time changes on a card, and nothing else: how faded it is and its age
+ * line. The board asks for this on every tick instead of building the whole
+ * card again only to read these two things off it.
+ */
+function pinFresh(p) {
   const now = Date.now() / 1000;
   const age = now - p.created;
   const left = p.ttl_s - age;
+  // Fade with age: full for the first third of its life, then down to 0.35.
+  const life = p.sticky ? 1 : Math.max(0, Math.min(1, left / p.ttl_s));
+  const opacity = String(0.35 + 0.65 * Math.min(1, life * 1.5));
+  const text =
+    p.ask.length && p.answer === null
+      ? `pinned now · ${ago(Math.max(1, Math.round((p.wait_s || left) - age)))}`
+      : p.answer
+        ? `answered: ${p.answer}`
+        : p.kind === "conversation"
+          ? thinking
+            ? "thinking"
+            : "with you"
+          : p.kind === "thinking"
+            ? (state?.thinking ?? []).some((t) => t.status === "thinking")
+              ? "thinking"
+              : "idle"
+            : p.kind === "agents" || p.kind === "events" || p.kind === "session"
+              ? "live"
+              : p.sticky
+                ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
+                : age < 60
+                  ? "pinned now"
+                  : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
+  return { opacity, age: text };
+}
+
+function pinCard(p) {
   const card = document.createElement("div");
   card.className = "pin";
   card.dataset.kind = p.kind;
   card.dataset.id = p.id;
   card.dataset.asking = String(p.ask.length > 0 && p.answer === null);
-  // Fade with age: full for the first third of its life, then down to 0.35.
-  const life = p.sticky ? 1 : Math.max(0, Math.min(1, left / p.ttl_s));
-  card.style.opacity = String(0.35 + 0.65 * Math.min(1, life * 1.5));
+  const fresh = pinFresh(p);
+  card.style.opacity = fresh.opacity;
   const head = document.createElement("div");
   head.className = "pin-head";
   const title = document.createElement("span");
@@ -576,26 +607,7 @@ function pinCard(p) {
   title.append(live ?? icon, t);
   const when = document.createElement("span");
   when.className = "age";
-  when.textContent =
-    p.ask.length && p.answer === null
-      ? `pinned now · ${ago(Math.max(1, Math.round((p.wait_s || left) - age)))}`
-      : p.answer
-        ? `answered: ${p.answer}`
-        : p.kind === "conversation"
-          ? thinking
-            ? "thinking"
-            : "with you"
-          : p.kind === "thinking"
-            ? (state?.thinking ?? []).some((t) => t.status === "thinking")
-              ? "thinking"
-              : "idle"
-            : p.kind === "agents" || p.kind === "events" || p.kind === "session"
-              ? "live"
-              : p.sticky
-                ? `${p.by === "kik" ? "kik" : p.by === "you" ? "you" : "agent"} · kept`
-                : age < 60
-                  ? "pinned now"
-                  : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
+  when.textContent = fresh.age;
   head.append(title, when);
   const body = document.createElement("div");
   body.className = "pin-body";
@@ -785,7 +797,7 @@ function renderBoard() {
         repo,
         sticky: true,
       });
-  window.board.render([talk, ...extra, ...ordered], pinCard);
+  window.board.render([talk, ...extra, ...ordered], pinCard, pinFresh);
 }
 
 /** The one place you can type instead of talk; both threads carry it. */
