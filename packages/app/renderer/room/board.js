@@ -676,6 +676,8 @@
     for (const [id, p] of positions) before.set(id, { x: p.x, y: p.y });
     const arrived = [];
 
+    /** where a rebuilt card's scrolled parts were, carried to the new card */
+    let scrolled = [];
     // 1. build what changed; keep what did not
     for (const pin of pins) {
       const el = els.get(pin.id);
@@ -705,14 +707,18 @@
         // a rebuilt card keeps its place on screen while its insides change
         next.style.left = el.style.left;
         next.style.top = el.style.top;
+        scrolled = scrollsOf(el);
         el.replaceWith(next);
       } else {
+        scrolled = [];
         world.append(next);
         arrived.push(next);
       }
       els.set(pin.id, next);
       size(next, pin);
       grip(next, pin);
+      // after sizing: at another width the text wraps to another height
+      keepScrolls(next, scrolled);
     }
 
     // 2. read every size at once, 3. place and settle in memory, 4. write once
@@ -763,6 +769,36 @@
         duration: 380,
         easing: EASE,
       });
+    }
+  }
+
+  // A live card (the conversation, the agent's thread) is rebuilt on every
+  // update, and a rebuilt card used to open at the top: scroll down, and a
+  // second later it sprang back (the user, 2026-09-24). Where each scrolled
+  // part of the old card was is carried to the same part of the new one; one
+  // that was at the bottom stays at the bottom, so new lines stay in view.
+  const SCROLLERS = ".pin-body, .pin-body *";
+  function scrollsOf(el) {
+    const out = [];
+    const all = el.querySelectorAll(SCROLLERS);
+    for (let i = 0; i < all.length; i++) {
+      const s = all[i];
+      if (s.scrollHeight <= s.clientHeight + 1) continue;
+      out.push({
+        i,
+        top: s.scrollTop,
+        bottom: s.scrollTop + s.clientHeight >= s.scrollHeight - 4,
+      });
+    }
+    return out;
+  }
+  function keepScrolls(el, scrolls) {
+    if (!scrolls.length) return;
+    const all = el.querySelectorAll(SCROLLERS);
+    for (const s of scrolls) {
+      const t = all[s.i];
+      if (!t) continue;
+      t.scrollTop = s.bottom && s.top > 0 ? t.scrollHeight : s.top;
     }
   }
 
