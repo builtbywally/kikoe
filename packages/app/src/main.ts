@@ -912,6 +912,8 @@ ipcMain.handle(
         loadAnthropicKey(),
         openrouterKeyFromFile(),
       );
+      // said once, as they come on: what the hands will and will not do
+      if (s.hands) daemon.say("My hands are on. I'll ask before each thing I do.", 3, "head");
     }
     if (("walkie" in rest || "walkie_port" in rest || "walkie_tailscale" in rest) && daemon) {
       daemon.settings = loadSettings();
