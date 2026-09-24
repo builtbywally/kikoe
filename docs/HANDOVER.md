@@ -64,7 +64,6 @@ packages/app       Electron: main.ts (daemon in main process, tray, windows, IPC
                    renderer/room (the one window: room.js, board.js, settings.js,
                    room-web.js shim for the browser), renderer/island (the pill),
                    renderer/backdrops (4K jpgs), renderer/fonts
-packages/site      the website: Next.js 16, static export, built from the app's own pieces
 brand/             こえ, the logo: koe-paths.json (outlines), make.mjs (every logo file,
                    the app's icons, the site's favicon), backdrops.py (the backdrops)
 docs/              PLAN, APP, ROOM-PLAN (running log of the Room), VOICE, ROADMAP, this
@@ -865,28 +864,32 @@ page in Kikoe is `design_artifact` with `quick: true` on Haiku.
   inside an `<img>`, with the app's fonts embedded) and pictures of the
   site's components (`room`, `phone-iphone`, `phone-pixel`, `island`,
   `switchboard`, `board`, WebP). They come from
-  **`pnpm site:build && pnpm --filter @kikoe/site readme-images`**, which
-  serves `packages/site/out` and drives headless Chrome over the DevTools
-  protocol (`packages/site/scripts/cdp.mjs`, no puppeteer). No screenshot
+  **`pnpm build && pnpm readme-images`** in a kikoe-website checkout next
+  to this repo (it finds this one at `../kikoe`, or `KIKOE_REPO`), which
+  serves the site's `out/` and drives headless Chrome over the DevTools
+  protocol (`scripts/cdp.mjs` there, no puppeteer). No screenshot
   of the app or of a real board is used anywhere. The old
   `scripts/readme-images.sh` and `docs/images/*.png` were removed;
   `scripts/phone-shot.cjs` is no longer called by anything.
 - **The logo is こえ** (2026-09-24), replacing the orb and burst. See
   `brand/BRAND.md`. The outlines are from Noto Serif JP (OFL) and live in
   `brand/koe-paths.json`; `node brand/make.mjs` writes every logo file,
-  `packages/app/build/icon.png`, `icon.ico`, the tray icons, the site's
-  favicon and `packages/site/components/koe.ts`. The app's title bar holds
+  `packages/app/build/icon.png`, `icon.ico`, the tray icons, and the
+  website's favicon and `components/koe.ts` into a kikoe-website checkout at
+  `../kikoe-website` (or `KIKOE_SITE`); commit those there. The app's title bar holds
   the 700 outline inline in `renderer/room/index.html` (`.tb-logo`). The
   dotted orb stays: it is Kik's state, not the logo.
-- **The website** is `packages/site` (Next.js 16, React 19, `output:
-  "export"`). `pnpm site` for dev, `pnpm site:build` for `out/`;
-  `KIKOE_SITE_BASE=/kikoe` serves it under a path. It draws the Room, the
-  phone page and the island with the app's own CSS and the thinking-orbs
-  engine (vendored in `packages/site/lib/vendor`), so it has no screenshots.
-  The switchboard demo is `lib/router.ts`, a browser toy that mirrors the
-  real routing; its tests are `packages/site/test/router.test.ts`. The only
-  bitmap is the Room's backdrop (`pnpm --filter @kikoe/site images`).
-  Root `pnpm typecheck` includes the site (`next typegen && tsc`).
+- **The website** lives in its own repo, **builtbywally/kikoe-website**
+  (moved out of this monorepo on 2026-09-25), and is live at
+  **https://kikoe-olive.vercel.app** (kikoe.vercel.app and koe.vercel.app
+  belong to other people's projects). Next.js 16, React 19, `output:
+  "export"`. Vercel project `kikoe` in builtbywally-6316's projects builds
+  it on every push to that repo's `main`; nothing in this repo deploys. Both
+  repos' GitHub "website" field points at it. It draws the Room, the phone
+  page and the island with the app's own CSS and the thinking-orbs engine,
+  so it has no screenshots; when the app's look changes, copy the change
+  there. The switchboard demo is its `lib/router.ts`, a browser toy that
+  mirrors the real routing, with its own tests.
   Gotcha: headless Chrome's `--window-size` has a minimum width near 500,
   so a "400px" screenshot is really wider and looks clipped; emulate the
   device through CDP instead (as `readme-images.mjs` does).

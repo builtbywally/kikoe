@@ -10,7 +10,7 @@
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#what-you-can-say">What you can say</a> ·
-  <a href="#the-website">The website</a> ·
+  <a href="https://kikoe-olive.vercel.app"><b>Try it in the browser</b></a> ·
   <a href="LICENSE">MIT</a>
 </p>
 
@@ -212,29 +212,27 @@ ear's native modules. Afterwards, check that
 
 ## The website
 
-`packages/site` is Kikoe's one-page site: Next.js and React, exported as
-static files. Everything on it is built from the app's own pieces: the dotted
-orb you can hold to talk, a switchboard you can type into, a board you can
-drag, the Room playing a turn, the phone page in an iPhone 17 Pro or Pixel 10
-Pro frame, and the island. There are no screenshots on it.
+**[kikoe-olive.vercel.app](https://kikoe-olive.vercel.app)**: Kikoe's one-page
+site, where you can try it in the browser. Hold the orb to talk, type a
+sentence into the switchboard, drag a board and answer its permission, and
+watch the Room play a turn. The phone page is shown in an iPhone 17 Pro or
+Pixel 10 Pro frame, next to the island. Everything on it is built from the
+app's own pieces; there are no screenshots.
 
-```bash
-pnpm site                                # dev server
-pnpm site:build                          # static export in packages/site/out
-KIKOE_SITE_BASE=/kikoe pnpm site:build   # served under a path, e.g. GitHub Pages
-```
-
-The images in this README are made from the site and the brand files, so they
-never go stale: `pnpm site:build`, then `pnpm --filter @kikoe/site
-readme-images`. The logo files come from `node brand/make.mjs` (see
-[brand/BRAND.md](brand/BRAND.md)).
+Its code is in its own repo,
+[builtbywally/kikoe-website](https://github.com/builtbywally/kikoe-website)
+(Next.js and React, exported as static files), and Vercel builds it on every
+push there. The images in this README are made from that site and this repo's
+brand files, so they never go stale: in a checkout of kikoe-website next to
+this one, `pnpm build && pnpm readme-images`. The logo files come from
+`node brand/make.mjs` (see [brand/BRAND.md](brand/BRAND.md)).
 
 ## Developing
 
 ```bash
 pnpm test           # vitest; never touches ~/.claude or the OS voice
 pnpm lint           # biome
-pnpm typecheck      # the app's packages and the site
+pnpm typecheck
 ```
 
 Every change goes through the same loop:
@@ -274,7 +272,6 @@ packages/app      Electron: main.ts (daemon in the main process, tray, windows),
                   mic.ts (the ear: audify → Silero VAD → Whisper), renderer/room (the Room,
                   the canvas, settings, the phone), renderer/island (the pill)
 packages/cli      `kikoe speak`, `kikoe show`: push a line or a card from a script
-packages/site     the website: Next.js, static export, built from the app's own pieces
 brand/            こえ: the outlines, the logo files and the script that makes them
 evals/            narration, impulse and fleet fixtures: the acceptance contract for the voice
 docs/             how it works and why (below)

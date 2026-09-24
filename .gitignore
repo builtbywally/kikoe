@@ -23,7 +23,3 @@ out/
 
 # Screenshot runs from packages/app
 packages/app/out*.png
-
-# The site: Next.js build output
-.next/
-packages/site/next-env.d.ts
