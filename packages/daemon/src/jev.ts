@@ -159,32 +159,112 @@ export function youtubeEmbed(id: string): string {
   return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`;
 }
 
-/** Words after "open" that are never a site's name. */
+/**
+ * Words after "open" that are never a site's name. The nouns matter as much
+ * as the filler: "pull up a picture from unsplash" once opened picture.com,
+ * because "picture" was the first word after the verb.
+ */
 const NOT_A_SITE = new Set(
-  "a an the my it this that these those up canvas board here browser terminal folder editor vs code new session claude agent project localhost me something".split(
+  "a an the my it this that these those up canvas board here browser terminal folder editor vs code new session claude agent project localhost me something some one picture pictures photo photos image images pic pics video videos page site website web wallpaper".split(
     " ",
   ),
 );
 
 /**
+ * Sites people ask for by name, and how each searches (`%s` is the query).
+ * A name on this list wins wherever it is in the sentence, so "a picture
+ * from unsplash" is Unsplash and not the first noun after the verb.
+ */
+const SITES: Record<string, string> = {
+  unsplash: "https://unsplash.com/s/photos/%s",
+  pexels: "https://www.pexels.com/search/%s/",
+  pinterest: "https://www.pinterest.com/search/pins/?q=%s",
+  dribbble: "https://dribbble.com/search/%s",
+  behance: "https://www.behance.net/search/projects?search=%s",
+  google: "https://www.google.com/search?q=%s",
+  wikipedia: "https://en.wikipedia.org/w/index.php?search=%s",
+  github: "https://github.com/search?q=%s",
+  reddit: "https://www.reddit.com/search/?q=%s",
+  amazon: "https://www.amazon.com/s?k=%s",
+  youtube: "",
+  figma: "",
+  twitter: "",
+  instagram: "",
+  spotify: "",
+  netflix: "",
+};
+
+/**
  * A site said by name: "open YouTube here" means youtube.com. Nobody says the
  * ".com", and asking "which address?" back was the answer three times running
- * on the phone. The first word after the verb that is not filler, with .com —
- * used only when Jev has already decided a website is what was asked for.
+ * on the phone. Used only when Jev has already decided a website is what was
+ * asked for. In order: a site this file knows, anywhere in the sentence; the
+ * word after "from", "on" or "at"; the first word after the verb that is
+ * neither filler nor a noun like "picture".
  */
 export function siteByName(text: string, exclude: string[] = []): string {
   const skip = new Set([...NOT_A_SITE, ...exclude.map((e) => e.toLowerCase())]);
+  const word = (raw: string) => raw.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  const known = text
+    .split(/\s+/)
+    .map(word)
+    .find((w) => w in SITES && !skip.has(w));
+  if (known) return `https://www.${known}.com`;
+  const where = /\b(?:from|on|at)\s+([a-z0-9][\w-]*)/gi;
+  for (const m of text.matchAll(where)) {
+    const w = word(m[1] ?? "");
+    if (w && !skip.has(w) && !/^(the|my|your|this|that)$/.test(w)) return `https://www.${w}.com`;
+  }
   const m =
     /\b(?:open|show|go to|bring up|pull up|load|put|launch|browse)\s+((?:[a-z0-9][\w-]*\s*){1,4})/i.exec(
       text,
     );
   if (!m?.[1]) return "";
   for (const raw of m[1].trim().split(/\s+/)) {
-    const w = raw.toLowerCase().replace(/[^a-z0-9-]/g, "");
-    if (!w || skip.has(w) || /^(on|in|at|for|to)$/.test(w)) continue;
+    const w = word(raw);
+    // "a picture of a cupcake": what follows "of" is the subject, not a site
+    if (w === "of") break;
+    if (!w || skip.has(w) || /^(on|in|at|for|to|from)$/.test(w)) continue;
     return `https://www.${w}.com`;
   }
   return "";
+}
+
+/**
+ * What a picture is of: "give me a picture of a cupcake" is "cupcake". The
+ * last such phrase wins, since the subject tends to come after the site.
+ */
+export function pictureOf(text: string): string {
+  const re =
+    /\b(?:pictures?|photos?|photographs?|images?|pics?|wallpapers?|shots?)\s+of\s+(?:(?:a|an|some|the)\s+)?([^.,!?]+)/gi;
+  let subject = "";
+  for (const m of text.matchAll(re)) {
+    const words = (m[1] ?? "")
+      .toLowerCase()
+      .replace(/\b(from|on|in|into|onto)\b.*$/, "")
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w && !NOT_A_QUERY.has(w) && !(w in SITES));
+    if (words.length) subject = words.slice(0, 6).join(" ");
+  }
+  return subject;
+}
+
+/**
+ * A named site plus something to find becomes that site's search:
+ * "a picture of a cupcake from unsplash" opens Unsplash's cupcake page, not
+ * its front door. Anything else is returned as it was.
+ */
+export function siteSearch(named: string, text: string): string {
+  // A picture asked for with no site named comes from Unsplash.
+  const url = !named && pictureOf(text) ? "https://www.unsplash.com" : named;
+  const name = /^https?:\/\/(?:www\.)?([a-z0-9-]+)\.com\/?$/i.exec(url)?.[1]?.toLowerCase() ?? "";
+  const template = SITES[name];
+  if (!template) return url;
+  const q = searchQuery(text) || pictureOf(text);
+  if (!q) return url;
+  const pathy = !template.includes("?");
+  return template.replace("%s", encodeURIComponent(pathy ? q.replace(/\s+/g, "-") : q));
 }
 
 export interface JevOptions {

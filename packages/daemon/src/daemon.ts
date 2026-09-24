@@ -55,7 +55,15 @@ import {
   walkieToken,
 } from "./config.js";
 import { Hub } from "./hub.js";
-import { type Command, Jev, isYoutube, searchQuery, youtubeEmbed, youtubeId } from "./jev.js";
+import {
+  type Command,
+  Jev,
+  isYoutube,
+  searchQuery,
+  siteSearch,
+  youtubeEmbed,
+  youtubeId,
+} from "./jev.js";
 import { KIT_GUIDE, withKit } from "./kit.js";
 import { LiveBrain } from "./livebrain.js";
 import { launch, launchFor } from "./pc.js";
@@ -1076,12 +1084,17 @@ export class Daemon {
       case "agent":
         said = sentence(this.instruct(c.task, project?.name));
         break;
-      case "open":
-        said = sentence(this.openOnPc(c, project));
+      case "open": {
+        // A named site and a subject open the site's search, not its front page.
+        const rest = spokenRest(clean, d.text);
+        said = sentence(this.openOnPc({ ...c, url: siteSearch(c.url, rest) }, project));
         break;
-      case "canvas":
-        said = sentence(await this.showOnCanvas(c.url, searchQuery(spokenRest(clean, d.text))));
+      }
+      case "canvas": {
+        const rest = spokenRest(clean, d.text);
+        said = sentence(await this.showOnCanvas(siteSearch(c.url, rest), searchQuery(rest)));
         break;
+      }
       case "think": {
         // Straight to the thinking session: the talking one would only have
         // handed it over. Said before it starts, so the user knows at once.

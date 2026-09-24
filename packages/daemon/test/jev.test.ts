@@ -114,6 +114,34 @@ describe("the pieces Jev chooses between", () => {
     expect(jev.findUrl("open youtube.com.com")).toBe("https://youtube.com");
   });
 
+  it("takes the site that was named, not the first noun after the verb", () => {
+    // Heard from the phone on 2026-09-24; it opened picture.com.
+    const said =
+      "I need you to pull up a picture from unsplash into the canvas. Give me a picture of a cupcake.";
+    expect(jev.siteByName(said)).toBe("https://www.unsplash.com");
+    expect(jev.pictureOf(said)).toBe("cupcake");
+    expect(jev.siteSearch(jev.siteByName(said), said)).toBe(
+      "https://unsplash.com/s/photos/cupcake",
+    );
+    // the correction that followed still works
+    expect(jev.siteByName("No, I need to go to unsplash.")).toBe("https://www.unsplash.com");
+    // a site the list does not know, named after "from"
+    expect(jev.siteByName("pull up a photo from flickr")).toBe("https://www.flickr.com");
+    // no site named: the subject is never taken for one, and a picture comes from Unsplash
+    expect(jev.siteByName("put a picture of a cupcake on the canvas")).toBe("");
+    expect(jev.siteSearch("", "put a picture of red velvet cupcakes on the canvas")).toBe(
+      "https://unsplash.com/s/photos/red-velvet-cupcakes",
+    );
+    // a query-string search keeps its spaces encoded
+    expect(jev.siteSearch("https://www.google.com", "search for best pizza dough")).toBe(
+      "https://www.google.com/search?q=best%20pizza%20dough",
+    );
+    // a site with nothing to find opens as it was
+    expect(jev.siteSearch("https://www.unsplash.com", "open unsplash")).toBe(
+      "https://www.unsplash.com",
+    );
+  });
+
   it("hears what to look up, and knows a video when it sees one", () => {
     expect(
       jev.searchQuery(
