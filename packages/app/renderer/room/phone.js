@@ -30,9 +30,9 @@
     '<div class="phone-opt col"><span>How much Kik says</span><div class="seg" id="opt-narrate">' +
     '<button data-v="silent">quiet</button><button data-v="attention">what matters</button><button data-v="normal">normal</button><button data-v="verbose">everything</button>' +
     "</div></div>" +
-    '<div class="phone-opt col"><span>Voice</span><select id="opt-tts">' +
-    '<option value="auto">best available</option><option value="eleven">ElevenLabs</option><option value="piper">Piper</option><option value="kokoro">Kokoro</option><option value="system">system</option>' +
-    '</select><select id="opt-voice"></select></div>' +
+    // The voices themselves, by name: tap one and Kik speaks in it (the
+    // user: "pick the voice, not the voice model or provider").
+    '<div class="phone-opt col"><span>Kik\'s voice</span><div class="voice-list" id="opt-voices"></div></div>' +
     '<div class="phone-note" id="opt-note"></div>' +
     "</div>";
   document.body.appendChild(wrap);
@@ -133,25 +133,47 @@
   const optSound = wrap.querySelector("#opt-sound");
   const optOpen = wrap.querySelector("#opt-open");
   const optNarrate = wrap.querySelector("#opt-narrate");
-  const optTts = wrap.querySelector("#opt-tts");
-  const optVoice = wrap.querySelector("#opt-voice");
+  const optVoices = wrap.querySelector("#opt-voices");
   const note = wrap.querySelector("#opt-note");
+  /** one voice in the list: its name, and what ElevenLabs says it sounds like */
+  function voiceButton(label, detail, patch, on) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    const n = document.createElement("b");
+    n.textContent = label;
+    b.append(n);
+    if (detail) {
+      const s = document.createElement("small");
+      s.textContent = detail;
+      b.append(s);
+    }
+    b.addEventListener("click", () => void voiceCall(patch));
+    return b;
+  }
   function fill(v) {
     if (!v || typeof v !== "object") return;
     for (const b of optNarrate.querySelectorAll("button"))
       b.setAttribute("aria-pressed", b.dataset.v === v.narrate ? "true" : "false");
-    if (v.tts) optTts.value = v.tts;
-    optVoice.innerHTML = "";
+    optVoices.innerHTML = "";
     const voices = Array.isArray(v.voices) ? v.voices : [];
-    optVoice.hidden = !voices.length;
+    const eleven = v.tts === "eleven" || v.tts === "auto";
     for (const x of voices) {
-      const o = document.createElement("option");
-      o.value = x.id;
-      o.textContent = x.name;
-      if (x.id === v.voice) o.selected = true;
-      optVoice.append(o);
+      // "Jessica - Playful, Bright, Warm" is Jessica, playful, bright, warm
+      const [name, ...rest] = String(x.name).split(" - ");
+      optVoices.append(
+        voiceButton(
+          name,
+          rest.join(" - "),
+          { tts: "eleven", elevenlabs_voice: x.id },
+          eleven && x.id === v.voice,
+        ),
+      );
     }
-    note.textContent = v.hasEleven ? "" : "No ElevenLabs key on the desk: Piper speaks.";
+    optVoices.append(
+      voiceButton("Piper", "on this PC, works offline", { tts: "piper" }, v.tts === "piper"),
+    );
+    note.textContent = v.hasEleven ? "" : "No ElevenLabs key on the desk: only Piper.";
   }
   async function voiceCall(patch) {
     try {
@@ -179,8 +201,6 @@
     const b = e.target.closest("button");
     if (b) void voiceCall({ narrate: b.dataset.v });
   });
-  optTts.addEventListener("change", () => void voiceCall({ tts: optTts.value }));
-  optVoice.addEventListener("change", () => void voiceCall({ elevenlabs_voice: optVoice.value }));
   optOpen.addEventListener("change", async () => {
     // asked for inside the tap: a phone gives the microphone to a gesture
     if (optOpen.checked && !(await open())) {

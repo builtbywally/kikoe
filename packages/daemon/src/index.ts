@@ -43,6 +43,7 @@ export {
   PIPER,
   WHISPER_TINY,
   WHISPER_BASE,
+  WHISPER_MULTI,
 } from "./models.js";
 export type { ModelSpec, Progress } from "./models.js";
 export {

@@ -57,6 +57,19 @@ export const WHISPER_BASE: ModelSpec = {
   marker: "base.en-tokens.txt",
 };
 
+/**
+ * The same size of Whisper, for every language it knows (Arabic, Turkish,
+ * French…), which finds the language itself. The ".en" models above hear
+ * only English: Arabic came out as English-shaped nonsense.
+ */
+export const WHISPER_MULTI: ModelSpec = {
+  name: "whisper-base-multilingual",
+  dir: "sherpa-onnx-whisper-base",
+  url: `${ASR}sherpa-onnx-whisper-base.tar.bz2`,
+  size: 207_557_382,
+  marker: "base-tokens.txt",
+};
+
 /** The VAD is a single file, not an archive. */
 export const VAD_URL = `${ASR}silero_vad.onnx`;
 
@@ -65,6 +78,7 @@ export const SPECS: Record<string, ModelSpec> = {
   piper: PIPER,
   "whisper-tiny": WHISPER_TINY,
   "whisper-base": WHISPER_BASE,
+  "whisper-base-multilingual": WHISPER_MULTI,
 };
 
 /** Fetch the VAD file if it is missing. Small, so no progress. */

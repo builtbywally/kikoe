@@ -1927,3 +1927,33 @@ html[data-phone="true"] .ambient-flash {
 .phone-talk[data-open="1"] .phone-hint {
   color: var(--ember);
 }
+/* the voices themselves, by name, in the phone's panel */
+.voice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 34vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.voice-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--fg-rgb), 0.12);
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  font: 14px var(--sans);
+}
+.voice-list button small {
+  color: var(--dim);
+  font-size: 12px;
+}
+.voice-list button[aria-pressed="true"] {
+  border-color: var(--ember);
+  background: rgba(210, 104, 63, 0.14);
+}

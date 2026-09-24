@@ -73,11 +73,15 @@ function main(): void {
   const { RtAudio, RtAudioFormat } = require("audify");
 
   const vadModel = path.join(MODELS, "silero_vad.onnx");
-  const size = MODEL === "base" ? "base" : "tiny";
-  const whisperDir = path.join(MODELS, `sherpa-onnx-whisper-${size}.en`);
-  const encoder = path.join(whisperDir, `${size}.en-encoder.int8.onnx`);
-  const decoder = path.join(whisperDir, `${size}.en-decoder.int8.onnx`);
-  const tokens = path.join(whisperDir, `${size}.en-tokens.txt`);
+  // "multi" is base Whisper for every language, finding the language itself;
+  // the others hear English only.
+  const multi = MODEL === "multi";
+  const size = MODEL === "base" || multi ? "base" : "tiny";
+  const stem = multi ? size : `${size}.en`;
+  const whisperDir = path.join(MODELS, `sherpa-onnx-whisper-${stem}`);
+  const encoder = path.join(whisperDir, `${stem}-encoder.int8.onnx`);
+  const decoder = path.join(whisperDir, `${stem}-decoder.int8.onnx`);
+  const tokens = path.join(whisperDir, `${stem}-tokens.txt`);
   for (const f of [vadModel, encoder, decoder, tokens]) {
     if (!existsSync(f)) {
       say(`model missing: ${f}`);
@@ -111,7 +115,14 @@ function main(): void {
     recognizer = new sherpa.OfflineRecognizer({
       featConfig: { sampleRate: RATE, featureDim: 80 },
       modelConfig: {
-        whisper: { encoder, decoder, language: "en", task: "transcribe", tailPaddings: -1 },
+        // an empty language asks the multilingual model to find it
+        whisper: {
+          encoder,
+          decoder,
+          language: multi ? "" : "en",
+          task: "transcribe",
+          tailPaddings: -1,
+        },
         tokens,
         numThreads: 2,
         provider: "cpu",
@@ -210,7 +221,13 @@ function main(): void {
   function recognize(samples: Float32Array): string {
     const rec = loadRecognizer();
     const stream = rec.createStream();
-    stream.acceptWaveform({ samples, sampleRate: RATE });
+    // A quarter second of silence on each side: without it Whisper dropped
+    // the last words of a clip that ends as the speech does (Lebanese Arabic,
+    // 2026-09-24: "شو عم تعمل هلق" came out "شرم تعم"; padded, it was right).
+    const pad = Math.round(RATE * 0.25);
+    const padded = new Float32Array(samples.length + pad * 2);
+    padded.set(samples, pad);
+    stream.acceptWaveform({ samples: padded, sampleRate: RATE });
     rec.decode(stream);
     return String(rec.getResult(stream).text ?? "").trim();
   }

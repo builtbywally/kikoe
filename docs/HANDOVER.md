@@ -1129,3 +1129,24 @@ is what should have stood in the way, so test through it.
 - **Cards keep their scroll** through a rebuild (board.js `scrollsOf` /
   `keepScrolls`, applied after sizing; one at the bottom stays at the
   bottom). They sprang back to the top on every live update.
+
+## Other languages, and Lebanese Arabic (2026-09-24)
+
+- **Speaking**: PERSONA now says answer in the language the user spoke,
+  switch when they switch, and Arabic is Lebanese (the Beirut dialect, in
+  Arabic script, never MSA). ElevenLabs `eleven_flash_v2_5` speaks it in the
+  user's chosen voice; Piper is English only.
+- **Hearing**: `stt_model: "multi"` (Settings, Listening: "Whisper base,
+  every language") is `WHISPER_MULTI`, sherpa's multilingual base (208 MB,
+  `sherpa-onnx-whisper-base`, files `base-*.int8.onnx`), language "" so it
+  finds the language itself. Tested by having ElevenLabs say Lebanese
+  sentences and transcribing them: detected `ar`, ~0.4 s each; "افتحلي
+  يوتيوب وحطلي شي موسيقى" → "افتح لي YouTube وحط لي شي موسيقى". It dropped
+  the last words until the clip was padded, so `recognize()` in mic.ts pads
+  a quarter second of silence each side. The model is downloaded on this
+  machine; the user's setting is still the English "base" until they pick it.
+  The name gate and reflexes are English words; an Arabic sentence goes to
+  Jev and Kik like any other.
+- **The phone's voice list** is the voices themselves, by name (the
+  ElevenLabs voices on the account, plus Piper), not an engine menu; a tap
+  switches and Kik says "This is how I sound now." in it.

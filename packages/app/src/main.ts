@@ -21,6 +21,7 @@ import {
   Supervisor,
   VERSION,
   WHISPER_BASE,
+  WHISPER_MULTI,
   WHISPER_TINY,
   anthropicKeyFromFile,
   crashSource,
@@ -170,6 +171,8 @@ async function startDaemon(): Promise<void> {
             loadAnthropicKey(),
             openrouterKeyFromFile(),
           );
+          // heard at once, in the voice just picked
+          daemon.say("This is how I sound now.", 3, "head");
         }
         log(`phone changed the voice: ${JSON.stringify(patch)}`);
       }
@@ -324,7 +327,12 @@ async function spawnEar(): Promise<void> {
   // The ear's models come on demand, the first time it is turned on.
   try {
     await fetchVad();
-    const spec = s.stt_model === "base" ? WHISPER_BASE : WHISPER_TINY;
+    const spec =
+      s.stt_model === "multi"
+        ? WHISPER_MULTI
+        : s.stt_model === "base"
+          ? WHISPER_BASE
+          : WHISPER_TINY;
     if (!modelInstalled(spec)) {
       daemon.micPhase = "downloading the speech model";
       await fetchModel(spec, (p) => {
