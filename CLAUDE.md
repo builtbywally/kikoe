@@ -30,7 +30,7 @@ Rules that are not negotiable:
   --config.directories.output=<a directory outside the repo>`. Under pnpm,
   never npx (npx drops audify and sherpa-onnx and the ear dies silently),
   and outside the repo (Orca's watcher locks `out/`). Check
-  `win-unpacked/resources/app.asar.unpacked/node_modules` lists audify,
+  `win-unpacked/resources/app/node_modules` lists audify,
   sherpa-onnx-node and sherpa-onnx-win-x64, stop the app, run the
   installer with `/S`, then check `/state` shows `mic.phase` listening.
 - Commit messages: a title, a paragraph of why, and the Co-Authored-By line.

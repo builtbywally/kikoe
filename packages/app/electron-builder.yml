@@ -18,10 +18,13 @@ extraResources:
   - from: build
     to: build
     filter: ["icon.png", "trayTemplate.png"]
-asarUnpack:
-  - "**/node_modules/audify/**"
-  - "**/node_modules/sherpa-onnx-node/**"
-  - "**/node_modules/sherpa-onnx-*/**"
+# No asar archive. Electron treats an .asar as a folder, and any Electron app
+# that reads into one (Orca did, 2026-09-24) holds the file open until it
+# quits; the uninstaller then cannot move it, and every update fails with
+# exit code 2, or hangs retrying in silent mode. Plain files are opened and
+# closed again, so nothing can pin the install folder. It also means the
+# ear's native modules need no unpacking.
+asar: false
 npmRebuild: false
 win:
   icon: build/icon.ico

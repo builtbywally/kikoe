@@ -153,7 +153,7 @@ pnpm exec electron-builder --config.directories.output=../../../kikoe-dist
 Build **outside the repo** (a file watcher on `out/` locks it) and **with
 pnpm, never npx**: npx resolves dependencies as npm and silently drops the
 ear's native modules. Afterwards, check that
-`win-unpacked/resources/app.asar.unpacked/node_modules` lists `audify`,
+`win-unpacked/resources/app/node_modules` lists `audify`,
 `sherpa-onnx-node` and `sherpa-onnx-win-x64`.
 
 ## Developing

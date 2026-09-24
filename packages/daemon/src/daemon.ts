@@ -61,6 +61,7 @@ import {
   isYoutube,
   searchQuery,
   siteSearch,
+  wantsThePc,
   youtubeEmbed,
   youtubeId,
 } from "./jev.js";
@@ -1036,15 +1037,32 @@ export class Daemon {
       this.respond(d, clean, record);
       return;
     }
+    const said = spokenRest(clean, d.text);
+    const toPc = wantsThePc(said);
+    // "On the desktop, please" right after a card: the site on that card, on
+    // the PC. Without this the follow-up had no address in it and did nothing.
+    if (toPc && c.action === "open" && !c.url && this.lastCanvasSite) {
+      if (Date.now() - this.lastCanvasSite.at < 120_000) {
+        c.url = this.lastCanvasSite.url;
+        c.open = "website";
+      }
+    }
     // From the phone, "open YouTube" in the desk's browser helps nobody on
-    // the couch; the canvas is the screen they are holding.
+    // the couch; the canvas is the screen they are holding. Unless they said
+    // where: "on my computer", "on the desktop", "in Chrome" mean the PC.
     if (
       via === "phone" &&
+      !toPc &&
       c.action === "open" &&
       (c.open === "website" || c.open === "browser") &&
       c.url
     )
       c.action = "canvas";
+    // And the other way: Jev heard "canvas", but the sentence names the PC.
+    if (toPc && c.action === "canvas" && c.url) {
+      c.action = "open";
+      c.open = "website";
+    }
     // A project half-heard is asked about rather than guessed: starting work
     // in the wrong repo is worse than one short question.
     const needsProject = c.action === "agent" || c.action === "new_session" || c.action === "open";
@@ -1154,8 +1172,14 @@ export class Daemon {
     });
     this.hub.publish("focus", { id: pin.id });
     log(`canvas: ${name} as ${pin.id}`);
+    // The site as it was asked for, not its player: "on the desktop, please"
+    // opens it in the PC's browser, where youtube.com itself works.
+    this.lastCanvasSite = { url: url || body, at: Date.now() };
     return `${name} is on the canvas`;
   }
+
+  /** The last site put on the canvas, for "no, on the desktop". */
+  private lastCanvasSite: { url: string; at: number } | null = null;
 
   /**
    * The top YouTube video for a query, read from the results page: the first

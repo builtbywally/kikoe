@@ -165,7 +165,7 @@ export function youtubeEmbed(id: string): string {
  * because "picture" was the first word after the verb.
  */
 const NOT_A_SITE = new Set(
-  "a an the my it this that these those up canvas board here browser terminal folder editor vs code new session claude agent project localhost me something some one picture pictures photo photos image images pic pics video videos page site website web wallpaper".split(
+  "a an the my it this that these those up canvas board here browser terminal folder editor vs code new session claude agent project localhost me something some one picture pictures photo photos image images pic pics video videos page site website web wallpaper chrome firefox edge safari brave computer pc desktop laptop screen monitor machine".split(
     " ",
   ),
 );
@@ -186,7 +186,8 @@ const SITES: Record<string, string> = {
   github: "https://github.com/search?q=%s",
   reddit: "https://www.reddit.com/search/?q=%s",
   amazon: "https://www.amazon.com/s?k=%s",
-  youtube: "",
+  // on the canvas this becomes the player (showOnCanvas); on the PC, results
+  youtube: "https://www.youtube.com/results?search_query=%s",
   figma: "",
   twitter: "",
   instagram: "",
@@ -228,6 +229,17 @@ export function siteByName(text: string, exclude: string[] = []): string {
     return `https://www.${w}.com`;
   }
   return "";
+}
+
+/**
+ * Does the sentence say where: on the computer itself? "Pull up Chrome on my
+ * computer and go to YouTube" was turned into a canvas card from the phone,
+ * because a phone's "open" used to mean the canvas whatever was said.
+ */
+export function wantsThePc(text: string): boolean {
+  return /\b(?:on|to|in)\s+(?:my|the)\s+(?:computer|pc|desktop|laptop|machine|monitor|screen|browser)\b|\b(?:chrome|firefox|edge|safari|brave)\b|\bdesktop\b/i.test(
+    text,
+  );
 }
 
 /**

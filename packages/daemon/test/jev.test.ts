@@ -329,6 +329,40 @@ describe("the switchboard in the daemon", () => {
     await d.close();
   });
 
+  it("from the phone, a site asked for on the computer opens on the computer", async () => {
+    // Heard from the phone on 2026-09-24; it made a canvas card instead.
+    const { d, launched } = daemon({ action: "open", open: "website" });
+    d.typed("Can you pull up Chrome on my computer and go to YouTube?", "phone");
+    await tick();
+    expect(launched[0]?.args.join(" ")).toContain("youtube.com");
+    expect(d.board.list().some((p) => p.kind === "web")).toBe(false);
+    await d.close();
+  });
+
+  it("'on the desktop, please' moves the last canvas site to the PC", async () => {
+    const { d, launched } = daemon({ action: "open", open: "website" });
+    d.typed("open youtube", "phone");
+    await tick();
+    expect(launched).toHaveLength(0);
+    d.typed("On the desktop please.", "phone");
+    await tick();
+    expect(launched[0]?.args.join(" ")).toContain("youtube.com");
+    await d.close();
+  });
+
+  it("knows when a sentence names the computer", () => {
+    for (const t of [
+      "pull up Chrome on my computer",
+      "open youtube on the desktop",
+      "show it in my browser",
+      "open it in firefox",
+    ])
+      expect(jev.wantsThePc(t)).toBe(true);
+    for (const t of ["open youtube here", "put it on the canvas", "open youtube"])
+      expect(jev.wantsThePc(t)).toBe(false);
+    expect(jev.siteByName("pull up Chrome on my computer")).toBe("");
+  });
+
   it("looks YouTube up and shows the player, which a phone will frame", async () => {
     const asked: string[] = [];
     const d = new dmod.Daemon({

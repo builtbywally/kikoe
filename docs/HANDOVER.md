@@ -476,8 +476,12 @@ pins the same reading to a screen edge — and the user asked for both.
   electron-builder resolves dependencies as npm and silently drops
   audify and sherpa-onnx from `app.asar.unpacked`; the app installs and
   speaks but the ear dies with "Cannot find module 'sherpa-onnx-node'".
-  Check `resources/app.asar.unpacked/node_modules` lists audify,
-  sherpa-onnx-node and sherpa-onnx-win-x64 before installing. Then run
+  Check `resources/app/node_modules` lists audify, sherpa-onnx-node and
+  sherpa-onnx-win-x64 before installing (it was `app.asar.unpacked` until
+  the build dropped asar on 2026-09-24). If an install fails with exit code
+  2, something holds a file in the install folder; ask Windows who with the
+  Restart Manager: `powershell -File scripts/who-holds.ps1 -Path <file>` (used on
+  2026-09-24) rather than guessing — it was Orca. Then run
   the installer with `/S` with the app stopped first, or it hangs.
   The Windows icon is pre-rendered (`build/icon.ico`, made with Pillow
   from icon.png) because electron-builder's WebAssembly icon tool dies
@@ -870,6 +874,28 @@ page in Kikoe is `design_artifact` with `quick: true` on Haiku.
   yet; `PLAN.md` calls them the acceptance contract), the unused
   re-exports in `core` and `daemon` indexes (`@kikoe/daemon` is published),
   `cold.yml` failing by design on commands still `PLANNED`.
+- **The installer's exit code 2 was Orca** (found the same day). Before it
+  installs, the NSIS installer runs the old version's uninstaller, which
+  moves every file out of the install folder first and aborts on any busy
+  file ("File is busy, aborting"); the installer then quits with 2
+  (`installUtil.nsh:131`), or, if it gets as far as extracting, retries the
+  locked file for ever in silent mode (the twelve-minute hang). The busy file
+  was `resources\app.asar`, held by **Orca.exe**: Electron treats an `.asar`
+  as a folder, and any Electron process that reads into one keeps the
+  archive open until it quits. Windows' Restart Manager names the holder
+  (`scripts/who-holds.ps1 -Path <file>`). **Fix: `asar: false`** in
+  `electron-builder.yml` — the app ships as plain files, which are opened
+  and closed, so nothing can pin the folder, and the ear's native modules
+  need no unpacking. The one upgrade *from* an asar build still needs Orca
+  (or whatever holds it) to let go: quit it, install, reopen.
+- **"On my computer" from the phone opened a canvas card.** A phone's
+  "open a website" became a canvas card whatever was said, so "pull up
+  Chrome on my computer and go to YouTube" (Jev: open 0.98) went to the
+  canvas. `wantsThePc()` now keeps anything that names the computer,
+  desktop, a browser or Chrome on the PC; "on the desktop, please" right
+  after a card opens that card's site on the PC (`lastCanvasSite`); and
+  "a picture from unsplash" is Unsplash, not picture.com (`siteByName`
+  prefers a named site; `siteSearch` opens its search for the subject).
 - **Found, not fixed**: `electron-builder.yml` and `main.ts:455` want
   `build/trayTemplate.png` on macOS and it does not exist; the app requires
   `audify` and `sherpa-onnx-node` without declaring them (works because
