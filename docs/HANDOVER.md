@@ -990,3 +990,33 @@ Three causes, all fixed:
   cards' layer comes and goes with movement as on the desk, and card iframes
   are `loading="lazy"`, so a live page far off screen costs nothing. The
   desk keeps the backdrop layer. Not verified on the phone itself yet.
+
+## The three gates before hands (2026-09-24)
+
+`docs/OS.md` §5: before Kik may act on the machine. All three are done.
+
+1. **The ear can never stay dead** — `daemon/src/supervisor.ts`
+   (`Supervisor`), used by `main.ts` as `earKeeper`. An exit nobody asked for
+   is a crash; restarted after 1 s, then 2, 4, 8, 16, then every 30 s while
+   wanted; a minute's run resets the backoff. Kik says "I lost the mic",
+   "I can't hear you" after three, "I can hear you again" on the ear's
+   `ready` (`Daemon.onMicReady`). `stopEar()` releases first, and the exit
+   handler ignores a process that is no longer the current ear — a stopped
+   ear can exit after its replacement started. Verified by killing the ear's
+   utility process while listening: back in 1.9 s, both lines spoken.
+2. **The watchdog has a mouth** — `crashSource()` reads the stack: the
+   app's own errors are logged and no longer restart the daemon; three
+   daemon crashes in a minute say "Kikoe has stopped working" through
+   System.Speech (the daemon's voice is what stopped), show a notification
+   that restarts it on a click, and try again after a minute instead of
+   leaving it down for good.
+3. **A capability model** — `daemon/src/capability.ts`: `gradeOf(kind,
+   detail)` gives read / write / irreversible; the detail's words decide
+   irreversible (delete, send, publish, pay, shut down…), and the stricter
+   grade wins. `Daemon.askPermission(what, grade)` asks through the same
+   held-question machinery as Claude Code's hook — the pending permission
+   now carries a `reply` rather than a raw response — so the arbiter's
+   binding and "yes" work unchanged. The depth-1 slot is a queue
+   (`queued`, `enqueuePermission`, `nextPermission`, `expirePermission`,
+   `Arbiter.wake()` to let a held question speak). Irreversible is never
+   auto-approvable: there is no "always allow", and nothing may add one.

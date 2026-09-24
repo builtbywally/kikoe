@@ -41,6 +41,7 @@ import {
 } from "@kikoe/core";
 import { Agents } from "./agents.js";
 import { Brain, type BrainTool, PERSONA } from "./brain.js";
+import { type Grade, askLine, mustAsk } from "./capability.js";
 import { CODE_PROVIDER, CodeBrain } from "./codebrain.js";
 import {
   HOME,
@@ -113,16 +114,19 @@ function repoOf(cwd: string): string {
 }
 
 /**
- * A pending permission: the hook is blocked in `curl`, waiting on this
- * response. A spoken yes releases it; no, silence and timeout all deny.
- * Denial means an empty body, so Claude Code falls back to its own prompt.
+ * A pending permission. Either Claude Code's hook, blocked in `curl` on
+ * this response — a spoken yes releases it; no, silence and timeout all
+ * deny, and denial is an empty body so Claude Code falls back to its own
+ * prompt — or one of Kik's own actions waiting to be allowed (`askPermission`),
+ * through the same question, the same binding and the same yes.
  */
 interface PendingPermission {
   id: string;
   session: string;
   repo: string;
   text: string;
-  res: http.ServerResponse;
+  /** give the answer: writes the hook's body, or settles Kik's own wait */
+  reply: (allow: boolean) => void;
   timer: NodeJS.Timeout;
 }
 
@@ -347,6 +351,13 @@ export class Daemon {
   private latencies: number[] = [];
   private server: http.Server | null = null;
   private pending: PendingPermission | null = null;
+  /**
+   * Questions behind the one being asked. A second question used to deny the
+   * first outright (the "depth-1 slot", AUDIT gap 4); now it waits its turn,
+   * and the arbiter already holds its words until then.
+   */
+  private queued: PendingPermission[] = [];
+  private kikAsks = 0;
   private lastPermissionId = "";
   private startedAt = Date.now();
   private timers: NodeJS.Timeout[] = [];
@@ -657,20 +668,76 @@ export class Daemon {
     if (!id && this.lastPermissionId && this.lastPermissionId !== p.id) return false;
     clearTimeout(p.timer);
     this.pending = null;
-    const body = allow
-      ? JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "PermissionRequest",
-            decision: "allow",
-            decisionReason: "approved by voice",
-          },
-        })
-      : "";
-    p.res.writeHead(200, { "content-type": "application/json" });
-    p.res.end(body);
+    p.reply(allow);
     this.hub.publish("permission", { id: p.id, session: p.session, allow });
     log(`permission ${p.id} ${allow ? "allowed" : "denied"} (${p.repo})`);
+    this.nextPermission();
     return true;
+  }
+
+  /** Put a question in line: asked now if nothing is, or after the ones ahead. */
+  private enqueuePermission(p: PendingPermission): void {
+    if (!this.pending) this.pending = p;
+    else this.queued.push(p);
+  }
+
+  /** The next question in line becomes the one being asked, and may be spoken. */
+  private nextPermission(): void {
+    this.pending = this.queued.shift() ?? null;
+    this.arbiter.wake();
+  }
+
+  /**
+   * A question that timed out or whose asker went away. The one being asked
+   * is denied the normal way; one still in line is simply taken out of it.
+   */
+  private expirePermission(id: string): void {
+    if (this.pending?.id === id) {
+      this.answerPermission(false, id);
+      return;
+    }
+    const i = this.queued.findIndex((q) => q.id === id);
+    if (i < 0) return;
+    const [q] = this.queued.splice(i, 1);
+    if (q) {
+      clearTimeout(q.timer);
+      q.reply(false);
+      log(`permission ${id} expired in line (${q.repo})`);
+    }
+  }
+
+  /**
+   * Ask the user before Kik does something itself: the gate every one of its
+   * hands goes through. A read is free; a write is asked; an irreversible
+   * action is asked and said as such, and cannot be allowed any other way.
+   * Resolves to the answer; silence is a no.
+   */
+  askPermission(what: string, grade: Grade, timeoutS = 30): Promise<boolean> {
+    if (!mustAsk(grade)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      this.kikAsks = (this.kikAsks + 1) % 0xffff;
+      const id = `kik-${Date.now().toString(36)}${this.kikAsks.toString(36)}`;
+      const p: PendingPermission = {
+        id,
+        session: "kik",
+        repo: "kik",
+        text: what,
+        reply: resolve,
+        timer: setTimeout(() => this.expirePermission(id), timeoutS * 1000),
+      };
+      this.enqueuePermission(p);
+      log(`permission ${id} asked by Kik (${grade}): ${what}`);
+      this.arbiter.submitAll([
+        utterance(askLine(what, grade), {
+          priority: ev.SEV_ATTENTION,
+          dedupe: `perm:${id}`,
+          eventId: id,
+          session: "kik",
+          ttl: timeoutS,
+        }),
+      ]);
+      this.hub.publish("event", { kind: "permission", repo: "kik", text: what, id });
+    });
   }
 
   /**
@@ -3326,25 +3393,42 @@ export class Daemon {
           return this.json(res, 400, { error: "bad json" });
         }
         const e = this.hook(payload);
-        // A permission request holds the hook open until a spoken answer,
-        // the timeout, or a newer question replaces it.
+        // A permission request holds the hook open until a spoken answer or
+        // the timeout. A second one waits behind the first instead of
+        // denying it; the arbiter holds its words until it is its turn.
         if (e && e.kind === ev.PERMISSION && payload.hook_event_name === "PermissionRequest") {
-          if (this.pending) this.answerPermission(false, this.pending.id);
           const timeoutS = Math.max(3, Number(url.searchParams.get("timeout") ?? 20));
+          let answered = false;
           const p: PendingPermission = {
             id: e.id,
             session: e.session,
             repo: e.repo,
             text: this.tracker.sessions.get(e.session)?.pendingPermission ?? "",
-            res,
-            timer: setTimeout(() => this.answerPermission(false, e.id), timeoutS * 1000),
+            reply: (allow) => {
+              answered = true;
+              const body = allow
+                ? JSON.stringify({
+                    hookSpecificOutput: {
+                      hookEventName: "PermissionRequest",
+                      decision: "allow",
+                      decisionReason: "approved by voice",
+                    },
+                  })
+                : "";
+              if (res.writableEnded) return;
+              res.writeHead(200, { "content-type": "application/json" });
+              res.end(body);
+            },
+            timer: setTimeout(() => this.expirePermission(e.id), timeoutS * 1000),
           };
-          this.pending = p;
+          this.enqueuePermission(p);
+          // curl gave up (the agent's own timeout, or it was cancelled):
+          // nobody is waiting on this question any more
           res.on("close", () => {
-            if (this.pending?.id === e.id) {
-              clearTimeout(p.timer);
-              this.pending = null;
-            }
+            if (answered) return;
+            clearTimeout(p.timer);
+            if (this.pending?.id === e.id) this.nextPermission();
+            else this.queued = this.queued.filter((q) => q.id !== e.id);
           });
           return;
         }
@@ -3599,6 +3683,12 @@ export class Daemon {
     this.usage.stop();
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
+    // Closing denies everything asked, the ones in line too: an agent must not
+    // wait on a question nobody is left to hear.
+    for (const q of this.queued.splice(0)) {
+      clearTimeout(q.timer);
+      q.reply(false);
+    }
     if (this.pending) this.answerPermission(false, this.pending.id);
     // The one socket that is not loopback goes first, and always.
     if (this.walkie) {

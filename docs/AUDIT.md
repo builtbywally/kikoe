@@ -48,13 +48,16 @@ Gaps:
 ## 4. Permissions by voice
 
 Works: the hook is held open, stock phrasing, instant; yes and no by
-voice, click, or an asked pin; timeouts answer no; a newer question
-replaces an older one.
+voice, click, or an asked pin; timeouts answer no; a second question
+waits its turn behind the first (2026-09-24; it used to deny the first);
+Kik's own actions ask through the same question (`askPermission`, graded
+read / write / irreversible in `capability.ts`).
 
 Gaps:
-- One pending permission at a time. Two agents asking at once: the
-  second replaces the first, which is answered no. **breaks trust** with
-  more than one agent.
+- ~~One pending permission at a time.~~ Closed 2026-09-24: a queue. A
+  question in line still counts down its own timeout, so a long first
+  answer can let a second expire unasked (it is denied, and Claude Code
+  falls back to its own prompt). **friction**.
 - No way to answer from another room or the phone. **later** (remote).
 
 ## 5. Talking to Kik (the ear)

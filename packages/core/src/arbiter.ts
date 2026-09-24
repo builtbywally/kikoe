@@ -239,6 +239,14 @@ export class Arbiter {
     return u.text;
   }
 
+  /**
+   * Look at the queue again. A held permission question only moves when the
+   * one ahead of it is answered, and that happens outside the arbiter.
+   */
+  wake(): void {
+    this.kick();
+  }
+
   private kick(): void {
     if (this.running) return;
     this.running = true;
