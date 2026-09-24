@@ -112,6 +112,13 @@ export interface Settings {
   jev: boolean;
   /** Kik may open the editor, a folder, a terminal or a website on this PC */
   pc: boolean;
+  /**
+   * Kik's hands (docs/OS.md, L1): switch windows, open apps, type, press
+   * keys and buttons, read what is in the window in front. Off until turned
+   * on; every change is asked for aloud, and anything that cannot be undone
+   * always is.
+   */
+  hands: boolean;
   /** rings on the island for what is left of each assistant's limit */
   usage: boolean;
   /** providers switched off by hand; a listed id is never read at all */
@@ -159,6 +166,7 @@ export const DEFAULTS: Settings = {
   claude_bin: "",
   jev: true,
   pc: true,
+  hands: false,
   usage: true,
   usage_off: [],
 };

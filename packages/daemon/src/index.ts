@@ -68,3 +68,4 @@ export { withKit, KIT_CSS, KIT_GUIDE } from "./kit.js";
 export { renderArtifact, wrapReact, stripFences, ARTIFACT_CSP, DESIGN_BRIEF } from "./runtime.js";
 export { Supervisor, crashSource, type SupervisorOptions } from "./supervisor.js";
 export { gradeOf, mustAsk, askLine, type Grade } from "./capability.js";
+export { Hands, sendKeysText, sendKeysChord } from "./hands.js";

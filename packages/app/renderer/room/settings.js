@@ -242,6 +242,7 @@
     $("brain-greets").checked = s.brain_greets !== false;
     $("jev").checked = s.jev !== false;
     $("pc").checked = s.pc !== false;
+    $("hands").checked = s.hands === true;
     $("artifact-model").value = s.artifact_model || "claude-sonnet-5";
     $("anthropic-key").placeholder = info.hasAnthropicKey
       ? "key saved in the keychain (paste to replace)"
@@ -589,6 +590,7 @@
       brain_greets: $("brain-greets").checked,
       jev: $("jev").checked,
       pc: $("pc").checked,
+      hands: $("hands").checked,
       artifact_model: $("artifact-model").value,
     };
     if (key) patch.anthropicKey = key;

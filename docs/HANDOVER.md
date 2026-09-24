@@ -1042,3 +1042,42 @@ search something it should have context of if you already have a window
 on"): `showOnCanvas` updates the newest web card of the same site
 (`siteOf`) instead of adding one, a search with no site named uses the last
 canvas site (half an hour), and known site names are dropped from the query.
+
+## L1: Kik's hands (2026-09-24)
+
+`docs/OS.md` rung L1, behind the `hands` setting (off by default; Settings,
+"Let Kik use this PC"). `daemon/src/hands.ts` keeps one PowerShell open
+(`-Command -` on stdin; each command one line, the fixed script and its one
+argument both base64, the answer a JSON line after `@@KIK@@<id>`): 1.35 s
+for the first call while it loads its types, ~50 ms after. Scripts:
+windows, front, focus (a tapped Alt so Windows lets it take the
+foreground), open, keys (SendKeys; `sendKeysText` escapes its syntax,
+`sendKeysChord` maps "ctrl+s" and refuses a key it does not know), controls
+(UI Automation of the window in front: named buttons, fields, tabs, text,
+at most 80), press (Invoke, else Toggle, else Select, else focus — never a
+click at coordinates). Kik's tools, only when the setting is on:
+`list_windows`, `read_window` (free), `focus_window`, `open_app`,
+`type_text`, `press_keys`, `press_button` (asked). `withLeave()` asks
+through `askPermission`, naming the window; a yes to working in an app
+stands two minutes for writes only; an irreversible grade is asked every
+time; and if the window in front changed between the question and the yes,
+nothing is done.
+
+**What went wrong testing it, and must not again.** Two live runs from Git
+Bash: `Start-Process notepad` found Git's extensionless `/usr/bin/notepad`
+first and Windows opened "How do you want to open this?"; the test typed
+into it (closed, harmless). `open` now resolves a name to a real program
+first (PATH `.exe`, App Paths, Start menu) and never hands a bare name to the
+shell. Then the third run opened the real Notepad, which **restores the
+user's tabs**: the window in front was their
+`C:\Users\USER\Claude\runnn.ing project\00-custom-instructions.md`, and the
+test typed, selected all, deleted and closed. The file on disk was not
+saved over (4,259 bytes, 2026-09-15, backed up beside itself as
+`.backup-2026-09-24`), but Notepad's session (TabState
+`26de57ba-….bin`, 195 bytes, no text) now holds that tab emptied and
+unsaved: when Notepad next opens, that tab must be closed with *Don't save*.
+The user was told. Rules from it: **a live test of the hands makes its own
+window (a new document) and checks the title before it types**; nothing
+tests hands against an app that restores state; and the product's own gate
+— the question names the window, and a changed window cancels the action —
+is what should have stood in the way, so test through it.

@@ -903,6 +903,16 @@ ipcMain.handle(
       daemon.settings.jev = s.jev;
       daemon.settings.pc = s.pc;
     }
+    // Hands change the tools Kik has, and its talking session learns its
+    // tools when it starts: so the head is rebuilt, not just the flag set.
+    if (daemon && "hands" in rest && daemon.settings.hands !== s.hands) {
+      daemon.reconfigure(
+        loadSettings(),
+        loadElevenKey(),
+        loadAnthropicKey(),
+        openrouterKeyFromFile(),
+      );
+    }
     if (("walkie" in rest || "walkie_port" in rest || "walkie_tailscale" in rest) && daemon) {
       daemon.settings = loadSettings();
       if ("walkie_port" in rest && daemon.walkie) {

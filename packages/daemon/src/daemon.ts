@@ -41,7 +41,7 @@ import {
 } from "@kikoe/core";
 import { Agents } from "./agents.js";
 import { Brain, type BrainTool, PERSONA } from "./brain.js";
-import { type Grade, askLine, mustAsk } from "./capability.js";
+import { type Grade, askLine, gradeOf, mustAsk } from "./capability.js";
 import { CODE_PROVIDER, CodeBrain } from "./codebrain.js";
 import {
   HOME,
@@ -55,6 +55,7 @@ import {
   viewerToken,
   walkieToken,
 } from "./config.js";
+import { Hands } from "./hands.js";
 import { Hub } from "./hub.js";
 import {
   type Command,
@@ -69,6 +70,12 @@ import {
 import { KIT_GUIDE, withKit } from "./kit.js";
 import { LiveBrain } from "./livebrain.js";
 import { launch, launchFor } from "./pc.js";
+
+/** What Kik's hands can do; the real one is a kept PowerShell (hands.ts). */
+export type HandsLike = Pick<
+  Hands,
+  "windows" | "front" | "focus" | "open" | "type" | "press" | "controls" | "pressControl" | "close"
+>;
 import { Board } from "./pins.js";
 import { Projects, slug } from "./projects.js";
 import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
@@ -237,6 +244,8 @@ export interface DaemonOptions {
   jevKey?: string;
   /** for tests: what opening something on the PC does instead of opening it */
   launchImpl?: typeof launch;
+  /** for tests: Kik's hands, instead of a real PowerShell */
+  handsImpl?: HandsLike;
   /** for tests: what starts a Claude Code session for Kik's thinking */
   codeSpawn?: typeof import("node:child_process").spawn;
   /** for tests: how the tailnet is read and served; null never touches it */
@@ -337,6 +346,10 @@ export class Daemon {
   private readonly jevKeyGiven: boolean;
   private jevCache: Jev | null = null;
   private readonly launchImpl: typeof launch;
+  private readonly handsGiven: HandsLike | null;
+  private handsCache: HandsLike | null = null;
+  /** app -> until when a yes to working in it still stands (writes only) */
+  private grants = new Map<string, number>();
   private readonly codeSpawn: typeof import("node:child_process").spawn | undefined;
   private readonly tailnetImpl: { status: typeof tailnetStatus; serve: typeof setServe } | null;
   private readonly fetchImpl: typeof fetch;
@@ -404,6 +417,7 @@ export class Daemon {
     this.jevKeyGiven = opts.jevKey !== undefined;
     this.jevKey = opts.jevKey ?? jevKeyFromFile();
     this.launchImpl = opts.launchImpl ?? launch;
+    this.handsGiven = opts.handsImpl ?? null;
     this.codeSpawn = opts.codeSpawn;
     // A test never asks the real Tailscale anything, unless it passes its own.
     this.tailnetImpl =
@@ -2194,6 +2208,60 @@ export class Daemon {
     return this.jevCache;
   }
 
+  /** Kik's hands on this PC, when the setting is on (Windows only). */
+  hands(): HandsLike | null {
+    if (!this.settings.hands) return null;
+    if (this.handsGiven) return this.handsGiven;
+    if (process.platform !== "win32") return null;
+    if (!this.handsCache) this.handsCache = new Hands({ log });
+    return this.handsCache;
+  }
+
+  /**
+   * Do something with the hands that changes the PC: asked first, through
+   * the permission gate. A yes to working in an app stands for two minutes,
+   * so typing a paragraph is not a question per key — for writes only: an
+   * irreversible action is asked every time, and no yes carries over to it.
+   */
+  private async withLeave(
+    what: string,
+    detail: string,
+    act: () => Promise<string>,
+    scope?: string,
+  ): Promise<string> {
+    const hands = this.hands();
+    if (!hands) return "my hands are switched off in Settings";
+    const front = scope ? null : await hands.front().catch(() => null);
+    const key = (scope ?? front?.name ?? "").toLowerCase();
+    const grade = gradeOf("write", `${what} ${detail}`);
+    const standing = grade === "write" && key !== "" && (this.grants.get(key) ?? 0) > Date.now();
+    if (!standing) {
+      const where = front?.title ? ` in ${front.title.slice(0, 60)}` : "";
+      const yes = await this.askPermission(`${what}${where}`, grade);
+      if (!yes) return "not done: the user did not say yes";
+      if (grade === "write" && key) this.grants.set(key, Date.now() + 120_000);
+    }
+    // The yes was for the window it named. If another one came to the front
+    // while it was asked (a dialog, a restored tab), nothing is done in it.
+    if (front) {
+      const now = await hands.front().catch(() => null);
+      if (!now || now.pid !== front.pid || now.title !== front.title) {
+        log(
+          `hands: ${what} not done; the window changed to ${now?.title || now?.name || "nothing"}`,
+        );
+        return `not done: the window in front changed to ${now?.title || now?.name || "something else"}`;
+      }
+    }
+    try {
+      const done = await act();
+      log(`hands: ${what} -> ${done}`);
+      return done;
+    } catch (e) {
+      log(`hands: ${what} failed: ${(e as Error).message}`);
+      return `that didn't work: ${(e as Error).message}`;
+    }
+  }
+
   /** The key for the provider in the settings; empty means no brain. */
   private brainKey(): string {
     return this.settings.brain_provider === "openrouter" ? this.openrouterKey : this.anthropicKey;
@@ -2491,8 +2559,114 @@ export class Daemon {
           },
         ]
       : [];
+    const hands = this.hands();
+    const short = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}...` : s);
+    const handsTools: BrainTool[] = hands
+      ? [
+          {
+            name: "list_windows",
+            description:
+              "The windows open on this PC: each app's name and window title. Free to call; nothing changes.",
+            input_schema: { type: "object", properties: {} },
+            run: async () => JSON.stringify(await hands.windows()),
+          },
+          {
+            name: "read_window",
+            description:
+              "What is in the window in front: its title and its named buttons, fields, links, tabs and text, from Windows UI Automation. Free to call. Work one step at a time on the PC: read the window, do one thing, read it again to check it happened. Prefer keyboard shortcuts to pressing buttons where both work.",
+            input_schema: { type: "object", properties: {} },
+            run: async () =>
+              JSON.stringify({ window: await hands.front(), controls: await hands.controls() }),
+          },
+          {
+            name: "focus_window",
+            description:
+              "Bring a window to the front, by part of its title or its app's name as list_windows gave them. The user is asked first.",
+            input_schema: {
+              type: "object",
+              properties: { match: str("part of the window's title, or the app's name") },
+              required: ["match"],
+            },
+            run: (i) => {
+              const match = String(i.match ?? "");
+              return this.withLeave(
+                `switch to ${match}`,
+                "",
+                async () => {
+                  const w = await hands.focus(match);
+                  return w ? `in front: ${w.title || w.name}` : "no window like that";
+                },
+                "switching windows",
+              );
+            },
+          },
+          {
+            name: "open_app",
+            description:
+              "Open an app on this PC by name (notepad, chrome, spotify, word, calculator, a Start menu entry). The user is asked first. For a website on the canvas use create_artifact; for a project's folder or editor, the switchboard already does that.",
+            input_schema: {
+              type: "object",
+              properties: { name: str("the app, as it is called in the Start menu") },
+              required: ["name"],
+            },
+            run: (i) => {
+              const name = String(i.name ?? "");
+              return this.withLeave(`open ${name}`, "", () => hands.open(name), `open ${name}`);
+            },
+          },
+          {
+            name: "type_text",
+            description:
+              "Type text into whatever has the focus in the window in front; a newline presses Enter. The user is asked first and told what will be typed, so read_window first to be sure the right field has the focus.",
+            input_schema: {
+              type: "object",
+              properties: { text: str("exactly what to type") },
+              required: ["text"],
+            },
+            run: (i) => {
+              const text = String(i.text ?? "");
+              return this.withLeave(`type "${short(text)}"`, text, async () => {
+                await hands.type(text);
+                return "typed";
+              });
+            },
+          },
+          {
+            name: "press_keys",
+            description:
+              "Press a key or a chord in the window in front: enter, tab, esc, backspace, up, down, ctrl+s, ctrl+t, ctrl+l, alt+tab, ctrl+shift+t, f5. The user is asked first.",
+            input_schema: {
+              type: "object",
+              properties: { keys: str("the key or chord, like ctrl+s") },
+              required: ["keys"],
+            },
+            run: (i) => {
+              const keys = String(i.keys ?? "");
+              return this.withLeave(`press ${keys}`, keys, async () => {
+                await hands.press(keys);
+                return "pressed";
+              });
+            },
+          },
+          {
+            name: "press_button",
+            description:
+              "Press a button, link, tab or checkbox in the window in front by its name, as read_window gave it. The user is asked first; one whose name means it cannot be undone (Send, Delete, Buy, Publish, Pay) is asked every time and said as such.",
+            input_schema: {
+              type: "object",
+              properties: { name: str("the control's name, as read_window gave it") },
+              required: ["name"],
+            },
+            run: (i) => {
+              const name = String(i.name ?? "");
+              return this.withLeave(`press "${name}"`, name, () => hands.pressControl(name));
+            },
+          },
+        ]
+      : [];
     return [
       ...thinking,
+      ...handsTools,
       {
         name: "approve",
         description: "Approve the tool call or board question the user is being asked about.",
@@ -3724,6 +3898,7 @@ export class Daemon {
     this.usage.stop();
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
+    this.handsCache?.close();
     // Closing denies everything asked, the ones in line too: an agent must not
     // wait on a question nobody is left to hear.
     for (const q of this.queued.splice(0)) {
