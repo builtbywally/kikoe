@@ -313,6 +313,8 @@ export class Daemon {
   private lastSpoken: { text: string; at: number } | null = null;
   private lastRepeatable = "";
   micPhase = "off";
+  /** told when the ear says it is ready, so its supervisor knows it is back */
+  onMicReady?: () => void;
   /** until when an utterance without the name still counts as for us */
   private attentionUntil = 0;
   private anthropicKey = "";
@@ -3498,6 +3500,7 @@ export class Daemon {
           this.micPhase = "listening";
           this.micDevice = String(b.text ?? "");
           log(`mic ready on ${this.micDevice} at ${b.rate} Hz`);
+          this.onMicReady?.();
         } else if (phase === "dead") {
           this.micPhase = "dead";
           log(`mic died: ${b.text}`);

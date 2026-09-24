@@ -66,3 +66,4 @@ export { Board, KINDS as PIN_KINDS, MAX_PINS, DEFAULT_TTL_S } from "./pins.js";
 export type { Pin, PinKind, PinEvent } from "./pins.js";
 export { withKit, KIT_CSS, KIT_GUIDE } from "./kit.js";
 export { renderArtifact, wrapReact, stripFences, ARTIFACT_CSP, DESIGN_BRIEF } from "./runtime.js";
+export { Supervisor, type SupervisorOptions } from "./supervisor.js";

@@ -17,6 +17,7 @@ import {
   KOKORO,
   MODELS,
   type Settings,
+  Supervisor,
   VERSION,
   WHISPER_BASE,
   WHISPER_TINY,
@@ -144,6 +145,7 @@ async function startDaemon(): Promise<void> {
   await daemon.listen();
   // The phone speaks through the ear that is already loaded.
   daemon.transcribe = transcribeWithEar;
+  daemon.onMicReady = () => earKeeper.ready();
   if (!smoke && !shotPath) await daemon.syncWalkie();
   daemon.hub.listen((frame) => {
     if (frame.type === "speech")
@@ -209,8 +211,33 @@ function toastIfQuiet(frame: Record<string, unknown>): void {
 
 // --- the ear -----------------------------------------------------------------
 
-/** The mic runs in its own process so a transcription never stalls a window. */
+/**
+ * The ear is kept up, not just started: an exit nobody asked for is a crash,
+ * and the supervisor starts it again with backoff and says so aloud
+ * (docs/OS.md, gate 1). Before this, a crash was a word in /state and voice
+ * input was simply over until someone noticed.
+ */
+const earKeeper = new Supervisor({
+  name: "mic",
+  start: spawnEar,
+  say: (line) => daemon?.say(line, 3, "head"),
+  log,
+  lines: {
+    lost: "I lost the mic. Back in a second.",
+    failing: "I can't hear you: the mic keeps failing. Settings, Doctor says why.",
+    back: "I can hear you again.",
+  },
+});
+
+/** Turn the ear on, and keep it on. */
 async function startEar(): Promise<void> {
+  if (ear || !daemon) return;
+  if (!loadSettings().mic) return;
+  await earKeeper.want();
+}
+
+/** The mic runs in its own process so a transcription never stalls a window. */
+async function spawnEar(): Promise<void> {
   if (ear || !daemon) return;
   const s = loadSettings();
   if (!s.mic) return;
@@ -231,9 +258,10 @@ async function startEar(): Promise<void> {
   } catch (e) {
     daemon.micPhase = `dead: ${(e as Error).message}`;
     log(`ear models: ${(e as Error).message}`);
-    return;
+    // a failure like any other: the supervisor tries again later
+    throw e;
   }
-  ear = utilityProcess.fork(path.join(__dirname, "mic.js"), [], {
+  const child = utilityProcess.fork(path.join(__dirname, "mic.js"), [], {
     serviceName: "kikoe-mic",
     stdio: "pipe",
     env: {
@@ -245,24 +273,30 @@ async function startEar(): Promise<void> {
       KIKOE_STT_MODEL: s.stt_model,
     },
   });
-  ear.stderr?.on("data", (d: Buffer) => log(String(d).trim()));
+  ear = child;
+  child.stderr?.on("data", (d: Buffer) => log(String(d).trim()));
   // The phone's audio goes to the ear that is already running rather than a
   // second copy of Whisper: one recognizer, two sources.
-  ear.on("message", (m: { type?: string; id?: number; text?: string }) => {
+  child.on("message", (m: { type?: string; id?: number; text?: string }) => {
     if (m?.type !== "clip" || typeof m.id !== "number") return;
     const waiting = clipWaiters.get(m.id);
     if (!waiting) return;
     clipWaiters.delete(m.id);
     waiting(String(m.text ?? ""));
   });
-  ear.on("exit", (code) => {
+  child.on("exit", (code) => {
     log(`mic process exited ${code}`);
+    // An ear stopped for a settings change can exit after its replacement has
+    // started; that exit is about a process nobody wants any more.
+    if (ear !== child) return;
     ear = null;
     if (daemon) daemon.micPhase = code === 0 ? "off" : "dead";
     // Anything still waiting on the ear will never be answered now.
     for (const [, resolve] of clipWaiters) resolve("");
     clipWaiters.clear();
     buildTrayMenu();
+    // Wanted and gone is a crash: the supervisor brings it back.
+    earKeeper.exited(code);
   });
   buildTrayMenu();
 }
@@ -295,6 +329,8 @@ function transcribeWithEar(pcm: Int16Array): Promise<string> {
 }
 
 function stopEar(): void {
+  // released first, so the exit that follows is not taken for a crash
+  earKeeper.release();
   if (!ear) return;
   ear.kill();
   ear = null;
