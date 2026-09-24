@@ -143,8 +143,11 @@ function applyLook(look) {
   const board = document.getElementById("board");
   board.dataset.backdrop = look.backdrop || "grid";
   let url = "";
+  // A phone gets the 1920 copy: the 4K one decodes to ~33 MB of pixels, which
+  // a phone's GPU evicts under pressure, and the background tore and vanished.
+  const small = document.documentElement.dataset.phone === "true" ? "-small" : "";
   if (["paper", "ink", "aurora", "nebula"].includes(look.backdrop))
-    url = `url(../backdrops/${look.backdrop}-${dark ? "dark" : "light"}.jpg)`;
+    url = `url(../backdrops/${look.backdrop}-${dark ? "dark" : "light"}${small}.jpg)`;
   else if (look.backdrop === "custom" && look.image)
     url = window.room.native
       ? `url(file:///${String(look.image).replace(/\\/g, "/")})`

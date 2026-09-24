@@ -961,3 +961,23 @@ connection after about four seconds and nobody speaks twice in four.
   (`pre`), which uses it instead of asking again. A no throws it away.
 - Live after: 284–322 ms per sentence at fifteen-second gaps (756 ms for the
   very first after a restart, now covered by the start-up warm).
+
+## The phone's background came and went, and tore (2026-09-24)
+
+Three causes, all fixed:
+
+- **A 404.** The Room asks for `../backdrops/<name>.jpg`, which is outside
+  `/room/`, and the walkie's `proxiable()` did not pass `/backdrops/`
+  through, so the phone mostly had no backdrop at all (the README's phone
+  shot of the day before shows it missing). Now proxied; a test says so.
+- **A 4K image on a phone.** 3840×2160 decodes to ~33 MB of pixels, which a
+  phone's GPU evicts and re-tiles under pressure: tearing, vanishing. A
+  phone now loads `<name>-small.jpg` (1920×1080, 30–120 KB, made from the
+  originals with Pillow; re-make them if a backdrop changes).
+- **The backdrop repainted with the cards.** It was the board's own
+  background, so anything that changed on a card repainted it — and a
+  thinking orb changes every frame. The image and its dim are now one
+  `::before` layer of its own (`will-change: transform`), drawn once. On the
+  phone the card world keeps its layer at rest too, and frosted cards are
+  solid (backdrop blur per card per frame is the heaviest thing a phone's
+  GPU does).

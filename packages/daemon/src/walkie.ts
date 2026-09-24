@@ -66,7 +66,10 @@ export function proxiable(pathname: string): boolean {
     ROOM_READS.includes(pathname) ||
     pathname === "/room" ||
     pathname.startsWith("/room/") ||
-    pathname.startsWith("/artifact/")
+    pathname.startsWith("/artifact/") ||
+    // the bundled backdrops: the Room asks for ../backdrops/, which is outside
+    // /room/, so the phone got a 404 and a background that came and went
+    pathname.startsWith("/backdrops/")
   );
 }
 

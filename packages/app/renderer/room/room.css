@@ -377,10 +377,12 @@ body[data-has-pins="true"] .board {
   display: block;
 }
 /* the backdrop: fixed to the window, not to the sheet; dimmed to taste */
+/* The image and its dimming live on a layer of their own, drawn once. As the
+   board's own background they were repainted with every card that changed
+   (a thought-orb changes every frame), and on a phone the 4K image torn and
+   vanished under that. */
 .board[data-backdrop]:not([data-backdrop="grid"]) {
-  background-image: var(--backdrop-url, none) !important;
-  background-size: cover !important;
-  background-position: center !important;
+  background-image: none !important;
 }
 .board[data-backdrop="plain"] {
   background-image: none;
@@ -389,8 +391,12 @@ body[data-has-pins="true"] .board {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(var(--bg-rgb), var(--backdrop-dim, 0.35));
+  background: linear-gradient(
+      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35)),
+      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35))
+    ), var(--backdrop-url, none) center / cover no-repeat;
   pointer-events: none;
+  will-change: transform;
 }
 body[data-frosted="1"] .pin {
   backdrop-filter: blur(14px) saturate(1.1);
@@ -1493,6 +1499,19 @@ body[data-has-pins="true"] .line {
 /* The same canvas as the desk, read by touch, with one button to talk. */
 html[data-phone="true"] .board {
   touch-action: none;
+}
+/* On a phone the cards keep a layer of their own at rest too: making and
+   dropping it around every swipe is the flicker a phone shows most, and text
+   is small enough at 3x that a zoomed raster does not go visibly soft. */
+html[data-phone="true"] .world {
+  will-change: transform;
+}
+/* Frosted glass re-blurs the backdrop behind every card on every frame, the
+   heaviest thing a phone's GPU does; the phone gets the same card, solid. */
+html[data-phone="true"] body[data-frosted="1"] .pin,
+html[data-phone="true"] .pin {
+  backdrop-filter: none;
+  background: rgba(var(--card-rgb), 0.9);
 }
 html[data-phone="true"] .titlebar {
   padding: 0 12px;

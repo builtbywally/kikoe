@@ -403,4 +403,13 @@ describe("the canvas on the phone", () => {
     await get("/artifact/p123");
     expect(seen.map((s) => s.path.split("?")[0])).toEqual(["/room/index.html", "/artifact/p123"]);
   });
+
+  it("serves the backdrop the Room asks for, which lives outside /room/", async () => {
+    // It asks for ../backdrops/, and until 2026-09-24 the phone got a 404 and
+    // a background that came and went.
+    seen.length = 0;
+    await get("/backdrops/aurora-dark-small.jpg");
+    expect(seen.map((s) => s.path)).toEqual(["/backdrops/aurora-dark-small.jpg"]);
+    expect(mod.proxiable("/backdrops/aurora-dark.jpg")).toBe(true);
+  });
 });
