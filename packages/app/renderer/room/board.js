@@ -742,6 +742,15 @@
         easing: EASE,
       });
     }
+    // and the backdrop lights up where each one landed (ambient.js)
+    for (const el of arrived.slice(0, 3)) {
+      const r = el.getBoundingClientRect();
+      window.dispatchEvent(
+        new CustomEvent("board:arrive", {
+          detail: { x: r.left + r.width / 2, y: r.top + Math.min(r.height, 200) / 2 },
+        }),
+      );
+    }
     for (const [id, el] of els) {
       if (arrived.includes(el) || dragging?.id === id) continue;
       const a = before.get(id);

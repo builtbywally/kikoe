@@ -1685,3 +1685,136 @@ html[data-phone="true"] .zoom-hud {
   text-decoration: none;
   border: 1px solid rgba(var(--fg-rgb), 0.18);
 }
+
+/* The living backdrop (ambient.js): pools of light behind frosted glass,
+   coloured by Kik's state, answering the canvas. Only with backdrop "live". */
+@property --c {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: rgb(58 46 150);
+}
+.ambient {
+  display: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: rgb(var(--bg-rgb));
+}
+.board[data-backdrop="live"] .ambient {
+  display: block;
+}
+/* the live backdrop draws itself; the image rule's ::before is not wanted */
+.board[data-backdrop="live"]::before {
+  display: none;
+}
+.ambient-pool {
+  --c: rgb(58 46 150);
+  position: absolute;
+  width: 72vmax;
+  height: 72vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--c) 0%, transparent 68%);
+  filter: blur(40px);
+  opacity: 0.62;
+  mix-blend-mode: screen;
+  transition: --c 1.8s ease;
+  will-change: transform;
+  animation: ambient-drift 44s ease-in-out infinite alternate;
+}
+.ambient-pool:nth-child(1) {
+  left: -22vmax;
+  top: -26vmax;
+  --dx: 18vmax;
+  --dy: 14vmax;
+}
+.ambient-pool:nth-child(2) {
+  right: -26vmax;
+  top: -10vmax;
+  --dx: -16vmax;
+  --dy: 20vmax;
+  animation-duration: 52s;
+  animation-delay: -11s;
+}
+.ambient-pool:nth-child(3) {
+  left: 8vmax;
+  bottom: -34vmax;
+  --dx: 14vmax;
+  --dy: -18vmax;
+  animation-duration: 61s;
+  animation-delay: -23s;
+}
+.ambient-pool:nth-child(4) {
+  right: -12vmax;
+  bottom: -30vmax;
+  --dx: -20vmax;
+  --dy: -12vmax;
+  opacity: 0.4;
+  animation-duration: 69s;
+  animation-delay: -37s;
+}
+@keyframes ambient-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(calc(var(--dx) * 0.6), calc(var(--dy) * -0.4), 0) scale(1.12);
+  }
+  100% {
+    transform: translate3d(var(--dx), var(--dy), 0) scale(0.94);
+  }
+}
+/* The glass: a dim to the backdrop setting, a faint sheen, and grain, the
+   same frosted finish as the aurora image. */
+.ambient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), transparent 40%),
+    linear-gradient(
+      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35)),
+      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35))
+    ),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.09 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+}
+.ambient-flashes {
+  position: absolute;
+  inset: 0;
+}
+/* a card arriving sends a soft light out from where it landed */
+.ambient-flash {
+  position: absolute;
+  width: 64vmax;
+  height: 64vmax;
+  margin: -32vmax 0 0 -32vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(210, 104, 63, 0.38) 0%, transparent 60%);
+  mix-blend-mode: screen;
+  animation: ambient-flash 1.6s ease-out forwards;
+}
+.ambient-flash.error {
+  background: radial-gradient(circle, rgba(220, 60, 60, 0.45) 0%, transparent 60%);
+}
+@keyframes ambient-flash {
+  from {
+    transform: scale(0.15);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+/* a phone: fewer, softer pools, no blending (ambient.js makes three) */
+html[data-phone="true"] .ambient-pool,
+html[data-phone="true"] .ambient-flash {
+  mix-blend-mode: normal;
+  filter: blur(28px);
+  opacity: 0.5;
+  animation-duration: 80s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-pool {
+    animation: none;
+  }
+}

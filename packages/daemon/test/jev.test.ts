@@ -396,6 +396,26 @@ describe("the switchboard in the daemon", () => {
     await d.close();
   });
 
+  it("a look-up with a site open searches it, even when Jev calls it Kik's", async () => {
+    // Heard 2026-09-24: "Look up low five please", with YouTube on the canvas,
+    // got "I can't browse or search the web".
+    expect(jev.searchQuery("Can you pull up YouTube and open lo-fi please?")).toBe("lo-fi");
+    const { d } = daemon({ action: "canvas" });
+    d.typed("open github.com here", "phone");
+    await tick();
+    const { d: d2 } = { d };
+    // now Jev says it is Kik's; the look-up still goes to the open site
+    (d2 as unknown as { jevCache: unknown }).jevCache = null;
+    const kikJev = new jev.Jev({ key: "k", fetchImpl: fakeJev({ action: "kik", sure: 0.9 }) });
+    (d2 as unknown as { jevCache: unknown }).jevCache = kikJev;
+    d2.typed("look up kikoe please", "phone");
+    await tick();
+    const web = d2.board.list().filter((p) => p.kind === "web");
+    expect(web).toHaveLength(1);
+    expect(web[0]?.body).toBe("https://github.com/search?q=kikoe");
+    await d2.close();
+  });
+
   it("knows when a sentence names the computer", () => {
     for (const t of [
       "pull up Chrome on my computer",

@@ -1081,3 +1081,25 @@ window (a new document) and checks the title before it types**; nothing
 tests hands against an app that restores state; and the product's own gate
 — the question names the window, and a changed window cancels the action —
 is what should have stood in the way, so test through it.
+
+## The living backdrop, and two more search misses (2026-09-24)
+
+- **Backdrop "live"** (`renderer/room/ambient.js`, CSS at the end of
+  room.css). The user: "a dynamic background light that changes colour and
+  reacts to anything on the canvas, with frosted glass, similar to the
+  current one." Four pools of light (three on a phone) drift on their own
+  (44–69 s, transform only, blurred once), under a sheen, the backdrop dim
+  and an SVG grain, the aurora image's finish. Colour follows Kik's state
+  through `setOrb()` → `ambient.mood()` (ember speaking, cool listening,
+  violet thinking, amber asking, deep aurora at rest), fading through a
+  registered `--c` property; a card that arrives lights it where it landed
+  (`board:arrive` from board.js), an agent error flushes it red, a turn's end
+  lights it from the middle. No backdrop-filter anywhere in it. Settings,
+  Look: "Live". The user's own backdrop was switched to it, at their request.
+- **"Pull up YouTube and open lo-fi"** opened the home page: "and open X"
+  is now a look-up (`searchQuery`). **"Look up low five please"** with
+  YouTube on the canvas went to the talking session, which said it cannot
+  search the web: a sentence that starts with look up / search / find /
+  play, with a site on the canvas in the last half hour, is now a search of
+  that site whatever Jev called it. And the agent card no longer shows a
+  sentence Kik answered itself (`toAgent` skips kind "chat").

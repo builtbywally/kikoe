@@ -1126,11 +1126,32 @@ export class Daemon {
       log(
         `jev: ${c.action} ${c.sure.toFixed(2)}${c.project ? ` in ${c.project} ${c.projectSure.toFixed(2)}` : ""} (${Date.now() - t0} ms)`,
       );
+    // A look-up with a site already open is a search there, whatever Jev made
+    // of it: "look up low five please", with YouTube on the canvas, reached
+    // the talking session, which said it could not search the web.
+    const asked = spokenRest(clean, d.text);
+    const recentSite =
+      this.lastCanvasSite && Date.now() - this.lastCanvasSite.at < 30 * 60_000
+        ? siteOf(this.lastCanvasSite.url)
+        : "";
+    if (
+      c &&
+      (c.action === "kik" || c.sure < Daemon.JEV_SURE) &&
+      recentSite &&
+      /^(?:please |can you |could you |now )*(?:look(?:ing)? up|search(?:ing)? for|search|find|play)\b/i.test(
+        asked,
+      )
+    ) {
+      log(`jev: ${c.action} ${c.sure.toFixed(2)}, but it is a look-up; searching ${recentSite}`);
+      c.action = "canvas";
+      c.sure = 1;
+      c.url = "";
+    }
     if (!c || c.action === "kik" || c.sure < Daemon.JEV_SURE) {
       this.respond(d, clean, record);
       return;
     }
-    const said = spokenRest(clean, d.text);
+    const said = asked;
     const toPc = wantsThePc(said);
     // "Search lo-fi" with no site said means the site already open: the last
     // one put on the canvas, if it was in the last half hour.

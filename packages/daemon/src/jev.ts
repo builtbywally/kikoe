@@ -125,8 +125,9 @@ const NOT_A_QUERY = new Set(
  * about the canvas; "" when nothing is being looked for.
  */
 export function searchQuery(text: string): string {
+  // "pull up YouTube and open lo-fi": after the site, "and open" is a look-up
   const m =
-    /\b(?:look(?:ing)? up|search(?:ing)? for|search|find|play|put on|listen to)\s+(.+)$/i.exec(
+    /\b(?:look(?:ing)? up|search(?:ing)? for|search|find|play|put on|listen to|and open|then open)\s+(.+)$/i.exec(
       text,
     );
   if (!m?.[1]) return "";

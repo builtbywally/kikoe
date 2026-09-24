@@ -169,6 +169,8 @@ function setOrb(state, label) {
   el.orb.className = `orb ${state}`;
   el.orbLabel.textContent = label;
   el.body.dataset.orb = state;
+  // the living backdrop takes its colour from the same state
+  window.ambient?.mood(state, label);
   // "speaking" with the label "thinking" is the model working, not talking
   kikVerb = window.KikOrb?.forKik(label === "thinking" ? "thinking" : state) ?? "breathing";
   bigOrb?.set(kikVerb);
@@ -902,10 +904,14 @@ function agentRows() {
   // happened. Only what reached the agent: a hello or a question Kik answered
   // itself is the conversation card's, and showing it here too made two cards
   // saying the same thing (seen on the phone, where they sit one above the other).
+  // A sentence Kik answered itself is "chat" whatever the router first made of
+  // it; "look up low five" was work to the router, Kik's to answer, and sat in
+  // this card as though the agent had been told.
   const toAgent = (h) =>
-    h.kind === "work" ||
-    ["agent", "new_session", "instruct", "work"].includes(h.intent) ||
-    /^(passed it to|queued for|started an agent)/i.test(h.said || "");
+    h.kind !== "chat" &&
+    (h.kind === "work" ||
+      ["agent", "new_session", "instruct", "work"].includes(h.intent) ||
+      /^(passed it to|queued for|started an agent)/i.test(h.said || ""));
   const said = [...(state?.heard ?? [])]
     .reverse()
     .filter((h) => h.text && h.kind !== "overheard" && toAgent(h))
@@ -1396,6 +1402,14 @@ const handlers = {
       recentEvents.set(f.repo, list.slice(0, 5));
       renderBoard();
     }
+    // the living backdrop answers the agents too: a fault flushes it red, a
+    // turn that ends lights it from the middle
+    if (f.kind === "error" || f.kind === "turn_end")
+      window.ambient?.flash(
+        window.innerWidth / 2,
+        window.innerHeight / 2,
+        f.kind === "error" ? "error" : "arrive",
+      );
     if (f.kind === "permission") {
       const args = f.args ?? {};
       pendingPermission = {
