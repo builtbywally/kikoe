@@ -221,6 +221,7 @@ docs/             how it works and why (below)
 | [VOICE](docs/VOICE.md) | The narrator's register: what is worth saying, and how |
 | [EVAL-MODELS](docs/EVAL-MODELS.md) | Why the voice runs on Haiku and the designer on Sonnet |
 | [OS](docs/OS.md) | Kikoe as the operating system of the PC: the concept |
+| [REQUESTS](docs/REQUESTS.md) | Every request you could ask Kik, how each is handled, the use cases, and the plan |
 
 ## Principles
 
