@@ -10,5 +10,16 @@
       "style": { "noNonNullAssertion": "off", "useTemplate": "off" }
     }
   },
-  "files": { "ignore": ["dist", "node_modules", "evals", "models", "out", "**/vendor/**"] }
+  "files": {
+    "ignore": [
+      "dist",
+      "node_modules",
+      "evals",
+      "models",
+      "out",
+      "**/vendor/**",
+      ".next",
+      "next-env.d.ts"
+    ]
+  }
 }

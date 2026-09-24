@@ -13,11 +13,13 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc -b packages/core packages/daemon packages/cli packages/app",
+    "typecheck": "tsc -b packages/core packages/daemon packages/cli packages/app && pnpm --filter @kikoe/site typecheck",
     "build": "tsc -b packages/core packages/daemon packages/cli packages/app",
     "app": "pnpm build && pnpm --filter @kikoe/app start",
     "app:dist": "pnpm build && pnpm --filter @kikoe/app dist",
-    "eval:models": "pnpm build && node scripts/eval-models.mjs"
+    "eval:models": "pnpm build && node scripts/eval-models.mjs",
+    "site": "pnpm --filter @kikoe/site dev",
+    "site:build": "pnpm --filter @kikoe/site build"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

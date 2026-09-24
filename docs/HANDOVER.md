@@ -64,7 +64,9 @@ packages/app       Electron: main.ts (daemon in main process, tray, windows, IPC
                    renderer/room (the one window: room.js, board.js, settings.js,
                    room-web.js shim for the browser), renderer/island (the pill),
                    renderer/backdrops (4K jpgs), renderer/fonts
-brand/             orb.svg (the logo), backdrops.py (regenerates the backdrops)
+packages/site      the website: Next.js 16, static export, built from the app's own pieces
+brand/             こえ, the logo: koe-paths.json (outlines), make.mjs (every logo file,
+                   the app's icons, the site's favicon), backdrops.py (the backdrops)
 docs/              PLAN, APP, ROOM-PLAN (running log of the Room), VOICE, ROADMAP, this
 .github/workflows  test (3 OS), app (installers + smoke + screenshot), cold, release
 ```
@@ -483,9 +485,13 @@ pins the same reading to a screen edge — and the user asked for both.
   Restart Manager: `powershell -File scripts/who-holds.ps1 -Path <file>` (used on
   2026-09-24) rather than guessing — it was Orca. Then run
   the installer with `/S` with the app stopped first, or it hangs.
-  The Windows icon is pre-rendered (`build/icon.ico`, made with Pillow
-  from icon.png) because electron-builder's WebAssembly icon tool dies
-  with "could not allocate memory" when the machine is low on RAM.
+  The Windows icon is pre-rendered (`build/icon.ico`, written by
+  `node brand/make.mjs`: PNGs at 16 to 256 in one .ico, the heavy cut of
+  こえ at 48 and under) because electron-builder's WebAssembly icon tool
+  dies with "could not allocate memory" when the machine is low on RAM.
+  The tray reads `build/tray.png` (Windows) or `trayTemplate.png` (macOS,
+  a template image); both are in the builder's `extraResources` filter,
+  and a file missing from that filter is missing from the install.
 - Whisper writes "kik" as "kick", "Kiko", "a cookie"; aliases live in
   `core/src/router.ts`. A real wake-word model is roadmap item 1.
 
@@ -853,11 +859,37 @@ page in Kikoe is `design_artifact` with `quick: true` on Haiku.
 - **The README was rewritten** from the day-one "Phase 0" text: what Kik
   does, what you can say, the pipeline as a Mermaid diagram, the three
   sessions, the phone, install, keys, the installer's traps, the change
-  loop, the layout, the docs index and the principles. Its images live in
-  `docs/images` and come from **`bash scripts/readme-images.sh`**: the
-  desk from the `--screenshot` harness, the phone from a second Kikoe on a
-  throwaway `KIKOE_HOME` staged through hooks and `/show`, captured by
-  `scripts/phone-shot.cjs`. Never publish a shot of the real board.
+  loop, the layout, the docs index and the principles. On 2026-09-24 it
+  was redone to look like the website: numbered sections, animated SVGs
+  (`docs/images/readme/hero.svg`, `pipeline.svg`, SMIL, which GitHub plays
+  inside an `<img>`, with the app's fonts embedded) and pictures of the
+  site's components (`room`, `phone-iphone`, `phone-pixel`, `island`,
+  `switchboard`, `board`, WebP). They come from
+  **`pnpm site:build && pnpm --filter @kikoe/site readme-images`**, which
+  serves `packages/site/out` and drives headless Chrome over the DevTools
+  protocol (`packages/site/scripts/cdp.mjs`, no puppeteer). No screenshot
+  of the app or of a real board is used anywhere. The old
+  `scripts/readme-images.sh` and `docs/images/*.png` were removed;
+  `scripts/phone-shot.cjs` is no longer called by anything.
+- **The logo is こえ** (2026-09-24), replacing the orb and burst. See
+  `brand/BRAND.md`. The outlines are from Noto Serif JP (OFL) and live in
+  `brand/koe-paths.json`; `node brand/make.mjs` writes every logo file,
+  `packages/app/build/icon.png`, `icon.ico`, the tray icons, the site's
+  favicon and `packages/site/components/koe.ts`. The app's title bar holds
+  the 700 outline inline in `renderer/room/index.html` (`.tb-logo`). The
+  dotted orb stays: it is Kik's state, not the logo.
+- **The website** is `packages/site` (Next.js 16, React 19, `output:
+  "export"`). `pnpm site` for dev, `pnpm site:build` for `out/`;
+  `KIKOE_SITE_BASE=/kikoe` serves it under a path. It draws the Room, the
+  phone page and the island with the app's own CSS and the thinking-orbs
+  engine (vendored in `packages/site/lib/vendor`), so it has no screenshots.
+  The switchboard demo is `lib/router.ts`, a browser toy that mirrors the
+  real routing; its tests are `packages/site/test/router.test.ts`. The only
+  bitmap is the Room's backdrop (`pnpm --filter @kikoe/site images`).
+  Root `pnpm typecheck` includes the site (`next typegen && tsc`).
+  Gotcha: headless Chrome's `--window-size` has a minimum width near 500,
+  so a "400px" screenshot is really wider and looks clipped; emulate the
+  device through CDP instead (as `readme-images.mjs` does).
 - **Trap found making them**: a Kikoe with `walkie_tailscale: false` takes
   the tailnet serve rule *down* on start, even from a throwaway home — it is
   one machine-wide rule. Starting the real app puts it back
