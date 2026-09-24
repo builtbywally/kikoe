@@ -24,6 +24,8 @@
  * Haiku is the configuration the research calls the worst (docs/HEARING.md).
  */
 
+import https from "node:https";
+
 export const JEV_URL = "https://api.typesafe.ai/v1/systemone";
 /** A decision later than this is worse than the old path taken now. */
 export const JEV_TIMEOUT_MS = 2500;
@@ -286,26 +288,103 @@ export interface JevOptions {
   timeoutMs?: number;
 }
 
+/**
+ * One connection to TypeSafe, kept open. Measured 2026-09-24: a request on a
+ * fresh connection is ~760 ms and on an open one ~280 ms, and the server
+ * keeps an idle connection for at least two minutes. `fetch` lets its own go
+ * after about four seconds, and nobody speaks twice in four seconds, so
+ * almost every sentence paid the handshake. This agent keeps it.
+ */
+const AGENT = new https.Agent({ keepAlive: true, keepAliveMsecs: 30_000, maxSockets: 4 });
+
+/** POST over the kept connection; one retry when a reused socket turns out closed. */
+function post(
+  body: string,
+  key: string,
+  timeoutMs: number,
+  retry = true,
+): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    let got = false;
+    const req = https.request(
+      JEV_URL,
+      {
+        method: "POST",
+        agent: AGENT,
+        timeout: timeoutMs,
+        headers: {
+          authorization: `Bearer ${key}`,
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        got = true;
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () =>
+          resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString("utf8") }),
+        );
+        res.on("error", reject);
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("jev: timed out")));
+    req.on("error", (e: NodeJS.ErrnoException) => {
+      // The server closed a connection we thought was open: once more, on a new one.
+      if (!got && retry && (e.code === "ECONNRESET" || e.code === "EPIPE"))
+        post(body, key, timeoutMs, false).then(resolve, reject);
+      else reject(e);
+    });
+    req.end(body);
+  });
+}
+
 export class Jev {
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: typeof fetch | null;
   private readonly log: (line: string) => void;
+  /** when the connection was last used; a warm-up is skipped if it is surely open */
+  private lastUsed = 0;
   constructor(private readonly opts: JevOptions) {
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.fetchImpl = opts.fetchImpl ?? null;
     this.log = opts.log ?? (() => {});
   }
 
   /** One request: every question over the same state, answered together. */
   async ask(state: unknown, questions: Record<string, unknown>): Promise<Record<string, Answer>> {
-    const r = await this.fetchImpl(JEV_URL, {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.opts.key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: "jev-latest", state, questions }),
-      signal: AbortSignal.timeout(this.opts.timeoutMs ?? JEV_TIMEOUT_MS),
-    });
-    if (!r.ok) throw new Error(`jev ${r.status}`);
-    const j = (await r.json()) as { answers?: Record<string, Answer> };
+    const body = JSON.stringify({ model: "jev-latest", state, questions });
+    const timeout = this.opts.timeoutMs ?? JEV_TIMEOUT_MS;
+    let status: number;
+    let text: string;
+    if (this.fetchImpl) {
+      const r = await this.fetchImpl(JEV_URL, {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.opts.key}`, "content-type": "application/json" },
+        body,
+        signal: AbortSignal.timeout(timeout),
+      });
+      status = r.status;
+      text = await r.text();
+    } else {
+      ({ status, text } = await post(body, this.opts.key, timeout));
+    }
+    this.lastUsed = Date.now();
+    if (status < 200 || status >= 300) throw new Error(`jev ${status}`);
+    const j = JSON.parse(text) as { answers?: Record<string, Answer> };
     if (!j.answers) throw new Error("jev: no answers");
     return j.answers;
+  }
+
+  /**
+   * Open the connection before it is needed: called when the user starts
+   * speaking, so the handshake happens while they talk and Whisper listens,
+   * not after. A no-op if the connection was used in the last minute.
+   */
+  warm(): void {
+    if (Date.now() - this.lastUsed < 60_000) return;
+    this.lastUsed = Date.now();
+    this.ask("hello", { q: { type: "noul", instructions: "Is this a greeting?" } }).catch(() => {
+      this.lastUsed = 0;
+    });
   }
 
   /**

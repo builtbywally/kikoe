@@ -936,3 +936,28 @@ was restructured; its header says the rules.
   frosted cards drop their backdrop blur while the canvas moves.
 - `contain: layout` would change what a `position: fixed` child of a card
   is fixed to; nothing inside a card is fixed today. Keep it that way.
+
+## Jev, a third of a second (2026-09-24)
+
+Measured first, on the real API (`jev-timing.mjs` and `jev-idle.mjs`, kept
+in the session's scratchpad): a request on a new connection ~760 ms, on an
+open one ~280 ms; the main and project requests in parallel cost no more than
+one; "was it for me" then "what to do" 590 ms, both at once 310 ms; and
+TypeSafe keeps an idle connection for at least two minutes. Live, sentences
+fifteen seconds apart were ~700 ms each, because `fetch` drops its
+connection after about four seconds and nobody speaks twice in four.
+
+- **A kept connection**: `jev.ts` posts through its own `https.Agent`
+  (keep-alive), retrying once on a reused socket the server closed. The
+  daemon passes Jev a `fetchImpl` only when a test gave it one
+  (`fetchGiven`); passing the platform `fetch` silently undid all of this,
+  and the first live measurement after the change was still ~700 ms.
+- **Warmed before it is needed**: `Jev.warm()` (a tiny request, skipped if
+  the connection was used in the last minute) on daemon start, on the ear's
+  `hearing` phase — the handshake happens while the user is still talking —
+  and when a phone clip arrives, before Whisper.
+- **Asked together**: for a nameless sentence, `decideDirected()` starts
+  `command()` beside `directed()`, and hands the promise to `dispatch()`
+  (`pre`), which uses it instead of asking again. A no throws it away.
+- Live after: 284–322 ms per sentence at fifteen-second gaps (756 ms for the
+  very first after a restart, now covered by the start-up warm).

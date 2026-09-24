@@ -298,6 +298,32 @@ describe("the switchboard in the daemon", () => {
     await d.close();
   });
 
+  it("asks 'was it for me' and 'what to do' together, and the second only once", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const { d, started } = daemon({ directed: 0.9, action: "agent" }, { seen });
+    d.hear("and add a retry to the fetch in the api client");
+    await tick(40);
+    const commands = seen.filter((b) => "action" in (b.questions as object));
+    const judged = seen.filter((b) => "directed" in (b.questions as object));
+    expect(judged).toHaveLength(1);
+    // the answer asked for alongside the judgement is the one used
+    expect(commands).toHaveLength(1);
+    expect(seen.indexOf(commands[0] as Record<string, unknown>)).toBeLessThan(
+      seen.indexOf(judged[0] as Record<string, unknown>),
+    );
+    expect(started[0]?.prompt).toContain("add a retry");
+    await d.close();
+  });
+
+  it("warms the connection once, not on every breath", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const j = new jev.Jev({ key: "k", fetchImpl: fakeJev({}, seen) });
+    j.warm();
+    j.warm();
+    await tick();
+    expect(seen).toHaveLength(1);
+  });
+
   it("stop the agent is a reflex, and stops only what Kik started", async () => {
     const { d } = daemon({});
     const r = d.hear("kikoe stop the agent");

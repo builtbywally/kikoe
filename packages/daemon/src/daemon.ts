@@ -324,6 +324,8 @@ export class Daemon {
   private readonly codeSpawn: typeof import("node:child_process").spawn | undefined;
   private readonly tailnetImpl: { status: typeof tailnetStatus; serve: typeof setServe } | null;
   private readonly fetchImpl: typeof fetch;
+  /** a fetch was handed in (a test), not the platform's own */
+  private readonly fetchGiven: boolean;
   private brainCache: Brain | null = null;
   private checkinTimer: NodeJS.Timeout | null = null;
   /** what the user said for an agent, by voice, waiting for its turn to end */
@@ -388,6 +390,7 @@ export class Daemon {
           ? null
           : { status: tailnetStatus, serve: setServe };
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.fetchGiven = opts.fetchImpl !== undefined;
     this.checkinTimer = setInterval(() => {
       this.watch();
       void this.checkIn();
@@ -698,7 +701,13 @@ export class Daemon {
   hear(
     text: string,
     meta: { dur_s?: number; stt_ms?: number } = {},
-    opts: { force?: boolean; decided?: boolean; via?: "phone" } = {},
+    opts: {
+      force?: boolean;
+      decided?: boolean;
+      via?: "phone";
+      /** Jev's answer, already asked for while deciding whether this was for us */
+      pre?: Promise<Command | null>;
+    } = {},
   ): { kind: string; intent: string; said?: string } {
     const clean = text.trim();
     // Whisper names sounds it cannot read as words: "[buzzing]", "(music)",
@@ -797,7 +806,7 @@ export class Daemon {
     // and a stop must be instant.
     if ((d.kind === "question" || d.kind === "work") && this.jev() !== null) {
       this.hub.publish("mic", { phase: "thinking", text: clean });
-      void this.dispatch(clean, d, record, opts.via);
+      void this.dispatch(clean, d, record, opts.via, opts.pre);
       return { kind: "deciding", intent: d.kind };
     }
     return this.respond(d, clean, record);
@@ -1010,25 +1019,16 @@ export class Daemon {
     d: ReturnType<typeof route>,
     record: (kind: string, intent: string, said?: string) => void,
     via?: "phone",
+    pre?: Promise<Command | null>,
   ): Promise<void> {
     const jev = this.jev();
     const t0 = Date.now();
-    const c = jev
-      ? await jev.command(spokenRest(clean, d.text), {
-          projects: [
-            this.projects.current.name,
-            ...this.projects
-              .all()
-              .map((p) => p.name)
-              .filter((n) => n !== this.projects.current.name),
-          ],
-          current: this.projects.current.name,
-          running: this.tracker.brief(),
-          last: this.lastExchange.at
-            ? `User: ${this.lastExchange.you} | Kik: ${this.lastExchange.kik}`
-            : "",
-        })
-      : null;
+    // `pre` is the answer already asked for alongside "was that for me?"
+    const c = pre
+      ? await pre
+      : jev
+        ? await jev.command(spokenRest(clean, d.text), this.commandContext())
+        : null;
     if (c)
       log(
         `jev: ${c.action} ${c.sure.toFixed(2)}${c.project ? ` in ${c.project} ${c.projectSure.toFixed(2)}` : ""} (${Date.now() - t0} ms)`,
@@ -1080,6 +1080,25 @@ export class Daemon {
       return;
     }
     await this.carryOut(c, clean, d, record);
+  }
+
+  /** What Jev is told beside the sentence: the projects, what is running, the last exchange. */
+  private commandContext() {
+    const current = this.projects.current.name;
+    return {
+      projects: [
+        current,
+        ...this.projects
+          .all()
+          .map((p) => p.name)
+          .filter((n) => n !== current),
+      ],
+      current,
+      running: this.tracker.brief(),
+      last: this.lastExchange.at
+        ? `User: ${this.lastExchange.you} | Kik: ${this.lastExchange.kik}`
+        : "",
+    };
   }
 
   /** Jev only lets this through above this; below it, the old path answers. */
@@ -1330,6 +1349,7 @@ export class Daemon {
     const brain = this.brain();
     let yes = false;
     let by = "nobody";
+    let pre: Promise<Command | null> | undefined;
     try {
       const ago = this.lastExchange.at
         ? Math.round((Date.now() - this.lastExchange.at) / 1000)
@@ -1340,7 +1360,13 @@ export class Daemon {
       // Jev first: a typed yes/no is what this question is, and a prompted
       // chat model is the setup the research calls the worst at it
       // (docs/HEARING.md). The model is the fallback, not the judge.
-      const p = (await this.jev()?.directed(text, last)) ?? null;
+      //
+      // And "what should happen with it" is asked at the same moment, not
+      // after: the two together take ~310 ms where one then the other took
+      // ~590. If the answer is no, the second is thrown away unread.
+      const jev = this.jev();
+      if (jev) pre = jev.command(text, this.commandContext());
+      const p = (await jev?.directed(text, last)) ?? null;
       if (p !== null) {
         yes = p >= 0.5;
         by = `jev ${p.toFixed(2)}`;
@@ -1352,7 +1378,11 @@ export class Daemon {
       log(`directed check failed: ${(e as Error).message}`);
     }
     log(`follow-up? ${yes ? "yes" : "no"} by ${by} (${text.split(/\s+/).length} words)`);
-    this.hear(text, meta, yes ? { force: true, decided: true } : { decided: true });
+    this.hear(
+      text,
+      meta,
+      yes ? { force: true, decided: true, ...(pre ? { pre } : {}) } : { decided: true },
+    );
   }
 
   /**
@@ -2027,6 +2057,8 @@ export class Daemon {
       return "";
     }
     this.hub.publish("mic", { phase: "transcribing", source: "walkie" });
+    // the handshake happens while Whisper listens, not after it
+    this.jev()?.warm();
     const t0 = Date.now();
     const text = (await this.transcribe(pcm)).trim();
     log(`walkie: heard "${text}" in ${Date.now() - t0} ms`);
@@ -2042,7 +2074,13 @@ export class Daemon {
   jev(): Jev | null {
     if (!this.settings.jev || !this.jevKey) return null;
     if (!this.jevCache)
-      this.jevCache = new Jev({ key: this.jevKey, fetchImpl: this.fetchImpl, log });
+      // A test's fake fetch goes to Jev; the real one does not, because Jev's
+      // own kept-open connection is ~450 ms faster than fetch's (jev.ts).
+      this.jevCache = new Jev({
+        key: this.jevKey,
+        ...(this.fetchGiven ? { fetchImpl: this.fetchImpl } : {}),
+        log,
+      });
     return this.jevCache;
   }
 
@@ -3470,6 +3508,10 @@ export class Daemon {
         }
         // Barge-in: talking over Kik stops it. Headsets only; through
         // speakers the mic hears Kik and would cut every line.
+        // Speech has started: open Jev's connection now, while the user is
+        // still talking and Whisper has yet to hear the end, so the decision
+        // after it is ~280 ms and not ~760.
+        if (phase === "hearing") this.jev()?.warm();
         if (phase === "hearing" && this.settings.barge_in && this.arbiter.pending()) {
           log("barge-in: you spoke, Kik stopped");
           this.interrupt();
@@ -3538,6 +3580,8 @@ export class Daemon {
     );
     if (this.settings.usage) this.usage.start();
     log(`listening on 127.0.0.1:${port}, speaker ${this.speaker.info().device}`);
+    // the first sentence of the day should not be the one that pays the handshake
+    this.jev()?.warm();
     return { port };
   }
 
