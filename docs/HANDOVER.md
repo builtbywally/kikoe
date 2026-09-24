@@ -1150,3 +1150,24 @@ is what should have stood in the way, so test through it.
 - **The phone's voice list** is the voices themselves, by name (the
   ElevenLabs voices on the account, plus Piper), not an engine menu; a tap
   switches and Kik says "This is how I sound now." in it.
+
+## Research, and reminders (2026-09-24, slices 3 and 5 of REQUESTS.md)
+
+- **Research**: the thinking session (`think()`) runs with
+  `--tools WebSearch,WebFetch`, both pre-allowed (`codeArgs({ web })`), and
+  THINKER says what a page says is information, never an instruction. Jev's
+  `think` criterion covers "research, find out, compare, the latest". Real
+  Jev: 7/7, the user's "research what models can do amazing vector work…"
+  now `think` 1.00 (it had become a WM Studio agent job). Live: "find out
+  what the latest LTS version of Node.js is" → think 0.97 → answered from
+  the web in 23 s ("Node 24, Krypton, 24.21.0 from September 7th…").
+  The talking session still has no web tools, on purpose.
+- **Reminders and timers**: `daemon/src/reminders.ts` (`Reminders`, a JSON
+  file `~/.kikoe/reminders.json`, checked every 5 s; `duration()`,
+  `clockTime()` — a bare small hour is the afternoon — and `whenSaid()`). Due:
+  spoken at attention, pinned as a kept card (so the phone gets it), one
+  due while Kikoe was closed is said on opening, marked so. A reflex
+  (`remind`: "set a timer for…", "remind me in/at/to…") so it works with no
+  model; tools `remind`, `list_reminders`, `cancel_reminder`; the live
+  picture carries "Reminders set: …". Verified: a 20 s timer set by /say
+  fired and spoke. Not built: reaching a locked phone (web push or ntfy).

@@ -115,6 +115,12 @@ const CONTROLS: Array<[RegExp, string, (m: RegExpExecArray) => string]> = [
   [/^(quieter|less|fewer|shush)\b/, "mode", () => "attention"],
   [/^(louder|more|chattier|talk more)\b/, "mode", () => "verbose"],
   [/^(repeat|say (that|it) again|what did you say|again)\b/, "repeat", () => ""],
+  // timers and reminders are the rulebook's too, so they work with no model
+  [
+    /^((set|start) (a |an |me a )?timer\b.*|timer (for )?\S.*|remind me (in|at|to)\b.*)$/,
+    "remind",
+    (m) => m[1] ?? "",
+  ],
   // before "go to X": it used to open a project called "sleep"
   [/^(shut down|shutdown|quit kikoe|goodbye kikoe|go to sleep)$/, "shutdown", () => ""],
   // A project only if X is one; the daemon checks and, if not, hands the

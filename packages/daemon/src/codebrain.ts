@@ -181,7 +181,14 @@ export function codeArgs(o: {
   systemFile: string;
   settingsFile: string;
   mcpFile?: string | undefined;
+  /**
+   * The web, to read: search and fetch a page, allowed without asking since
+   * neither changes anything. For the thinking session, which had no way to
+   * research and so sent "research what models can do…" to a coding agent.
+   */
+  web?: boolean | undefined;
 }): string[] {
+  const WEB = ["WebSearch", "WebFetch"];
   const args = [
     "-p",
     "--model",
@@ -195,11 +202,13 @@ export function codeArgs(o: {
     "--settings",
     o.settingsFile,
     "--tools",
-    "",
+    o.web ? WEB.join(",") : "",
     "--strict-mcp-config",
   ];
-  if (o.mcpFile) args.push("--mcp-config", o.mcpFile, "--allowedTools", "mcp__kik");
+  const allowed = [...(o.mcpFile ? ["mcp__kik"] : []), ...(o.web ? WEB : [])];
+  if (o.mcpFile) args.push("--mcp-config", o.mcpFile);
   else args.push("--mcp-config", JSON.stringify({ mcpServers: {} }));
+  if (allowed.length) args.push("--allowedTools", allowed.join(","));
   return args;
 }
 
@@ -307,7 +316,14 @@ export class CodeBrain extends Brain {
   override async generate(
     prompt: string,
     system: string,
-    o: { model?: string; maxTokens?: number; signal?: AbortSignal; think?: number } = {},
+    o: {
+      model?: string;
+      maxTokens?: number;
+      signal?: AbortSignal;
+      think?: number;
+      /** may search the web and read pages (the thinking session) */
+      web?: boolean;
+    } = {},
   ): Promise<string> {
     return (
       await this.run(prompt, system, {
@@ -315,6 +331,7 @@ export class CodeBrain extends Brain {
         signal: o.signal,
         timeoutMs: GENERATE_TIMEOUT_MS,
         think: o.think,
+        web: o.web,
       })
     ).trim();
   }
@@ -338,6 +355,7 @@ export class CodeBrain extends Brain {
       timeoutMs: number;
       /** a thinking budget in tokens; 0 switches thinking off */
       think?: number | undefined;
+      web?: boolean | undefined;
       onText?: (chunk: string) => void;
       onBreak?: () => void;
     },
@@ -355,6 +373,7 @@ export class CodeBrain extends Brain {
       systemFile,
       settingsFile: this.file("settings.json"),
       mcpFile,
+      web: o.web,
     });
     const started = Date.now();
     return new Promise((resolve, reject) => {

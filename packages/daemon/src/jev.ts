@@ -489,7 +489,7 @@ export class Jev {
         criteria: {
           kik: "Kik answers or does it itself: the status of agents, whether tests passed, notes to remember, usage limits, opinions, small talk; and anything made to be shown on the canvas or the board — a page, an animation, a drawing, a diagram, a chart, a checklist, a mockup, a design — and clearing or arranging the canvas",
           think:
-            "the user asks Kik to think something through: weigh options, reason about a decision, a design or architecture question, a trade-off, a plan — a question to answer with thought, not work to do",
+            "the user asks Kik to think something through or find something out: weigh options, reason about a decision, a design or architecture question, a trade-off, a plan; or research — look into what is out there, what the best tools or models are, compare products, find out the latest on something — a question to answer with thought and reading, not work to do in the code",
           agent:
             "the coding agent should do it in a project's code: change files in the repo, fix a bug, refactor, add a feature to the app, run or check something in the repo, or answer what the agent itself was told earlier. Not something to show on the canvas",
           new_session:
