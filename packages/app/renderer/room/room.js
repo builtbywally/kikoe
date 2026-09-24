@@ -786,15 +786,19 @@ function renderBoard() {
   if (Object.keys(sessions).length)
     extra.push({ ...talk, id: "agents", kind: "agents", title: "agents", sticky: true });
   // The thread: the one place that says what has been happening, in order.
-  extra.push({
-    ...talk,
-    id: "session",
-    kind: "session",
-    // the coding agent's thread, not Kik: named so, since "the session" read
-    // as a second Kik once Kik had two sessions of its own
-    title: state?.project?.name ? `agent · ${state.project.name}` : "agent",
-    sticky: true,
-  });
+  // Only once there is one. On a fresh start it was a second, empty window
+  // beside Kik's ("there should only be one window when we start"); it
+  // appears the moment something reaches the agent or an agent is running.
+  if (agentRows().length || Object.keys(sessions).length)
+    extra.push({
+      ...talk,
+      id: "session",
+      kind: "session",
+      // the coding agent's thread, not Kik: named so, since "the session" read
+      // as a second Kik once Kik had two sessions of its own
+      title: state?.project?.name ? `agent · ${state.project.name}` : "agent",
+      sticky: true,
+    });
   for (const [repo, events] of recentEvents)
     if (events.length)
       extra.push({
@@ -882,7 +886,18 @@ function thinkingBody() {
 function sessionBody() {
   const wrap = document.createElement("div");
   wrap.className = "thread";
+  const rows = agentRows();
+  if (!rows.length) {
+    const e = document.createElement("div");
+    e.className = "chat-empty";
+    e.textContent = "Nothing yet. Say what you want done and it starts here.";
+    wrap.append(e);
+  }
+  return threadRows(wrap, rows);
+}
 
+/** The agent's thread: what reached it and what it did, oldest first. */
+function agentRows() {
   // What you said to the agent and what Kik said about it, with the time each
   // happened. Only what reached the agent: a hello or a question Kik answered
   // itself is the conversation card's, and showing it here too made two cards
@@ -914,14 +929,10 @@ function sessionBody() {
       body: p.kind === "markdown" ? p.body : "",
     }));
 
-  const rows = [...said, ...work].sort((a, b) => a.at - b.at).slice(-14);
-  if (!rows.length) {
-    const e = document.createElement("div");
-    e.className = "chat-empty";
-    e.textContent = "Nothing yet. Say what you want done and it starts here.";
-    wrap.append(e);
-  }
+  return [...said, ...work].sort((a, b) => a.at - b.at).slice(-14);
+}
 
+function threadRows(wrap, rows) {
   for (const r of rows) {
     if (r.who === "you") {
       const you = document.createElement("div");

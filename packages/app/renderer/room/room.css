@@ -1573,15 +1573,17 @@ html[data-phone="true"] .zoom-hud {
   height: 112px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(210, 104, 63, 0.55);
+  /* no ring round it (the user asked, 2026-09-24): the glow is the edge */
+  border: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
   background: radial-gradient(circle, rgba(210, 104, 63, 0.2) 0%, rgba(20, 16, 14, 0.9) 70%);
   box-shadow: 0 12px 40px rgba(210, 104, 63, 0.25);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 #phone-talk[data-on="1"] {
   transform: scale(1.1);
-  border-color: var(--ember);
-  box-shadow: 0 0 0 6px rgba(210, 104, 63, 0.18), 0 6px 30px rgba(210, 104, 63, 0.55);
+  box-shadow: 0 6px 34px rgba(210, 104, 63, 0.6);
 }
 #phone-talk:disabled {
   filter: grayscale(0.6) brightness(0.7);

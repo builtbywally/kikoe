@@ -422,11 +422,11 @@ export class Jev {
         instructions:
           "Kik is a voice assistant that sits beside Claude Code, the user's coding agent. What should happen with the user's `sentence`?",
         criteria: {
-          kik: "Kik answers or does it itself: the status of agents, whether tests passed, the canvas and whiteboard, notes to remember, usage limits, opinions, small talk",
+          kik: "Kik answers or does it itself: the status of agents, whether tests passed, notes to remember, usage limits, opinions, small talk; and anything made to be shown on the canvas or the board — a page, an animation, a drawing, a diagram, a chart, a checklist, a mockup, a design — and clearing or arranging the canvas",
           think:
             "the user asks Kik to think something through: weigh options, reason about a decision, a design or architecture question, a trade-off, a plan — a question to answer with thought, not work to do",
           agent:
-            "the coding agent should do it: change the code, fix a bug, refactor, run or check something in the repo, or answer what the agent itself was told earlier",
+            "the coding agent should do it in a project's code: change files in the repo, fix a bug, refactor, add a feature to the app, run or check something in the repo, or answer what the agent itself was told earlier. Not something to show on the canvas",
           new_session:
             "the user explicitly asks to open, start or spin up a new Claude or agent session, usually with a job for it",
           open: "the user asks to open an application, a folder, a terminal, or a website in the computer's own browser",
