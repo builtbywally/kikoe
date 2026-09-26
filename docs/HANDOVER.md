@@ -1397,7 +1397,8 @@ and a checkout with tax. What it found, all fixed:
    tab, it, …) is no longer a query. A replan now rewrites its plan card.
 10. Tooling gotcha, again: a Python patch in a non-raw string turned `\b`
    into a backspace (0x08), and a regex silently never matched. Grep for
-   `\b` after any patch script (`grep -cP "\b"`).
+   a raw 0x08 byte after any patch script: `grep -cP "\x08" <files>`. Write
+   patch scripts with the Write tool and raw strings, or use the Edit tool.
 
 Verified end to end: run (0.6 s, no install), follow-up to the right
 project, search box built (diffs on the canvas), plan (34 s) → change (10%
