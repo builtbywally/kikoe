@@ -180,6 +180,57 @@ function main(): void {
 
   let hearing = false;
   let lastPhaseAt = 0;
+
+  // The mode (daemon/src/micmode.ts). Muted and push-to-talk close the
+  // device's stream, so the OS shows the mic as off; the process stays up,
+  // because the phone's clips are transcribed here too.
+  let mode = (process.env.KIKOE_MIC_MODE || "open") as "open" | "muted" | "push";
+  let talking = false;
+  let talkTimer: ReturnType<typeof setTimeout> | null = null;
+  let streaming = false;
+  const live = () => mode === "open" || (mode === "push" && talking);
+  function setStream(on: boolean): void {
+    if (on === streaming) return;
+    try {
+      if (on) rt.start();
+      else rt.stop();
+      streaming = on;
+    } catch (e) {
+      say(`could not ${on ? "open" : "close"} the stream: ${(e as Error).message}`);
+    }
+    if (!on) {
+      try {
+        vad.reset?.();
+      } catch {
+        /* an older sherpa has no reset; the next speech starts it over */
+      }
+      if (hearing) post("/mic", { phase: "idle" });
+      hearing = false;
+    }
+  }
+  /** One push-to-talk sentence is over: hear what is left, then close. */
+  function endTalk(): void {
+    if (talkTimer) clearTimeout(talkTimer);
+    talkTimer = null;
+    if (!talking) return;
+    talking = false;
+    try {
+      vad.flush?.();
+    } catch {
+      /* nothing buffered */
+    }
+    while (!vad.isEmpty()) {
+      const seg = vad.front(false);
+      vad.pop();
+      transcribe(seg.samples, seg.samples.length / RATE, true);
+    }
+    // never from inside the audio callback: stopping a stream there can wait
+    // on the callback itself
+    setImmediate(() => {
+      if (!live()) setStream(false);
+      post("/mic", { phase: mode });
+    });
+  }
   let peak = 0;
   let frames = 0;
 
@@ -214,7 +265,10 @@ function main(): void {
       // Electron forbids external ArrayBuffers; ask for a copy
       const seg = vad.front(false);
       vad.pop();
-      transcribe(seg.samples, seg.samples.length / RATE);
+      const pushed = mode === "push" && talking;
+      transcribe(seg.samples, seg.samples.length / RATE, pushed);
+      // push to talk is one sentence
+      if (pushed) endTalk();
     }
   }
 
@@ -232,11 +286,16 @@ function main(): void {
     return String(rec.getResult(stream).text ?? "").trim();
   }
 
-  function transcribe(samples: Float32Array, durS: number): void {
+  function transcribe(samples: Float32Array, durS: number, pushed = false): void {
     post("/mic", { phase: "transcribing" });
     const t = Date.now();
     const text = recognize(samples);
-    post("/heard", { text, dur_s: Number(durS.toFixed(2)), stt_ms: Date.now() - t });
+    post("/heard", {
+      text,
+      dur_s: Number(durS.toFixed(2)),
+      stt_ms: Date.now() - t,
+      ...(pushed ? { ptt: true } : {}),
+    });
   }
 
   /**
@@ -247,8 +306,28 @@ function main(): void {
    */
   process.parentPort?.on(
     "message",
-    (e: { data?: { type?: string; id?: number; pcm?: unknown } }) => {
+    (e: { data?: { type?: string; id?: number; pcm?: unknown; mode?: string; on?: boolean } }) => {
       const m = e?.data;
+      if (m?.type === "mode") {
+        mode = m.mode === "muted" || m.mode === "push" ? m.mode : "open";
+        talking = false;
+        if (talkTimer) clearTimeout(talkTimer);
+        setStream(live());
+        say(`mode ${mode}`);
+        post("/mic", { phase: mode });
+        return;
+      }
+      if (m?.type === "talk") {
+        if (mode !== "push") return;
+        // the key again, while talking, ends the sentence
+        if (talking || m.on === false) return endTalk();
+        talking = true;
+        setStream(true);
+        post("/mic", { phase: "push-open" });
+        // nothing said in 20 s closes it again
+        talkTimer = setTimeout(endTalk, 20_000);
+        return;
+      }
       if (m?.type !== "clip" || typeof m.id !== "number") return;
       let text = "";
       try {
@@ -266,13 +345,14 @@ function main(): void {
     },
   );
 
-  rt.start();
+  setStream(live());
   post("/mic", { phase: "ready", text: String(dev?.name ?? id), rate });
-  say(`listening on ${dev?.name ?? id} at ${rate} Hz`);
+  if (mode !== "open") post("/mic", { phase: mode });
+  say(`${mode === "open" ? "listening" : mode} on ${dev?.name ?? id} at ${rate} Hz`);
 
   process.on("SIGTERM", () => {
     try {
-      rt.stop();
+      if (streaming) rt.stop();
       rt.closeStream();
     } catch {
       /* closing */

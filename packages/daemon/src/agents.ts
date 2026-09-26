@@ -128,6 +128,12 @@ export class Agents {
     fresh: boolean,
     /** the model to work with ("opus", "fable"); "" is Claude Code's own default */
     model = "",
+    opts: {
+      /** "plan": read and think, change nothing, and answer with a plan */
+      mode?: "plan";
+      /** the run's final text, from its own output, when it exits */
+      onDone?: (code: number | null, text: string) => void;
+    } = {},
   ): { ok: boolean; said: string } {
     const bin = this.bin();
     if (!bin) {
@@ -164,6 +170,7 @@ export class Agents {
     const args = [
       "-p",
       ...(model ? ["--model", model] : []),
+      ...(opts.mode === "plan" ? ["--permission-mode", "plan"] : []),
       ...(session ? (fresh ? ["--session-id", session] : ["--resume", session]) : []),
       prompt,
     ];
@@ -175,17 +182,32 @@ export class Agents {
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout?.on("data", (d: Buffer) => out?.write(d));
+    // What -p prints is the turn's final answer: a plan, or how a project
+    // runs. Read from here rather than the hooks, which a folder Claude Code
+    // has not trusted never fires.
+    let text = "";
+    let done = false;
+    const finish = (code: number | null, t: string) => {
+      if (done) return;
+      done = true;
+      opts.onDone?.(code, t);
+    };
+    child.stdout?.on("data", (d: Buffer) => {
+      out?.write(d);
+      if (opts.onDone) text = (text + String(d)).slice(-64_000);
+    });
     child.stderr?.on("data", (d: Buffer) => out?.write(d));
     child.on("error", (e) => {
       this.log(`agent ${project}: could not start: ${e.message}`);
       this.runs.delete(id);
       out?.end();
+      finish(null, "");
     });
     child.on("exit", (code) => {
       this.log(`agent ${project}: finished (${code})`);
       this.runs.delete(id);
       out?.end();
+      finish(code, text.trim());
     });
 
     this.runs.set(id, {

@@ -1294,3 +1294,59 @@ is what should have stood in the way, so test through it.
   another session and are not this work; `pnpm lint` fails on them
   (`packages/site/lib/router.ts`, `Sound.tsx`), so lint was run on core,
   daemon, app and evals for these commits.
+
+## Run, plan, and the mic's three modes (2026-09-26)
+
+- **Every project on the PC** (`scan.ts`): home and the system drive's
+  own top-level folders, directory listings only, breadth first, depth 4,
+  a 6000-directory budget (~100 ms here). A project is a `.git` directory
+  or a marker file (package.json, CLAUDE.md, pyproject.toml, …); a `.git`
+  *file* is a worktree and is skipped; Downloads, node_modules, build
+  output and hidden folders are never walked. `Projects.adopt` never folds
+  a clash into an existing project: the second Dolmapp is "Startup
+  Dolmapp", a lone repo takes its wrapper's name ("Printly v3") with its
+  own as an alias. Runs 20 s after start and daily; settings
+  `project_scan`, `project_folders`. Found 53 new (76 known).
+- **A name Kik does not know is said so.** `startAgent` and `carryOut`
+  used to fall back to the board in front: "run Marine" went to kikoe the
+  morning `projects.json` had been cleared.
+- **"Run Marine"** (`runner.ts`, `runProject`): a reflex before Jev (Jev
+  scored "run a project marine" at 0.50–0.57, under the 0.6 bar, and Kik
+  said "What's up?"). `runAsk` finds the name, which must resolve.
+  `howToRun` reads package.json (dev > start > serve > preview, the
+  lockfile's manager, the framework to say aloud, install first when
+  node_modules is missing), manage.py, or a bare index.html (served by
+  python). An empty main checkout falls through to `worktreesOf` (Marine's
+  app is on 3d-pbr in `~/orca/workspaces/Marine/Setup`). With nothing
+  found the agent is asked (`RUN_QUESTION`, answer read from `-p`'s
+  stdout). **Kikoe owns the server**, not the agent: `-p` exits with its
+  turn. The address is read from the output (`addressIn`, loopback
+  preferred, ANSI stripped), pinned as a sticky web card, and Kik asks
+  "want me to do anything with it?" with the window open. A failure pins
+  the last 40 lines and offers the agent. "Stop Marine" stops the tree
+  (`taskkill /T /F`); quitting stops them all. Live: Marine up on 3000 in
+  7 s.
+- **Plan mode** (`plan.ts`, `planWork`): "plan mode, …", "plan it first",
+  "make a plan for …". `agents.start` gained `mode: "plan"`
+  (`--permission-mode plan`) and `onDone(code, text)` from stdout — so it
+  works in folders whose hooks never fire. The plan is a sticky markdown
+  card; `planWaiting` holds it 30 min; "go ahead" resumes the same
+  session in normal mode, a change ("change step two…", "but don't…")
+  replans, "drop it"/"no" ends it. A pending permission takes "go ahead"
+  first. The project is the longest name said, hyphens as spaces ("the
+  kikoe website" once went to kikoe). Live: a 5-step plan in ~60 s, repo
+  untouched.
+- **The mic's three modes** (`micmode.ts`, setting `mic_mode`, default
+  **push**): the phone's clips are transcribed by the same ear process, so
+  turning the mic off killed the phone too. Muted and push close the RtAudio
+  stream (the OS shows the mic off) and keep the process. Push to talk:
+  `ptt_key` (default Ctrl+Shift+Space, a global shortcut) opens it for one
+  sentence, posted with `ptt: true` and heard as addressed; the key again
+  cuts it short; 20 s of nothing closes it. Switched by voice ("mute the
+  computer", "unmute", "push to talk"), the tray, or Settings › Listening.
+  Never stop a stream inside the audio callback (`setImmediate`).
+- **Not done**: marking a folder trusted in `~/.claude.json` when an agent
+  starts there was refused by the permission classifier (it edits Claude
+  Code's own permissions); the user has not decided. Until then an agent
+  in a newly found folder works but Kik does not hear its hooks.
+

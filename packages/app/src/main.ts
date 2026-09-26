@@ -51,6 +51,7 @@ import {
   app,
   clipboard,
   dialog,
+  globalShortcut,
   ipcMain,
   nativeImage,
   nativeTheme,
@@ -149,6 +150,9 @@ async function startDaemon(): Promise<void> {
   // The phone speaks through the ear that is already loaded.
   daemon.transcribe = transcribeWithEar;
   daemon.onMicReady = () => earKeeper.ready();
+  // "Mute the computer" said to the phone, or the tray, or Settings
+  daemon.onMicMode = (mode) => applyMicMode(mode);
+  applyMicMode(settings.mic_mode ?? "open");
   keepHooks();
   if (!hooksTimer) hooksTimer = setInterval(keepHooks, 5 * 60_000);
   // The phone's voice settings: what Kik says aloud, which engine, which
@@ -399,6 +403,7 @@ async function spawnEar(): Promise<void> {
       KIKOE_MODELS: MODELS,
       KIKOE_MIC_DEVICE: s.mic_device,
       KIKOE_STT_MODEL: s.stt_model,
+      KIKOE_MIC_MODE: s.mic_mode ?? "open",
     },
   });
   ear = child;
@@ -454,6 +459,31 @@ function transcribeWithEar(pcm: Int16Array): Promise<string> {
     // as a plain array would be a million numbers to serialise.
     ear?.postMessage({ type: "clip", id, pcm });
   });
+}
+
+/**
+ * The computer's mic mode (daemon/src/micmode.ts), told to the ear that is
+ * running; a new ear reads it from its environment. Push to talk is a
+ * global key: press it and talk, one sentence, no name needed; press it
+ * again to cut the sentence short.
+ */
+let pttKey = "";
+function applyMicMode(mode: string): void {
+  ear?.postMessage({ type: "mode", mode });
+  if (pttKey) {
+    globalShortcut.unregister(pttKey);
+    pttKey = "";
+  }
+  if (mode === "push") {
+    const key = loadSettings().ptt_key || "CommandOrControl+Shift+Space";
+    try {
+      if (globalShortcut.register(key, () => ear?.postMessage({ type: "talk" }))) pttKey = key;
+      else log(`push to talk: ${key} is taken by another app`);
+    } catch (e) {
+      log(`push to talk: ${key} is not a key: ${(e as Error).message}`);
+    }
+  }
+  buildTrayMenu();
 }
 
 function stopEar(): void {
@@ -655,6 +685,21 @@ function buildTrayMenu(): void {
     { label: paused ? "Resume" : "Pause for an hour", click: () => togglePause() },
     { label: "Stop talking", click: () => daemon?.interrupt() },
     { type: "separator" },
+    ...(["open", "muted", "push"] as const).map(
+      (m): Electron.MenuItemConstructorOptions => ({
+        label:
+          m === "open"
+            ? "Listen on this computer"
+            : m === "muted"
+              ? "Mute this computer (phone still works)"
+              : `Push to talk (${(loadSettings().ptt_key || "CommandOrControl+Shift+Space").replace("CommandOrControl", "Ctrl")})`,
+        type: "radio",
+        checked: (daemon?.settings.mic_mode ?? "open") === m,
+        click: () => {
+          daemon?.setMicMode(m);
+        },
+      }),
+    ),
     {
       label:
         daemon.micPhase === "off" || daemon.micPhase === "dead"
@@ -743,6 +788,7 @@ async function quit(): Promise<void> {
       await Promise.race([daemon.arbiter.drain(), new Promise((r) => setTimeout(r, 4000))]);
     }
     stopEar();
+    globalShortcut.unregisterAll();
     await Promise.race([daemon?.close(), new Promise((r) => setTimeout(r, 3000))]);
   } finally {
     app.exit(0);
@@ -955,6 +1001,12 @@ ipcMain.handle(
     if ("mic" in rest || "mic_device" in rest || "stt_model" in rest) {
       stopEar();
       if (loadSettings().mic) void startEar();
+    }
+    if ("mic_mode" in rest || "ptt_key" in rest) {
+      const m = loadSettings().mic_mode ?? "open";
+      if (daemon) daemon.settings.ptt_key = loadSettings().ptt_key;
+      if (daemon && daemon.settings.mic_mode !== m) daemon.setMicMode(m);
+      else applyMicMode(m);
     }
     if ("port" in rest) await restartDaemon("port change");
     else if (

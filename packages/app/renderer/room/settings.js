@@ -229,6 +229,8 @@
     $("strict").checked = Boolean(s.tts_strict);
     $("login").checked = Boolean(info.loginItem);
     $("mic").checked = Boolean(s.mic);
+    $("mic-mode").value = s.mic_mode || "open";
+    $("ptt-key").value = s.ptt_key || "CommandOrControl+Shift+Space";
     $("wake").value = s.wake_name || "kikoe";
     $("stt-model").value = s.stt_model || "tiny";
     $("hear-debug").checked = Boolean(s.hear_debug);
@@ -575,6 +577,8 @@
       hear_debug: $("hear-debug").checked,
       hear_you: $("hear-you").checked,
       barge_in: $("barge-in").checked,
+      mic_mode: $("mic-mode").value,
+      ptt_key: $("ptt-key").value.trim() || "CommandOrControl+Shift+Space",
     });
     note(
       "mic-note",

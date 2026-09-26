@@ -115,6 +115,10 @@
           <select id="stt-model"><option value="tiny">Whisper tiny · 120 MB · quick</option><option value="base">Whisper base · 210 MB · better with names</option><option value="multi">Whisper base, every language · 210 MB · Arabic, Turkish, French…</option></select>
           <button id="mic-save" class="primary">Save</button> <span id="mic-note" class="note"></span>
         </div>
+        <div class="actions" title="Muted: the computer hears nothing, the phone still works. Push to talk: press the key, say one sentence to Kik (no name needed); press it again to cut it short.">
+          <select id="mic-mode"><option value="open">Listen on this computer</option><option value="muted">Mute this computer · the phone still works</option><option value="push">Push to talk on this computer</option></select>
+          <input type="text" id="ptt-key" placeholder="CommandOrControl+Shift+Space" style="width: 220px" />
+        </div>
         <label class="check"><input type="checkbox" id="barge-in" /> Talking over Kik stops it. Headset only: through speakers it would hear itself.</label>
         <label class="check"><input type="checkbox" id="hear-you" /> Anything said to “you” is for Kik, name or no name; and every other sentence without the name is put to the model to judge whether it was for Kik. Recall over precision. Turn off in a shared room or on a call.</label>
         <label class="check"><input type="checkbox" id="hear-debug" /> Tuning: keep the text of everything it hears, including what was not for it. Off by default; turn it off again when the name is landing.</label>

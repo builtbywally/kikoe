@@ -53,6 +53,7 @@ import {
   jevKeyFromFile,
   loadSettings,
   log,
+  saveSettings,
   viewerToken,
   walkieToken,
 } from "./config.js";
@@ -91,9 +92,21 @@ export type HandsLike = Pick<
   | "screenshot"
   | "close"
 >;
+import { type MicMode, micModeAsk, micModeLine, micModeOf } from "./micmode.js";
 import { Board, type Pin } from "./pins.js";
-import { Projects, slug } from "./projects.js";
+import { type Verdict, planAsk, planSteps, planVerdict } from "./plan.js";
+import { type Project, Projects, slug } from "./projects.js";
+import {
+  type Recipe,
+  Runner,
+  freePort,
+  howToRun,
+  recipeFromAgent,
+  runAsk,
+  worktreesOf,
+} from "./runner.js";
 import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
+import { defaultRoots, findProjects } from "./scan.js";
 import {
   type Earcon,
   NullSpeaker,
@@ -429,6 +442,8 @@ export class Daemon {
   micPhase = "off";
   /** told when the ear says it is ready, so its supervisor knows it is back */
   onMicReady?: () => void;
+  /** the app tells the ear (main.ts): the mic's mode changed */
+  onMicMode?: (mode: MicMode) => void;
   /** until when an utterance without the name still counts as for us */
   private attentionUntil = 0;
   private anthropicKey = "";
@@ -1015,6 +1030,66 @@ export class Daemon {
     }
     this.askedProject = null;
 
+    // "Mute the computer", from the phone: the PC mic stops, the phone goes on.
+    const rest = spokenRest(clean, d.text);
+    const micAsk = micModeAsk(rest);
+    if (
+      micAsk &&
+      (d.kind === "work" || d.kind === "question" || d.kind === "control" || d.kind === "social")
+    ) {
+      const said = this.setMicMode(micAsk);
+      record(d.kind, `mic:${micAsk}`, said);
+      this.rememberExchange(clean, said);
+      this.say(said, ev.SEV_ATTENTION, "head");
+      this.hub.publish("mic", { phase: "idle" });
+      return { kind: "command", intent: `mic:${micAsk}`, said };
+    }
+
+    // A plan on the canvas is waiting on a decision: "go ahead", "drop it",
+    // or a change to it. A permission question comes first, since "go ahead"
+    // answers that too.
+    const plan = this.planWaiting;
+    if (plan && Date.now() < plan.until && !this.pending) {
+      const v = planVerdict(rest);
+      if (v) {
+        const said = sentence(this.planDecide(v, rest));
+        record(d.kind, `plan:${v}`, said);
+        this.rememberExchange(clean, said);
+        this.openWindow(clean, said);
+        this.say(said, ev.SEV_ATTENTION, "head");
+        this.hub.publish("mic", { phase: "idle" });
+        return { kind: "command", intent: `plan:${v}`, said };
+      }
+    }
+    // "Plan mode, add dark mode to Marine" and "run Marine" are reflexes: they
+    // do not wait on the switchboard's confidence, which is how "run a
+    // project marine" was answered "What's up?" (2026-09-26).
+    if (d.kind === "question" || d.kind === "work" || d.kind === "social") {
+      const task = planAsk(rest);
+      if (task !== null) {
+        const said = sentence(this.planWork(task));
+        record(d.kind, "plan", said);
+        this.rememberExchange(clean, said);
+        this.openWindow(clean, said);
+        this.say(said, ev.SEV_ATTENTION, "head");
+        this.hub.publish("mic", { phase: "idle" });
+        return { kind: "command", intent: "plan", said };
+      }
+      const runName = runAsk(rest);
+      const target = runName ? this.projects.resolve(runName) : undefined;
+      if (target?.roots.length) {
+        this.hub.publish("mic", { phase: "thinking", text: clean });
+        void this.runProject(target).then((line) => {
+          const said = sentence(line);
+          record(d.kind, "run", said);
+          this.rememberExchange(clean, said);
+          this.say(said, ev.SEV_ATTENTION, "head");
+          this.hub.publish("mic", { phase: "idle" });
+        });
+        return { kind: "command", intent: "run" };
+      }
+    }
+
     // Questions and work go past the switchboard first: Kik, the agent, a new
     // session, the PC. Social and control never do; a hello needs no judge
     // and a stop must be instant.
@@ -1398,6 +1473,15 @@ export class Daemon {
   ): Promise<void> {
     const project = c.project ? this.projects.resolve(c.project) : undefined;
     let said: string;
+    // work for a project Kik cannot find is not quietly given to another one
+    if (c.project && !project && (c.action === "agent" || c.action === "new_session")) {
+      said = `I don't know a project called ${c.project}.`;
+      record(d.kind, c.action, said);
+      this.rememberExchange(clean, said);
+      this.say(said, ev.SEV_ATTENTION, "head");
+      this.hub.publish("mic", { phase: "idle" });
+      return;
+    }
     switch (c.action) {
       case "new_session":
         said = sentence(
@@ -1458,7 +1542,8 @@ export class Daemon {
       }
       case "stop_agent": {
         const n = this.agents.stop(project?.id);
-        said = n ? "Stopped it." : "Nothing of mine is running.";
+        const served = project ? (this.runner.stop(project.id) ? 1 : 0) : this.runner.stopAll();
+        said = n || served ? "Stopped it." : "Nothing of mine is running.";
         break;
       }
       default:
@@ -1783,8 +1868,14 @@ export class Daemon {
     meta: { dur_s?: number; stt_ms?: number };
     timer: NodeJS.Timeout;
   } | null = null;
-  hearSegment(text: string, meta: { dur_s?: number; stt_ms?: number }): { kind: string } {
+  hearSegment(
+    text: string,
+    meta: { dur_s?: number; stt_ms?: number },
+    pushed = false,
+  ): { kind: string } {
     const clean = text.trim();
+    // push to talk: one whole sentence, meant for Kik, nothing to wait for
+    if (pushed) return this.hear(clean, meta, { force: true });
     if (this.held) {
       clearTimeout(this.held.timer);
       const joined = `${this.held.text} ${clean}`.trim();
@@ -2396,6 +2487,29 @@ export class Daemon {
     } catch (e) {
       log(`projects: could not look beside ${parent}: ${(e as Error).message}`);
     }
+    return found;
+  }
+
+  /**
+   * Every project on the machine (scan.ts), not just the ones beside a
+   * folder an agent has run in. In the background, on start and daily;
+   * a folder already on a board is left exactly as it is.
+   */
+  async scanProjects(roots?: string[]): Promise<number> {
+    const where = roots ?? [...defaultRoots(), ...(this.settings.project_folders ?? [])];
+    const t0 = Date.now();
+    let found = 0;
+    try {
+      for (const f of await findProjects(where))
+        if (this.projects.adopt(f.dir, f.name, f.wrapper)) found++;
+    } catch (e) {
+      log(`projects: scan failed: ${(e as Error).message}`);
+      return 0;
+    }
+    log(
+      `projects: scan found ${found} new in ${Date.now() - t0} ms, ${this.projects.all().length} known`,
+    );
+    if (found) this.saveProjects();
     return found;
   }
 
@@ -3781,6 +3895,220 @@ export class Daemon {
     return `queued for ${target}; it gets it ${when}`;
   }
 
+  /** Open, muted (the phone still works), or push to talk; kept across restarts. */
+  setMicMode(mode: MicMode): string {
+    this.settings.mic_mode = mode;
+    try {
+      if (this.persistBoard) saveSettings({ mic_mode: mode });
+    } catch (e) {
+      log(`mic mode: could not save: ${(e as Error).message}`);
+    }
+    log(`mic mode: ${mode}`);
+    this.onMicMode?.(mode);
+    this.hub.publish("mic", { phase: mode });
+    return micModeLine(mode, this.settings.ptt_key);
+  }
+
+  // -- run a project, and plan before doing ---------------------------------
+
+  /** The dev servers Kik started, one per project (runner.ts). */
+  readonly runner = new Runner(log);
+
+  /**
+   * "Run Marine": look at it, start it, put it on the canvas, and ask what
+   * to do with it. Returns the line to say now; the rest is said as it
+   * happens.
+   */
+  async runProject(p: Project): Promise<string> {
+    const dir = p.roots[0] ?? "";
+    if (!dir || !existsSync(dir)) return `I don't know where ${p.name} is on disk`;
+    if (this.projects.current.id !== p.id) {
+      this.projects.open(p.id);
+      this.saveProjects();
+      this.publishProject();
+    }
+    const up = this.runner.get(p.id);
+    if (up?.url) {
+      this.pinRun(p, up.url);
+      return `${p.name} is already running, and it's on the canvas. Want me to do anything with it?`;
+    }
+    const port = await freePort();
+    let where = dir;
+    let branch = "";
+    let recipe = howToRun(dir, port);
+    // the main checkout may be empty; the work is in a worktree beside it
+    if (!recipe) {
+      for (const w of worktreesOf(dir)) {
+        const r = howToRun(w.dir, port);
+        if (r) {
+          where = w.dir;
+          branch = w.branch;
+          recipe = r;
+          break;
+        }
+      }
+    }
+    if (recipe) {
+      this.launch(p, where, recipe);
+      return `Starting ${p.name}, ${recipe.what}${branch ? ` from the ${branch} branch` : ""}${recipe.install ? ". Installing its packages first" : ""}`;
+    }
+    // The folder does not say: the project's agent looks, and says how.
+    const r = this.startAgent(p.name, RUN_QUESTION, {
+      onDone: (_code, text) => {
+        const found = recipeFromAgent(text);
+        if (!found) {
+          this.say(`I couldn't work out how ${p.name} runs.`, ev.SEV_ATTENTION, "head");
+          if (text) this.pinOutput(p, `How ${p.name} runs`, text);
+          return;
+        }
+        this.say(`Starting ${p.name} with ${found.command}.`, ev.SEV_ATTENTION, "head");
+        this.launch(p, dir, found);
+      },
+    });
+    if (!/^(started|passed)/.test(r)) return r;
+    return `Let me look at how ${p.name} runs`;
+  }
+
+  private launch(p: Project, dir: string, recipe: Recipe): void {
+    this.runner.start(p.id, dir, recipe, {
+      onStep: (line) => log(`run ${p.id}: ${line}`),
+      onUrl: (url) => {
+        this.pinRun(p, url);
+        const port = /:(\d+)/.exec(url.replace(/^https?:\/\//, ""))?.[1];
+        const said = `${p.name} is up${port ? ` on port ${port}` : ""}, and it's on the canvas. Want me to do anything with it?`;
+        this.say(said, ev.SEV_ATTENTION, "head");
+        this.openWindow(`run ${p.name}`, said);
+      },
+      onFail: (why, tail) => {
+        this.runner.stop(p.id);
+        if (tail.length) this.pinOutput(p, `${p.name} did not start`, tail.join("\n"), "run");
+        const said = `${p.name} didn't start: ${why}.${tail.length ? " What it printed is on the canvas." : ""} Want me to have the agent fix it?`;
+        this.say(said, ev.SEV_ATTENTION, "head");
+        this.openWindow(`run ${p.name}`, said);
+      },
+    });
+  }
+
+  /** The running app as a live card on its project's board, one per address. */
+  private pinRun(p: Project, url: string): void {
+    const title = `${p.name} · ${url.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
+    const open = this.board.list(p.id).find((x) => x.kind === "web" && x.body === url);
+    if (open) {
+      this.hub.publish("focus", { id: open.id });
+      return;
+    }
+    const pin = this.board.add({
+      kind: "web",
+      title,
+      body: url,
+      project: p.id,
+      repo: p.id,
+      by: "kik",
+      size: "wide",
+      sticky: true,
+    });
+    this.hub.publish("focus", { id: pin.id });
+    this.lastCanvasSite = { url, at: Date.now() };
+  }
+
+  private pinOutput(p: Project, title: string, body: string, kind = "markdown"): void {
+    const pin = this.board.add({
+      kind,
+      title,
+      body,
+      project: p.id,
+      repo: p.id,
+      by: "kik",
+      size: "wide",
+      sticky: true,
+    });
+    this.hub.publish("focus", { id: pin.id });
+  }
+
+  /** A plan on the canvas, waiting on the user. */
+  private planWaiting: { project: string; until: number; pin: string } | null = null;
+
+  /**
+   * "Plan mode, add dark mode to Marine": the agent plans and changes
+   * nothing; the plan goes on the canvas and waits. The project is the one
+   * named, if the switchboard is sure of it, or the one on the board.
+   */
+  planWork(task: string): string {
+    if (!task) return "What should it plan?";
+    return this.startPlan(this.projectNamedIn(task) ?? this.projects.current, task, false);
+  }
+
+  /** The project a sentence names, if any. */
+  projectNamedIn(task: string): Project | undefined {
+    // The longest name said wins, with - and _ heard as spaces: "the kikoe
+    // website" is kikoe-website, not kikoe (2026-09-26, the first live plan).
+    const said = task.replace(/[-_]+/g, " ");
+    const named = this.projects
+      .all()
+      .filter((x) => x.roots.length)
+      .map((x) => ({ x, n: x.name.replace(/[-_]+/g, " ") }))
+      .filter(({ n }) => new RegExp(`\\b${escapeRe(n)}\\b`, "i").test(said))
+      .sort((a, b) => b.n.length - a.n.length)[0]?.x;
+    return named;
+  }
+
+  private startPlan(p: Project, task: string, again: boolean): string {
+    const prompt = again
+      ? `Change the plan: ${task}\n\nStill plan only: change nothing yet, and end with the whole revised plan.`
+      : `${task}\n\nPlan only: read what you need, change nothing, and end with the plan as numbered steps, the files each touches, and anything you are unsure of.`;
+    const r = this.startAgent(p.name, prompt, {
+      mode: "plan",
+      onDone: (code, text) => this.planReady(p, code, text),
+    });
+    if (!/^(started|passed)/.test(r)) return r;
+    this.planWaiting = null;
+    return again ? `Replanning ${p.name}` : `Planning it in ${p.name}. I'll show you the plan`;
+  }
+
+  private planReady(p: Project, code: number | null, text: string): void {
+    if (!text) {
+      this.say(
+        `The plan for ${p.name} didn't come back${code ? `, it stopped with code ${code}` : ""}.`,
+        ev.SEV_ATTENTION,
+        "head",
+      );
+      return;
+    }
+    const pin = this.board.add({
+      kind: "markdown",
+      title: `Plan · ${p.name}`,
+      body: text,
+      project: p.id,
+      repo: p.id,
+      by: "kik",
+      size: "wide",
+      sticky: true,
+    });
+    if (this.projects.current.id !== p.id) {
+      this.projects.open(p.id);
+      this.saveProjects();
+      this.publishProject();
+    }
+    this.hub.publish("focus", { id: pin.id });
+    this.planWaiting = { project: p.id, until: Date.now() + 30 * 60_000, pin: pin.id };
+    const n = planSteps(text);
+    const said = `The plan for ${p.name} is on the canvas${n ? `, ${n} steps` : ""}. Go ahead, change something, or drop it?`;
+    this.say(said, ev.SEV_ATTENTION, "head");
+    this.openWindow(`plan ${p.name}`, said);
+  }
+
+  /** What the user decided about the plan on the canvas. */
+  planDecide(v: Verdict, words: string): string {
+    const w = this.planWaiting;
+    const p = w ? this.projects.get(w.project) : undefined;
+    this.planWaiting = null;
+    if (!w || !p) return "There's no plan waiting";
+    if (v === "drop") return "Dropped it. Nothing was changed";
+    if (v === "change") return this.startPlan(p, words, true);
+    const r = this.startAgent(p.name, "Go ahead: carry out the plan you just made.");
+    return /^(started|passed)/.test(r) ? `Going ahead in ${p.name}` : r;
+  }
+
   /**
    * Start a coding agent in a project, with something to do.
    *
@@ -3788,11 +4116,23 @@ export class Daemon {
    * the canvas — because the session Kik starts is an ordinary one. What is
    * new is only that nobody had to open a terminal to begin it.
    */
-  startAgent(name: string, prompt: string, opts: { fresh?: boolean; hard?: boolean } = {}): string {
+  startAgent(
+    name: string,
+    prompt: string,
+    opts: {
+      fresh?: boolean;
+      hard?: boolean;
+      mode?: "plan";
+      onDone?: (code: number | null, text: string) => void;
+    } = {},
+  ): string {
     if (!this.settings.agents) return "starting agents is switched off in Settings";
-    const project = name
-      ? (this.projects.resolve(name) ?? this.projects.current)
-      : this.projects.current;
+    // A name Kik does not know is said so, never swapped for the board in
+    // front: "run Marine" once went to kikoe, the morning the project list
+    // was empty (2026-09-26).
+    const named = name ? this.projects.resolve(name) : undefined;
+    if (name && !named) return `I don't know a project called ${name}`;
+    const project = named ?? this.projects.current;
     // "Open a new session" means a new conversation, not the standing one.
     // Forgotten only when nothing is running there: a refused start must not
     // cost the conversation that is still going.
@@ -3814,7 +4154,10 @@ export class Daemon {
     const session = this.projects.sessionFor(project.id);
     // Opus for the work, Fable for what Jev judged hard (the user, 2026-09-24)
     const model = opts.hard ? this.settings.deep_model : this.settings.agent_model;
-    const { ok, said } = this.agents.start(project.id, cwd, task, session, fresh, model);
+    const { ok, said } = this.agents.start(project.id, cwd, task, session, fresh, model, {
+      ...(opts.mode ? { mode: opts.mode } : {}),
+      ...(opts.onDone ? { onDone: opts.onDone } : {}),
+    });
     if (ok) this.told.set(project.name, { text: task, at: Date.now() });
     if (ok) this.saveProjects();
     if (ok) {
@@ -4086,7 +4429,12 @@ export class Daemon {
                 : "",
         },
       },
-      mic: { phase: this.micPhase, device: this.micDevice, enabled: this.settings.mic },
+      mic: {
+        phase: this.micPhase,
+        device: this.micDevice,
+        enabled: this.settings.mic,
+        mode: micModeOf(this.settings.mic_mode),
+      },
       heard: [...this.heardLog].reverse(),
       // the thinking session's questions, for the "kik · thinking" card
       thinking: this.thoughtsView(),
@@ -4483,7 +4831,12 @@ export class Daemon {
         return this.json(
           res,
           200,
-          this.hearSegment(String(b.text ?? ""), { dur_s: b.dur_s, stt_ms: b.stt_ms }),
+          this.hearSegment(
+            String(b.text ?? ""),
+            { dur_s: b.dur_s, stt_ms: b.stt_ms },
+            // a push-to-talk sentence is for Kik, name or no name
+            b.ptt === true,
+          ),
         );
       }
       case "POST /mic": {
@@ -4499,6 +4852,10 @@ export class Daemon {
           this.micPhase = "dead";
           log(`mic died: ${b.text}`);
         } else if (phase === "log") log(`mic: ${b.text}`);
+        else if (phase === "muted") this.micPhase = "muted (phone only)";
+        else if (phase === "push") this.micPhase = "push to talk";
+        else if (phase === "open") this.micPhase = "listening";
+        else if (phase === "push-open") this.micPhase = "listening (push to talk)";
         else if (phase === "level") {
           /* a heartbeat with the peak; doctor reads it */
           this.micPhase = Number(b.peak) > 0.002 ? "listening" : "listening (silent input)";
@@ -4513,7 +4870,18 @@ export class Daemon {
           log("barge-in: you spoke, Kik stopped");
           this.interrupt();
         }
-        if (["hearing", "idle", "transcribing", "dead"].includes(phase))
+        if (
+          [
+            "hearing",
+            "idle",
+            "transcribing",
+            "dead",
+            "muted",
+            "push",
+            "open",
+            "push-open",
+          ].includes(phase)
+        )
           this.hub.publish("mic", { phase });
         return this.json(res, 200, { ok: true });
       }
@@ -4591,6 +4959,11 @@ export class Daemon {
     const first = setTimeout(() => void this.refreshAgenda(), 30_000);
     first.unref();
     this.timers.push(setInterval(() => void this.refreshAgenda(), 3600_000));
+    if (this.persistBoard && this.settings.project_scan !== false) {
+      const scan = setTimeout(() => void this.scanProjects(), 20_000);
+      scan.unref();
+      this.timers.push(setInterval(() => void this.scanProjects(), 24 * 3600_000));
+    }
     log(`listening on 127.0.0.1:${port}, speaker ${this.speaker.info().device}`);
     // the first sentence of the day should not be the one that pays the handshake
     this.jev()?.warm();
@@ -4599,6 +4972,8 @@ export class Daemon {
 
   async close(): Promise<void> {
     clearInterval(this.reminderTick);
+    // the dev servers Kik started go with it: nothing else could stop them
+    this.runner.stopAll();
     if (this.brainCache instanceof LiveBrain) this.brainCache.close();
     for (const t of this.thoughts) t.abort?.abort();
     if (this.held) clearTimeout(this.held.timer);
@@ -4670,6 +5045,17 @@ function safeSpeaker(): Speaker {
  * true.
  */
 /** A tool's answer, said out loud: a capital and a full stop. */
+/** What the agent is asked when a folder does not say how it runs (runner.ts). */
+const RUN_QUESTION = `Work out how to run this project locally for development. Do not run, install or change anything. Answer with only these lines:
+WHAT: what it is, in a few words (for example: a Next.js app)
+INSTALL: the command that installs its dependencies, or none
+RUN: the one command, run from this folder, that starts it, or none if it cannot be run
+URL: the address it will be at, only if it does not print one`;
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function sentence(s: string): string {
   const t = s.trim();
   if (!t) return "";

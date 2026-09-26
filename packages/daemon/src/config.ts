@@ -141,6 +141,21 @@ export interface Settings {
   usage: boolean;
   /** providers switched off by hand; a listed id is never read at all */
   usage_off: string[];
+  /**
+   * Look for projects across the machine (scan.ts): home and the system
+   * drive's own folders, on start and once a day. Directory listings only.
+   */
+  project_scan: boolean;
+  /** more folders to look in, beyond home and the drive's top level */
+  project_folders: string[];
+  /**
+   * The computer's mic (micmode.ts): "open" listens for the name, "muted"
+   * hears nothing on the PC but the phone still works, "push" listens for
+   * one sentence after the push-to-talk key.
+   */
+  mic_mode: "open" | "muted" | "push";
+  /** the push-to-talk key, an Electron accelerator */
+  ptt_key: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -192,6 +207,11 @@ export const DEFAULTS: Settings = {
   morning_brief: true,
   usage: true,
   usage_off: [],
+  project_scan: true,
+  project_folders: [],
+  // push to talk unless chosen otherwise (the user, 2026-09-26)
+  mic_mode: "push",
+  ptt_key: "CommandOrControl+Shift+Space",
 };
 
 const FILE = () => path.join(HOME, "config.local.json");

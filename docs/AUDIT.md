@@ -256,6 +256,19 @@ Gaps:
   neither update path mapped it to `size`, so a page never became an
   artboard. Both paths now do.
 
+- **Every project on the PC, run, planned, and a mic you choose
+  (2026-09-26).** A scan finds projects across home and `C:\` (76, up from
+  24); "run Marine" looks, starts it (from a worktree when the main
+  checkout is empty) and frames it on the canvas, then asks what next;
+  "plan mode, …" plans in `--permission-mode plan`, shows the plan, and
+  waits for go ahead, a change, or drop it; the PC mic is open, muted (the
+  phone still works) or push to talk, which is the default now.
+  `docs/HANDOVER.md`, "Run, plan, and the mic's three modes". Still open:
+  a running app's card shows `localhost`, which a phone cannot open; the
+  agent works in a project's main checkout even when the app ran from a
+  worktree; agents in folders Claude Code has not trusted run without
+  hooks (the user decides whether Kik may mark them trusted).
+
 ## Flows that do not exist yet
 
 1. **Starting an agent from Kik.** "Start a session in the wallet repo"

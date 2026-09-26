@@ -167,6 +167,34 @@ export class Projects {
   }
 
   /**
+   * A folder the scan found (scan.ts), made a project unless it already
+   * belongs to one. Returns the new project, or undefined if it was known.
+   *
+   * Names collide across a whole disk — two `walnut_print`s, a Dolmapp in
+   * two places — and `ensure` would quietly fold the second into the first
+   * as an extra root. So a name already taken by a folder somewhere else
+   * becomes "<parent> <name>"; the folder a lone repo sits in ("Printly v3"
+   * around `walnut_print`) is its name, and the repo's own is an alias.
+   */
+  adopt(dir: string, name: string, wrapper = ""): Project | undefined {
+    for (const p of this.items.values()) if (p.roots.some((r) => within(dir, r))) return undefined;
+    const free = (n: string) => {
+      const p = this.items.get(slug(n));
+      return !!slug(n) && (!p || p.roots.length === 0);
+    };
+    const parent = basename(dir.slice(0, dir.length - basename(dir).length));
+    const tries = wrapper ? [wrapper, name, `${wrapper} ${name}`] : [name, `${parent} ${name}`];
+    const pick = tries.find(free);
+    if (!pick) return undefined;
+    const current = this.currentId;
+    const p = this.ensure(pick, dir);
+    // a scan should never change what the Room is looking at
+    this.currentId = current || this.currentId;
+    if (pick !== name) this.learn(p.id, name.replace(/[_-]+/g, " "));
+    return p;
+  }
+
+  /**
    * A spoken name to a project. Exact, then alias, then prefix, then within
    * one edit — because the ear will not spell it the way the folder does.
    */
