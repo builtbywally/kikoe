@@ -20,6 +20,13 @@ const el = {
 };
 
 let sessions = {};
+/** how the computer's mic listens: open, muted (phone only), push to talk */
+let micMode = "open";
+let micKey = "control shift space";
+/** push to talk is open until then (ms), for the countdown */
+let talkUntil = 0;
+let talkTimer = 0;
+let talkLevel = 0;
 /** What Kik itself has running: agents, plans, dev servers (the daemon's kikWork). */
 let kikWork = [];
 /** when the last sessions frame arrived, so a running clock can count on from it */
@@ -265,6 +272,70 @@ function renderProject(agents) {
     s.textContent = t;
     if (t === name) s.className = "project";
     el.cornerLeft.append(s);
+  }
+  // How the computer hears you, always in sight: push to talk is the default
+  // and the orb used to say "listening" with the mic closed. A click moves on.
+  // It sits in the title bar: the corner is hidden whenever there are cards.
+  const chip = document.getElementById("btn-mic");
+  if (!chip) return;
+  chip.dataset.mode = micMode;
+  chip.textContent = micChipText();
+  if (document.documentElement.dataset.readonly === "true") chip.disabled = true;
+  if (!chip.dataset.wired) {
+    chip.dataset.wired = "1";
+    chip.addEventListener("click", () => {
+      const next = micMode === "push" ? "open" : micMode === "open" ? "muted" : "push";
+      window.room.setMicMode?.(next);
+    });
+  }
+}
+
+function micChipText() {
+  if (micMode === "muted") return "mic off · phone only";
+  if (micMode === "push") return `push to talk · ${micKey}`;
+  return "mic · listening";
+}
+
+/** What the orb says when nothing is happening, which depends on the mic. */
+function idleLabel() {
+  if (micMode === "muted") return "phone only";
+  if (micMode === "push") return micKey;
+  return "listening";
+}
+
+/** Push to talk is open: "talk now", a countdown, and a meter. */
+function showTalk() {
+  clearInterval(talkTimer);
+  talkUntil = Date.now() + 20000;
+  setOrb("listening", "talk now");
+  el.lineRepo.textContent = "push to talk";
+  el.lineText.textContent = "Talk now.";
+  const draw = () => {
+    const left = Math.max(0, Math.ceil((talkUntil - Date.now()) / 1000));
+    el.lineHint.textContent = "";
+    const meter = document.createElement("span");
+    meter.className = "talk-meter";
+    const fill = document.createElement("i");
+    fill.style.width = `${Math.min(100, Math.round(talkLevel * 400))}%`;
+    meter.append(fill);
+    const ring = document.createElement("span");
+    ring.className = "talk-left";
+    ring.textContent = `closes in ${left} s · press again to send now`;
+    el.lineHint.append(meter, ring);
+    if (left <= 0) endTalk();
+  };
+  draw();
+  talkTimer = setInterval(draw, 200);
+}
+function endTalk() {
+  if (!talkUntil) return;
+  talkUntil = 0;
+  clearInterval(talkTimer);
+  if (el.orbLabel.textContent === "talk now") setOrb("idle", idleLabel());
+  if (el.lineText.textContent === "Talk now.") {
+    el.lineText.textContent = "";
+    el.lineHint.textContent = "";
+    el.lineRepo.textContent = "";
   }
 }
 
@@ -1635,7 +1706,11 @@ function renderControl(state) {
     empty(
       you,
       state?.mic?.enabled
-        ? "Nothing heard yet. Say “hey kikoe”."
+        ? micMode === "push"
+          ? `Nothing heard yet. Press ${micKey} and talk.`
+          : micMode === "muted"
+            ? "The computer's mic is off; talk to the phone."
+            : "Nothing heard yet. Say “hey kikoe”."
         : "The microphone is off. Turn it on under General.",
     );
   for (const h of state?.heard ?? []) {
@@ -1701,6 +1776,8 @@ const handlers = {
   hello(f) {
     sessions = f.sessions ?? {};
     mode = f.mode ?? mode;
+    if (f.mic?.mode) micMode = f.mic.mode;
+    if (f.mic?.key) micKey = f.mic.key;
     renderAgents();
     rest();
     window.room.state().then((s) => {
@@ -1815,13 +1892,27 @@ const handlers = {
     setOrb("idle", "quiet");
   },
   mic(f) {
+    if (f.mode) micMode = f.mode;
+    if (f.key) micKey = f.key;
+    if (f.phase === "muted" || f.phase === "push" || f.phase === "open") {
+      endTalk();
+      renderProject();
+      if (!speaking) setOrb("idle", idleLabel());
+      return;
+    }
+    if (f.phase === "push-open") return showTalk();
+    if (f.phase === "level") {
+      talkLevel = Number(f.level) || 0;
+      return;
+    }
+    if (f.phase === "transcribing" || f.phase === "dead") endTalk();
     if (f.phase === "hearing") return setOrb("listening", "hearing you");
     if (f.phase === "transcribing") {
       setOrb("listening", "one moment");
       // if nothing follows, the transcript was lost somewhere; do not sit here
       clearTimeout(micWatchdog);
       micWatchdog = setTimeout(() => {
-        if (el.orbLabel.textContent === "one moment") setOrb("idle", "listening");
+        if (el.orbLabel.textContent === "one moment") setOrb("idle", idleLabel());
       }, 6000);
       return;
     }
@@ -1839,7 +1930,7 @@ const handlers = {
       setOrb("idle", "not for me");
       overheardUntil = Date.now() + 2500;
       setTimeout(() => {
-        if (el.orbLabel.textContent === "not for me" && !speaking) setOrb("idle", "listening");
+        if (el.orbLabel.textContent === "not for me" && !speaking) setOrb("idle", idleLabel());
       }, 2600);
       return;
     }
@@ -1854,7 +1945,7 @@ const handlers = {
       clearTimeout(attendingTimer);
       attendingTimer = setTimeout(
         () => {
-          if (el.orbLabel.textContent === "with you") setOrb("idle", "listening");
+          if (el.orbLabel.textContent === "with you") setOrb("idle", idleLabel());
         },
         Math.max(0, attendingUntil - Date.now()),
       );
@@ -1865,7 +1956,7 @@ const handlers = {
       if (Date.now() < attendingUntil) return setOrb("listening", "with you");
       if (pendingPermission) return showPermission();
       if (asking) return showAsking();
-      setOrb("idle", "listening");
+      setOrb("idle", idleLabel());
     }
   },
   view(f) {

@@ -59,6 +59,17 @@ describe("the daemon", () => {
     await d.close();
   });
 
+  it("tells the screens the mode and the key, and takes a mode from one", async () => {
+    const d = daemon();
+    d.settings.ptt_key = "CommandOrControl+Shift+Space";
+    const frames: Array<Record<string, unknown>> = [];
+    d.hub.listen((f) => frames.push(f as Record<string, unknown>));
+    expect(d.micInfo()).toEqual({ mode: d.settings.mic_mode, key: "control shift space" });
+    d.setMicMode("muted");
+    expect(frames.find((f) => f.type === "mic")).toMatchObject({ phase: "muted", mode: "muted" });
+    await d.close();
+  });
+
   it("takes a push-to-talk sentence as addressed, with no name", async () => {
     const d = daemon();
     const r = d.hearSegment("mute the computer", {}, true);

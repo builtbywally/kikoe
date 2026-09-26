@@ -60,6 +60,8 @@ contextBridge.exposeInMainWorld("room", {
   clearBoard: () => ipcRenderer.invoke("room:clearBoard"),
   actOnPin: (id: string, action: string) => ipcRenderer.invoke("room:actOnPin", id, action),
   sayToKik: (text: string) => ipcRenderer.invoke("room:sayToKik", text),
+  /** open, muted (the phone still works), or push to talk */
+  setMicMode: (mode: string) => ipcRenderer.invoke("room:setMicMode", mode),
   native: true,
   /** where the daemon serves pages: a card frames `${base}/artifact/<id>` */
   artifactBase: ipcRenderer.sendSync("room:artifactBase") as string,

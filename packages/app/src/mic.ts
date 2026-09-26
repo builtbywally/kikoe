@@ -180,6 +180,8 @@ function main(): void {
 
   let hearing = false;
   let lastPhaseAt = 0;
+  let livePeak = 0;
+  let liveAt = 0;
 
   // The mode (daemon/src/micmode.ts). Muted and push-to-talk close the
   // device's stream, so the OS shows the mic as off; the process stays up,
@@ -246,6 +248,16 @@ function main(): void {
     }
     for (const v of samples) if (v > peak) peak = v;
     frames++;
+    // While push to talk is open, the level goes out often enough to draw a
+    // meter: the proof, before a word lands, that the key did something.
+    if (talking) {
+      for (const v of samples) if (v > livePeak) livePeak = v;
+      if (Date.now() - liveAt > 120) {
+        liveAt = Date.now();
+        post("/mic", { phase: "level", live: true, peak: Number(livePeak.toFixed(3)) });
+        livePeak = 0;
+      }
+    }
     vad.acceptWaveform(samples);
     const detected: boolean = vad.isDetected();
     if (detected) {

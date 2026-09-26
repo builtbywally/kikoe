@@ -94,7 +94,7 @@ export type HandsLike = Pick<
   | "close"
 >;
 import { browseAsk } from "./browse.js";
-import { type MicMode, micModeAsk, micModeLine, micModeOf } from "./micmode.js";
+import { type MicMode, micModeAsk, micModeLine, micModeOf, spokenKey } from "./micmode.js";
 import { Board, type Pin } from "./pins.js";
 import { type Verdict, planAsk, planSteps, planVerdict } from "./plan.js";
 import { type Project, Projects, slug } from "./projects.js";
@@ -3996,6 +3996,14 @@ export class Daemon {
     return `queued for ${target}; it gets it ${when}`;
   }
 
+  /** The mic's mode and the key, for the screens. */
+  micInfo(): { mode: MicMode; key: string } {
+    return {
+      mode: micModeOf(this.settings.mic_mode),
+      key: spokenKey(this.settings.ptt_key || "CommandOrControl+Shift+Space"),
+    };
+  }
+
   /** Open, muted (the phone still works), or push to talk; kept across restarts. */
   setMicMode(mode: MicMode): string {
     this.settings.mic_mode = mode;
@@ -4006,7 +4014,7 @@ export class Daemon {
     }
     log(`mic mode: ${mode}`);
     this.onMicMode?.(mode);
-    this.hub.publish("mic", { phase: mode });
+    this.hub.publish("mic", { phase: mode, ...this.micInfo() });
     return micModeLine(mode, this.settings.ptt_key);
   }
 
@@ -4888,6 +4896,8 @@ export class Daemon {
         this.hub.subscribe(res, {
           sessions: this.tracker.snapshot(),
           mode: this.narrator.mode,
+          // how the computer's mic listens, so a screen draws it from the start
+          mic: this.micInfo(),
           // The rings draw from the hello frame, so an island started long
           // after the last poll shows the archived readings rather than three
           // empty circles until the next one lands.
@@ -5112,7 +5122,10 @@ export class Daemon {
         else if (phase === "push") this.micPhase = "push to talk";
         else if (phase === "open") this.micPhase = "listening";
         else if (phase === "push-open") this.micPhase = "listening (push to talk)";
-        else if (phase === "level") {
+        else if (phase === "level" && b.live === true) {
+          // push to talk is open: a meter, not a heartbeat
+          this.hub.publish("mic", { phase: "level", level: Number(b.peak) || 0 });
+        } else if (phase === "level") {
           /* a heartbeat with the peak; doctor reads it */
           this.micPhase = Number(b.peak) > 0.002 ? "listening" : "listening (silent input)";
         }
@@ -5138,8 +5151,13 @@ export class Daemon {
             "push-open",
           ].includes(phase)
         )
-          this.hub.publish("mic", { phase });
+          this.hub.publish("mic", { phase, ...this.micInfo() });
         return this.json(res, 200, { ok: true });
+      }
+      case "POST /mic-mode": {
+        const b = JSON.parse((await this.body(req)) || "{}");
+        const said = this.setMicMode(micModeOf(b.mode));
+        return this.json(res, 200, { ok: true, mode: this.settings.mic_mode, said });
       }
       case "POST /interrupt":
         this.interrupt();

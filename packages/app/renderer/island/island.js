@@ -68,6 +68,10 @@ let detailTimer = null;
 let quietTimer = null;
 let lastSpokeAt = 0;
 let current = "disconnected";
+/** how the computer's mic listens, and the push-to-talk key, said aloud */
+let micMode = "open";
+let micKey = "control shift space";
+let talkTimer = 0;
 // The mark is a thought-orb (Thinking Orbs, the 20-pixel preset): the pill's
 // state as one of its verbs. The pill is always dark, so the ink is light.
 const islandOrb = window.KikOrb?.create(document.getElementById("orb-dots"), {
@@ -144,6 +148,10 @@ function rest() {
       .join(" · ");
     return render("working", { label: "working", text: bits });
   }
+  // idle says how to be heard: push to talk and a muted mic are not "idle"
+  if (micMode === "push") return render("idle", { label: "push to talk", text: micKey });
+  if (micMode === "muted")
+    return render("idle", { label: "phone only", text: "the computer's mic is off" });
   return render("idle", { label: "idle" });
 }
 
@@ -166,6 +174,8 @@ function showPermission(p) {
 const handlers = {
   hello(f) {
     sessions = f.sessions || {};
+    if (f.mic?.mode) micMode = f.mic.mode;
+    if (f.mic?.key) micKey = f.mic.key;
     // Archived readings ride in on the hello, so an island started long after
     // the last poll draws the numbers it had rather than empty circles.
     renderRings(f.usage);
@@ -270,6 +280,34 @@ const handlers = {
   },
 
   mic(f) {
+    if (f.mode) micMode = f.mode;
+    if (f.key) micKey = f.key;
+    if (f.phase === "muted" || f.phase === "push" || f.phase === "open") {
+      clearInterval(talkTimer);
+      if (["idle", "listening"].includes(current)) rest();
+      return;
+    }
+    if (f.phase === "push-open") {
+      // the key did something: say so before a word lands, and how long is left
+      const until = Date.now() + 20000;
+      clearInterval(talkTimer);
+      const draw = () => {
+        const left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+        render("listening", { label: "talk now", text: `closes in ${left} s` });
+        if (left <= 0) {
+          clearInterval(talkTimer);
+          rest();
+        }
+      };
+      draw();
+      talkTimer = setInterval(draw, 500);
+      return;
+    }
+    if (f.phase === "level") {
+      el.island.style.setProperty("--level", String(Math.min(1, (Number(f.level) || 0) * 4)));
+      return;
+    }
+    if (f.phase === "transcribing" || f.phase === "hearing") clearInterval(talkTimer);
     if (f.phase === "hearing") {
       return render("listening", { label: "listening" });
     }

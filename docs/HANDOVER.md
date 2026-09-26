@@ -1475,3 +1475,23 @@ with a real voice, the phone path, and a project that needs an install.
   events.
 - Reading the stream from a shell: the SSE frame is `data: {...,"type":…}`
   with `type` last, so grep for `kikwork` rather than `"type":"kikwork"`.
+
+## The mic, in sight (2026-09-26)
+
+- **The mode is on screen.** A chip in the Room's title bar
+  (`#btn-mic`): "mic · listening", "mic off · phone only", "push to talk ·
+  control shift space"; a click moves push → open → muted → push through
+  `setMicMode` (IPC `room:setMicMode`, or `POST /mic-mode` from a browser
+  Room). The bottom-left corner was the first home and is hidden whenever
+  the board has cards, which is always.
+- **Every screen knows the mode from the first frame**: the stream's hello
+  carries `mic: {mode, key}` (`micInfo()`), and every mic frame carries it
+  too. The orb's idle word follows it (`idleLabel()`: "listening", "phone
+  only", or the key); the island's idle says "push to talk · control shift
+  space" or "phone only" instead of "idle"; the Control Room's "Say hey
+  kikoe" says the key when push to talk is on.
+- **Push to talk shows it heard the key**: `push-open` turns the orb and
+  the island to "talk now" with a 20 s countdown; while it is open the ear
+  posts its level every 120 ms (`live: true`), the daemon forwards it as a
+  `level` mic frame, and the Room draws a meter. Checked live with the key
+  pressed from a script: `push-open`, then ~8 level frames a second.

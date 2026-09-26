@@ -2085,3 +2085,46 @@ html[data-phone="true"] .ambient-flash {
     animation: none;
   }
 }
+
+/* --- the mic, in sight --------------------------------------------------------- */
+.mic-chip {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 2px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.mic-chip[data-mode="muted"] {
+  color: #c9a24a;
+  border-color: rgba(201, 162, 74, 0.5);
+}
+.mic-chip[data-mode="push"] {
+  color: #d2683f;
+  border-color: rgba(210, 104, 63, 0.5);
+}
+.mic-chip:disabled {
+  cursor: default;
+}
+.talk-meter {
+  display: inline-block;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  margin-right: 10px;
+  background: rgba(127, 127, 127, 0.25);
+  vertical-align: middle;
+  overflow: hidden;
+}
+.talk-meter > i {
+  display: block;
+  height: 100%;
+  background: #d2683f;
+  transition: width 0.12s linear;
+}
+.talk-left {
+  vertical-align: middle;
+}

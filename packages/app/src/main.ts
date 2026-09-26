@@ -988,6 +988,11 @@ ipcMain.handle("room:updatePin", (_e, id: string, patch: Record<string, unknown>
     }),
   ),
 }));
+ipcMain.handle("room:setMicMode", (_e, mode: string) => {
+  if (!daemon) return { error: "not running" };
+  const m = mode === "muted" || mode === "push" ? mode : "open";
+  return { ok: true, said: daemon.setMicMode(m) };
+});
 ipcMain.handle("room:sayToKik", (_e, text: string) =>
   daemon ? daemon.typed(String(text)) : { kind: "none", intent: "" },
 );

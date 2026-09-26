@@ -71,6 +71,7 @@
     // On the phone, /say is the walkie's own: typing is talking, as a viewer
     // could not; the daemon's /say is never reached from here.
     sayToKik: (text) => post("/say", { text }),
+    setMicMode: (mode) => post("/mic-mode", { mode }),
     native: false,
     artifactBase: base,
     openArtifact: (id, url) => {
