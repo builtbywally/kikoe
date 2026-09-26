@@ -225,6 +225,12 @@ export class Projects {
     return near;
   }
 
+  /** Forget a project that should never have been one. The board in front never goes. */
+  remove(id: string): boolean {
+    if (id === this.currentId || !this.items.has(id)) return false;
+    return this.items.delete(id);
+  }
+
   /** Look at a project. Returns it, so the caller can say its name. */
   open(id: string): Project | undefined {
     const p = this.items.get(id);

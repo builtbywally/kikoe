@@ -1345,8 +1345,63 @@ is what should have stood in the way, so test through it.
   cuts it short; 20 s of nothing closes it. Switched by voice ("mute the
   computer", "unmute", "push to talk"), the tray, or Settings › Listening.
   Never stop a stream inside the audio callback (`setImmediate`).
-- **Not done**: marking a folder trusted in `~/.claude.json` when an agent
-  starts there was refused by the permission classifier (it edits Claude
-  Code's own permissions); the user has not decided. Until then an agent
-  in a newly found folder works but Kik does not hear its hooks.
+- **Folder trust, corrected**: marking folders trusted in `~/.claude.json`
+  was refused by the permission classifier and was not built. The QA run
+  showed it matters less than feared: an agent started in the brand-new
+  `~/Downloads/Commerce Project` fired its hooks (diff cards arrived). A
+  folder with its own `.claude/settings.json` may still need trust, as the
+  desk did.
+
+## QA: a whole project through Kik (2026-09-26)
+
+A dummy store, `~/Downloads/Commerce Project` (zero dependencies, `npm run
+dev` on 4800, node:test), driven by `/say` from nothing to a search box
+and a checkout with tax. What it found, all fixed:
+
+1. **Downloads was never scanned**, then **Downloads itself became a
+   project** because of a stray `CLAUDE.md`, swallowing everything inside.
+   Downloads is now walked one level deep (`SHALLOW`), and container
+   folders (Downloads, Documents, Desktop, OneDrive, …; `isContainer`) are
+   never projects; a scan forgets a container project with no session and
+   an empty board.
+2. **An unknown project leaked to another**: "run the commerce project"
+   went via Jev ("agent", no project) to the last session, kikoe-website.
+   A run of something called a project/app/site that does not resolve is
+   now refused aloud.
+3. **A nameless follow-up went to the kikoe repo**: `instruct` picked the
+   last session the tracker saw, which was the Claude Code session building
+   Kikoe (its hooks report to Kik). `focus` (set by run and plan, ten
+   minutes) now wins.
+4. **Work for a project with no session was queued for ever**, waiting on a
+   "next prompt" nobody would send. A known project with a folder and no
+   live session now gets an agent started; a turn in progress still queues.
+5. **An agent killed every Node process**: `pkill … || taskkill //F //IM
+   node.exe` (pkill does not exist on Windows) took down the agent, the dev
+   server and Kikoe's dev copy. The user's global `defaultMode: auto` let it
+   through. Every agent Kik starts now gets `--disallowedTools` for
+   taskkill/pkill/killall/Stop-Process (`KILL_BY_NAME`; verified live that
+   a compound command is denied) and `AGENT_RULES` appended. Agents may
+   still leave their own test servers running (one did, on 4812).
+6. **Orphaned dev servers** after a forced kill held their port
+   (EADDRINUSE). The runner writes each server's whole process tree with
+   names to `~/.kikoe/run/servers.json` once it is up (the shell it spawns
+   dies with Kikoe; `node server.js` below it does not) and reaps live ones
+   with the same name on the next start. Verified: four processes stopped.
+   The failure message says "its port is already in use".
+7. **`npm install` ran on a project with no dependencies** and wrote a
+   lockfile into it. Only installs when there are dependencies.
+8. **"Stop the commerce project" was heard as "stop talking"**. A stop
+   naming a project with Kik's server or agent running stops that.
+9. From the user's own phone use that morning: "open it, just open it on a
+   new window" searched Google for "just window"; filler (just, new, window,
+   tab, it, …) is no longer a query. A replan now rewrites its plan card.
+10. Tooling gotcha, again: a Python patch in a non-raw string turned `\b`
+   into a backspace (0x08), and a regex silently never matched. Grep for
+   `\b` after any patch script (`grep -cP "\b"`).
+
+Verified end to end: run (0.6 s, no install), follow-up to the right
+project, search box built (diffs on the canvas), plan (34 s) → change (10%
+tax) → go ahead → built, 6/6 tests, `/checkout` shows $66.00 / $6.60 /
+$72.60, stop by voice, orphan reaped on restart. Not covered: push to talk
+with a real voice, the phone path, and a project that needs an install.
 

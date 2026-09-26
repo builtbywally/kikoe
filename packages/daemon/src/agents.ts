@@ -96,6 +96,21 @@ export interface AgentsOptions {
   log?: (line: string) => void;
 }
 
+/** Commands that stop processes by name, which no agent Kik starts may run. */
+export const KILL_BY_NAME = [
+  "Bash(taskkill:*)",
+  "Bash(pkill:*)",
+  "Bash(killall:*)",
+  "Bash(Stop-Process:*)",
+  "Bash(powershell -Command Stop-Process:*)",
+  "PowerShell(Stop-Process:*)",
+  "PowerShell(taskkill:*)",
+];
+
+/** What every agent Kik starts is told, beside its own instructions. */
+export const AGENT_RULES =
+  "You were started by Kikoe, a voice assistant, on the user's own PC. Other programs share this machine: never stop processes by name or image (no taskkill /IM, pkill, killall, Stop-Process -Name). If you start a server to test something, remember its PID and stop only that PID. Leave any server Kikoe started running.";
+
 let counter = 0;
 
 export class Agents {
@@ -169,6 +184,14 @@ export class Agents {
     // conversation still be there this morning.
     const args = [
       "-p",
+      // Never a process by name. Told to stop its own test server, an agent
+      // ran `taskkill //F //IM node.exe`: every Node process on the machine
+      // died, itself and Kikoe's dev copy with it (2026-09-26). The user's
+      // auto mode let it through, so the rule is Kik's own.
+      "--disallowedTools",
+      ...KILL_BY_NAME,
+      "--append-system-prompt",
+      AGENT_RULES,
       ...(model ? ["--model", model] : []),
       ...(opts.mode === "plan" ? ["--permission-mode", "plan"] : []),
       ...(session ? (fresh ? ["--session-id", session] : ["--resume", session]) : []),

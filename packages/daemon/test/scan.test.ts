@@ -39,16 +39,26 @@ describe("findProjects", () => {
     expect(found.find((f) => f.name === "walnut_print")?.wrapper).toBe("Printly v3");
   });
 
-  it("leaves worktrees, Downloads, node_modules and hidden folders alone", async () => {
+  it("leaves worktrees, deep Downloads, node_modules and hidden folders alone", async () => {
     const root = tree([
       "orca/workspaces/Marine/drum/.git",
       "Downloads/OLD/Dolmapp/.git/",
+      "Downloads/template - Copy/site/package.json",
       "code/node_modules/left-pad/package.json",
       ".claude/plugins/thing/.git/",
       "code/app/.git/",
     ]);
     const found = await findProjects([root]);
     expect(found.map((f) => f.name)).toEqual(["app"]);
+  });
+
+  it("finds a project put straight into Downloads, even with a stray CLAUDE.md there", async () => {
+    const root = tree([
+      "Downloads/CLAUDE.md",
+      "Downloads/Commerce Project/package.json",
+      "Downloads/OLD/Dolmapp/.git/",
+    ]);
+    expect((await findProjects([root])).map((f) => f.name)).toEqual(["Commerce Project"]);
   });
 
   it("does not call a root a project, and stops at the depth it is given", async () => {

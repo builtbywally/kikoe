@@ -266,8 +266,13 @@ Gaps:
   `docs/HANDOVER.md`, "Run, plan, and the mic's three modes". Still open:
   a running app's card shows `localhost`, which a phone cannot open; the
   agent works in a project's main checkout even when the app ran from a
-  worktree; agents in folders Claude Code has not trusted run without
-  hooks (the user decides whether Kik may mark them trusted).
+  worktree; agents may leave their own test servers running.
+- **QA through a dummy project (2026-09-26).** Eight bugs found driving
+  `~/Downloads/Commerce Project` from nothing to a checkout, all fixed:
+  projects in Downloads, work leaking to the wrong project twice, work
+  queued for ever, an agent killing every Node process, orphaned servers,
+  needless installs, "stop <project>". `docs/HANDOVER.md`, "QA: a whole
+  project through Kik".
 
 ## Flows that do not exist yet
 

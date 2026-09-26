@@ -18,8 +18,9 @@
  * workspaces, `WM Studio-connector`), and is left alone: its hooks still
  * land on the right board through `Projects.of`.
  *
- * Downloads is skipped on purpose: it is full of templates, zips unpacked
- * twice and "- Copy" folders, none of which the user means by "my projects".
+ * Downloads is looked at one level deep only: a project put there on
+ * purpose ("Commerce Project", 2026-09-26) is found, but the templates,
+ * zips unpacked twice and "- Copy" folders further down are not.
  */
 
 import type { Dirent } from "node:fs";
@@ -53,13 +54,15 @@ const MARKERS = new Set([
   "deno.json",
 ]);
 
+/** Walked into only this many levels, whatever the depth: where downloads land. */
+const SHALLOW: Record<string, number> = { downloads: 1 };
+
 /** Never walked into, at any depth. */
 const SKIP = new Set([
   "node_modules",
   "appdata",
   "application data",
   "local settings",
-  "downloads",
   "venv",
   "__pycache__",
   "site-packages",
@@ -111,6 +114,28 @@ function skipped(name: string): boolean {
   return SKIP.has(name.toLowerCase());
 }
 
+/**
+ * Folders that hold projects and are never one, whatever lies loose in
+ * them: a stray CLAUDE.md in Downloads made "Downloads" a project, and every
+ * project inside it vanished into that one (2026-09-26).
+ */
+const CONTAINERS = new Set([
+  "downloads",
+  "documents",
+  "my documents",
+  "belgelerim",
+  "desktop",
+  "onedrive",
+  "dropbox",
+  "google drive",
+  "icloud drive",
+]);
+
+export function isContainer(dir: string): boolean {
+  const name = path.basename(dir.replace(/[\\/]+$/, "")).toLowerCase();
+  return CONTAINERS.has(name) || name.startsWith("onedrive - ");
+}
+
 /** Where people keep work: home, and the system drive's own top level. */
 export function defaultRoots(): string[] {
   const home = os.homedir();
@@ -152,11 +177,11 @@ export async function findProjects(roots: string[], opts: ScanOptions = {}): Pro
   const found: Found[] = [];
   const seen = new Set<string>();
   // a root nested in another (home is inside C:\) is walked once, from the top
-  const queue: { dir: string; level: number; parent: string; only: boolean }[] = [];
-  for (const r of roots) queue.push({ dir: r, level: 0, parent: "", only: false });
+  const queue: { dir: string; level: number; parent: string; only: boolean; limit: number }[] = [];
+  for (const r of roots) queue.push({ dir: r, level: 0, parent: "", only: false, limit: depth });
 
   while (queue.length && budget > 0) {
-    const { dir, level, parent, only } = queue.shift()!;
+    const { dir, level, parent, only, limit } = queue.shift()!;
     const key = dir.replace(/[\\/]+$/, "").toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -167,7 +192,7 @@ export async function findProjects(roots: string[], opts: ScanOptions = {}): Pro
     } catch {
       continue; // no access, gone, or not a directory
     }
-    if (level > 0) {
+    if (level > 0 && !isContainer(dir)) {
       if (isWorktree(entries)) continue;
       if (isProject(entries)) {
         const name = path.basename(dir);
@@ -175,16 +200,18 @@ export async function findProjects(roots: string[], opts: ScanOptions = {}): Pro
         continue;
       }
     }
-    if (level >= depth) continue;
+    if (level >= limit) continue;
     // Junctions and symlinks are not directories to a Dirent, which is what
     // keeps "My Documents" and "Application Data" from being walked twice.
     const subs = entries.filter((e) => e.isDirectory() && !skipped(e.name));
     for (const s of subs) {
+      const shallow = SHALLOW[s.name.toLowerCase()];
       queue.push({
         dir: path.join(dir, s.name),
         level: level + 1,
         parent: level > 0 ? path.basename(dir) : "",
         only: subs.length === 1,
+        limit: shallow === undefined ? limit : Math.min(limit, level + 1 + shallow),
       });
     }
   }

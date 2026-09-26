@@ -67,6 +67,11 @@ describe("howToRun", () => {
     });
   });
 
+  it("does not install what has no dependencies", () => {
+    const dir = folder({ "package.json": JSON.stringify({ scripts: { dev: "node server.js" } }) });
+    expect(howToRun(dir)).toEqual({ command: "npm run dev", what: "a Node project" });
+  });
+
   it("serves a bare page, and says nothing it does not know", () => {
     expect(howToRun(folder({ "index.html": "<h1>hi</h1>" }), 5555)?.url).toBe(
       "http://localhost:5555/",

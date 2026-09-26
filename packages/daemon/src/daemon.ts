@@ -47,6 +47,7 @@ import { CODE_PROVIDER, CodeBrain } from "./codebrain.js";
 import {
   HOME,
   LOGS,
+  RUN,
   type Settings,
   daemonToken,
   ensureHome,
@@ -106,7 +107,7 @@ import {
   worktreesOf,
 } from "./runner.js";
 import { ARTIFACT_CSP, DESIGN_BRIEF, renderArtifact, stripFences } from "./runtime.js";
-import { defaultRoots, findProjects } from "./scan.js";
+import { defaultRoots, findProjects, isContainer } from "./scan.js";
 import {
   type Earcon,
   NullSpeaker,
@@ -1045,6 +1046,33 @@ export class Daemon {
       return { kind: "command", intent: `mic:${micAsk}`, said };
     }
 
+    // "Stop the commerce project": the router hears any "stop" as "stop
+    // talking", and the server ran on (2026-09-26). A project with something
+    // of Kik's running in it is stopped instead.
+    const stopName =
+      /^(?:please\s+)?(?:stop|kill|shut\s+down|close)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:project|app|server|site))?[.!]?$/i.exec(
+        rest,
+      )?.[1] ?? "";
+    const stopTarget =
+      stopName &&
+      !/^(it|that|this|talking|everything|now|agents?|the agents?|speaking)$/i.test(stopName)
+        ? this.projects.resolve(stopName)
+        : undefined;
+    if (
+      stopTarget &&
+      (this.runner.get(stopTarget.id) ||
+        this.agents.running.some((r) => r.project === stopTarget.id))
+    ) {
+      const served = this.runner.stop(stopTarget.id);
+      const agents = this.agents.stop(stopTarget.id);
+      const said = `Stopped ${stopTarget.name}${served && agents ? ", the server and the agent" : served ? "'s server" : "'s agent"}.`;
+      record(d.kind, "stop-project", said);
+      this.rememberExchange(clean, said);
+      this.say(said, ev.SEV_ATTENTION, "head");
+      this.hub.publish("mic", { phase: "idle" });
+      return { kind: "command", intent: "stop-project", said };
+    }
+
     // A plan on the canvas is waiting on a decision: "go ahead", "drop it",
     // or a change to it. A permission question comes first, since "go ahead"
     // answers that too.
@@ -1077,6 +1105,19 @@ export class Daemon {
       }
       const runName = runAsk(rest);
       const target = runName ? this.projects.resolve(runName) : undefined;
+      // "Run the commerce project" with no such project went to the switchboard,
+      // which sent it to the last agent used, kikoe-website (2026-09-26). A
+      // run of something called a project, app or site that Kik cannot find
+      // is said so, and goes nowhere.
+      if (runName && !target && /\b(project|app|repo|site|website|server)\b/i.test(rest)) {
+        const said = `I don't know a project called ${runName}. Tell me which folder it's in and I'll look.`;
+        record(d.kind, "run", said);
+        this.rememberExchange(clean, said);
+        this.openWindow(clean, said);
+        this.say(said, ev.SEV_ATTENTION, "head");
+        this.hub.publish("mic", { phase: "idle" });
+        return { kind: "command", intent: "run", said };
+      }
       if (target?.roots.length) {
         this.hub.publish("mic", { phase: "thinking", text: clean });
         void this.runProject(target).then((line) => {
@@ -2499,6 +2540,17 @@ export class Daemon {
     const where = roots ?? [...defaultRoots(), ...(this.settings.project_folders ?? [])];
     const t0 = Date.now();
     let found = 0;
+    // A container an earlier scan took for a project (Downloads, for its stray
+    // CLAUDE.md) hides every project inside it. Gone, if nothing was ever
+    // done in it: no conversation, nothing on its board.
+    for (const p of this.projects.all()) {
+      if (!p.roots.length || !p.roots.every(isContainer)) continue;
+      if (p.session || this.board.list(p.id).length) continue;
+      if (this.projects.remove(p.id)) {
+        found++;
+        log(`projects: ${p.name} is a folder of projects, not one; forgotten`);
+      }
+    }
     try {
       for (const f of await findProjects(where))
         if (this.projects.adopt(f.dir, f.name, f.wrapper)) found++;
@@ -3869,8 +3921,14 @@ export class Daemon {
       return "I didn't catch enough of that to pass on; say it again?";
     }
     const sessions = Object.values(this.tracker.snapshot());
+    // The project Kik just ran or planned, and asked about, is what a nameless
+    // "add a search box" is for. Without this it went to the last session
+    // seen, which was the Claude Code building Kikoe (2026-09-26).
+    const focus =
+      this.focus && Date.now() < this.focus.until ? this.projects.get(this.focus.id)?.name : "";
     const target =
       repo ??
+      (focus || undefined) ??
       sessions.find((s) => s.status === "working")?.repo ??
       sessions[sessions.length - 1]?.repo;
     // Nothing to hand it to used to be the end of the sentence, which meant
@@ -3882,7 +3940,11 @@ export class Daemon {
     // a turn already running, and the Stop hook hands this over the moment
     // it ends. Idle, there is nothing to wait for — say it straight into the
     // conversation and it starts now.
-    if (s && s.status !== "working" && this.settings.agents) {
+    // A project with no session at all has no "next prompt" to ride on: it is
+    // started, not queued. "Add a search box" to Commerce Project waited for
+    // ever (2026-09-26). Only a turn in progress queues.
+    const known = this.projects.resolve(target);
+    if (((s && s.status !== "working") || (!s && known?.roots.length)) && this.settings.agents) {
       const said = this.startAgent(target, text, { hard });
       if (!/^(started|passed)/.test(said)) return said;
       log(`instruction sent to ${target}: ${text}`);
@@ -3912,7 +3974,16 @@ export class Daemon {
   // -- run a project, and plan before doing ---------------------------------
 
   /** The dev servers Kik started, one per project (runner.ts). */
-  readonly runner = new Runner(log);
+  readonly runner = new Runner(log, 120_000, path.join(RUN, "servers.json"));
+
+  /**
+   * The project Kik just ran or planned and asked about: a nameless follow-up
+   * is for it, for ten minutes (`instruct`).
+   */
+  private focus: { id: string; until: number } | null = null;
+  private focusOn(p: Project): void {
+    this.focus = { id: p.id, until: Date.now() + 10 * 60_000 };
+  }
 
   /**
    * "Run Marine": look at it, start it, put it on the canvas, and ask what
@@ -3930,6 +4001,7 @@ export class Daemon {
     const up = this.runner.get(p.id);
     if (up?.url) {
       this.pinRun(p, up.url);
+      this.focusOn(p);
       return `${p.name} is already running, and it's on the canvas. Want me to do anything with it?`;
     }
     const port = await freePort();
@@ -3974,6 +4046,7 @@ export class Daemon {
       onStep: (line) => log(`run ${p.id}: ${line}`),
       onUrl: (url) => {
         this.pinRun(p, url);
+        this.focusOn(p);
         const port = /:(\d+)/.exec(url.replace(/^https?:\/\//, ""))?.[1];
         const said = `${p.name} is up${port ? ` on port ${port}` : ""}, and it's on the canvas. Want me to do anything with it?`;
         this.say(said, ev.SEV_ATTENTION, "head");
@@ -3981,6 +4054,7 @@ export class Daemon {
       },
       onFail: (why, tail) => {
         this.runner.stop(p.id);
+        this.focusOn(p);
         if (tail.length) this.pinOutput(p, `${p.name} did not start`, tail.join("\n"), "run");
         const said = `${p.name} didn't start: ${why}.${tail.length ? " What it printed is on the canvas." : ""} Want me to have the agent fix it?`;
         this.say(said, ev.SEV_ATTENTION, "head");
@@ -4052,20 +4126,20 @@ export class Daemon {
     return named;
   }
 
-  private startPlan(p: Project, task: string, again: boolean): string {
+  private startPlan(p: Project, task: string, again: boolean, replace = ""): string {
     const prompt = again
       ? `Change the plan: ${task}\n\nStill plan only: change nothing yet, and end with the whole revised plan.`
       : `${task}\n\nPlan only: read what you need, change nothing, and end with the plan as numbered steps, the files each touches, and anything you are unsure of.`;
     const r = this.startAgent(p.name, prompt, {
       mode: "plan",
-      onDone: (code, text) => this.planReady(p, code, text),
+      onDone: (code, text) => this.planReady(p, code, text, replace),
     });
     if (!/^(started|passed)/.test(r)) return r;
     this.planWaiting = null;
     return again ? `Replanning ${p.name}` : `Planning it in ${p.name}. I'll show you the plan`;
   }
 
-  private planReady(p: Project, code: number | null, text: string): void {
+  private planReady(p: Project, code: number | null, text: string, replace = ""): void {
     if (!text) {
       this.say(
         `The plan for ${p.name} didn't come back${code ? `, it stopped with code ${code}` : ""}.`,
@@ -4074,16 +4148,21 @@ export class Daemon {
       );
       return;
     }
-    const pin = this.board.add({
-      kind: "markdown",
-      title: `Plan · ${p.name}`,
-      body: text,
-      project: p.id,
-      repo: p.id,
-      by: "kik",
-      size: "wide",
-      sticky: true,
-    });
+    // a replan rewrites the card it replaces, rather than stacking a second
+    const old = replace ? this.board.list(p.id).find((x) => x.id === replace) : undefined;
+    if (old) this.board.update(old.id, { body: text });
+    const pin =
+      old ??
+      this.board.add({
+        kind: "markdown",
+        title: `Plan · ${p.name}`,
+        body: text,
+        project: p.id,
+        repo: p.id,
+        by: "kik",
+        size: "wide",
+        sticky: true,
+      });
     if (this.projects.current.id !== p.id) {
       this.projects.open(p.id);
       this.saveProjects();
@@ -4091,6 +4170,7 @@ export class Daemon {
     }
     this.hub.publish("focus", { id: pin.id });
     this.planWaiting = { project: p.id, until: Date.now() + 30 * 60_000, pin: pin.id };
+    this.focusOn(p);
     const n = planSteps(text);
     const said = `The plan for ${p.name} is on the canvas${n ? `, ${n} steps` : ""}. Go ahead, change something, or drop it?`;
     this.say(said, ev.SEV_ATTENTION, "head");
@@ -4104,7 +4184,7 @@ export class Daemon {
     this.planWaiting = null;
     if (!w || !p) return "There's no plan waiting";
     if (v === "drop") return "Dropped it. Nothing was changed";
-    if (v === "change") return this.startPlan(p, words, true);
+    if (v === "change") return this.startPlan(p, words, true, w.pin);
     const r = this.startAgent(p.name, "Go ahead: carry out the plan you just made.");
     return /^(started|passed)/.test(r) ? `Going ahead in ${p.name}` : r;
   }
@@ -4959,6 +5039,8 @@ export class Daemon {
     const first = setTimeout(() => void this.refreshAgenda(), 30_000);
     first.unref();
     this.timers.push(setInterval(() => void this.refreshAgenda(), 3600_000));
+    // servers a killed Kikoe left behind hold their ports; stop them first
+    if (this.persistBoard) this.runner.reapOrphans();
     if (this.persistBoard && this.settings.project_scan !== false) {
       const scan = setTimeout(() => void this.scanProjects(), 20_000);
       scan.unref();

@@ -73,6 +73,14 @@ describe("the daemon", () => {
     await d.close();
   });
 
+  it("says so, rather than passing it on, when a named project is unknown", async () => {
+    const d = daemon();
+    const r = d.hear("kikoe, run the commerce project");
+    expect(r.intent).toBe("run");
+    expect(r.said).toMatch(/don't know a project called commerce/);
+    await d.close();
+  });
+
   it("finds the project a plan names, the longest name first", async () => {
     const d = daemon();
     d.projects.ensure("kikoe", "C:/p/kikoe");
@@ -80,6 +88,27 @@ describe("the daemon", () => {
     expect(d.projectNamedIn("add a changelog to the kikoe website")?.id).toBe("kikoe-website");
     expect(d.projectNamedIn("fix the ear in kikoe")?.id).toBe("kikoe");
     expect(d.projectNamedIn("add dark mode")).toBeUndefined();
+    await d.close();
+  });
+
+  it("sends a nameless follow-up to the project it just ran, not the last session", async () => {
+    const d = daemon();
+    const p = d.projects.ensure("Commerce Project", "C:/nowhere/Commerce Project");
+    (d as unknown as { focusOn(p: unknown): void }).focusOn(p);
+    // agents are on but the folder does not exist: the answer names where it went
+    expect(d.instruct("add a search box above the product list")).toMatch(/commerce/i);
+    await d.close();
+  });
+
+  it("stops a project's server by name, and a bare stop still silences Kik", async () => {
+    const d = daemon();
+    const p = d.projects.ensure("Commerce Project", "C:/nowhere/Commerce Project");
+    const fake = { get: (id: string) => (id === p.id ? {} : undefined), stop: () => true };
+    Object.assign(d.runner, fake);
+    const r = d.hear("kikoe, stop the commerce project");
+    expect(r.intent).toBe("stop-project");
+    expect(r.said).toMatch(/Stopped Commerce Project/);
+    expect(d.hear("kikoe, stop").intent).not.toBe("stop-project");
     await d.close();
   });
 

@@ -93,6 +93,7 @@ describe("what is heard, and not guessed", () => {
     expect(jev.siteByName("open youtube on the tv")).toBe("https://www.youtube.com");
     expect(jev.siteByName("pull up a photo from flickr")).toBe("https://www.flickr.com");
     expect(jev.searchFor("open lo-fi on the canvas please")).toBe("lo-fi");
+    expect(jev.searchFor("Open it, just open it on a new window.")).toBe("");
   });
 
   it("a note Kik pins is kept, not faded", async () => {

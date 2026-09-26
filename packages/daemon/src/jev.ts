@@ -154,8 +154,10 @@ export function findUrl(text: string): string {
 }
 
 /** Words that are about where or how to show something, not what to look for. */
+// "open it, just open it on a new window" searched Google for "just window"
+// (2026-09-26): where to open something, and "it", are not what to look for.
 const NOT_A_QUERY = new Set(
-  "put some me on the canvas board here youtube please play for a an and to in of it up now i want you open look search find".split(
+  "put some me on the canvas board here youtube please play for a an and to in of it up now i want you open look search find just new window tab this that them again there separate full screen".split(
     " ",
   ),
 );

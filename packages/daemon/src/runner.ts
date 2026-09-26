@@ -14,7 +14,7 @@
  */
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 
@@ -95,8 +95,11 @@ export function howToRun(dir: string, freePort = 0): Recipe | null {
     const what = FRAMEWORKS.find(([d]) => d in deps)?.[1] ?? "a Node project";
     const pm = manager(dir);
     const command = pm === "npm" ? `npm run ${script}` : `${pm} ${script}`;
-    const installed = existsSync(path.join(dir, "node_modules"));
-    return installed ? { command, what } : { command, what, install: `${pm} install` };
+    // Nothing to install is not a reason to run the installer: `npm install`
+    // on Commerce Project, which has no dependencies, wrote a lockfile into
+    // the user's repo (2026-09-26).
+    const needs = Object.keys(deps).length > 0 && !existsSync(path.join(dir, "node_modules"));
+    return needs ? { command, what, install: `${pm} install` } : { command, what };
   }
   if (existsSync(path.join(dir, "manage.py"))) {
     return { command: "python manage.py runserver", what: "a Django app" };
@@ -190,6 +193,12 @@ export function freePort(): Promise<number> {
 
 export interface Running {
   project: string;
+  /**
+   * The server's whole process tree, read once it is up. The shell Kikoe
+   * spawned dies with a killed Kikoe; `node server.js` two levels down does
+   * not, and was never written down (2026-09-26).
+   */
+  tree?: Proc[];
   dir: string;
   recipe: Recipe;
   url: string;
@@ -215,7 +224,57 @@ export class Runner {
     private log: (line: string) => void = () => {},
     /** how long to wait for an address once the server command is running */
     private waitMs = 120_000,
+    /**
+     * Where the running servers are written down, so a Kikoe that was killed
+     * rather than quit can stop them next time (null in tests). A forced
+     * kill left Commerce Project holding port 4800, and the next "run" died
+     * of EADDRINUSE (2026-09-26).
+     */
+    private file: string | null = null,
   ) {}
+
+  private save(): void {
+    if (!this.file) return;
+    try {
+      const list = [...this.runs.values()].map((r) => ({
+        project: r.project,
+        procs: r.tree?.length ? r.tree : [{ pid: r.child.pid ?? 0, name: "" }],
+      }));
+      writeFileSync(this.file, JSON.stringify(list));
+    } catch {
+      /* best effort: the worst case is an orphan, as before */
+    }
+  }
+
+  /** Stop what a previous Kikoe started and never stopped. Returns how many. */
+  reapOrphans(): number {
+    if (!this.file || !existsSync(this.file)) return 0;
+    let n = 0;
+    try {
+      const list = JSON.parse(readFileSync(this.file, "utf8")) as Array<{
+        project: string;
+        procs?: Proc[];
+      }>;
+      const now = processes();
+      for (const r of list) {
+        for (const p of r.procs ?? []) {
+          // the same id and the same program: a reused id is someone else's
+          const live = now.get(p.pid);
+          if (!p.pid || !live || (p.name && live.name.toLowerCase() !== p.name.toLowerCase()))
+            continue;
+          killPid(p.pid);
+          n++;
+          this.log(
+            `run ${r.project}: stopped ${p.name || "a process"} ${p.pid}, left running by a previous Kikoe`,
+          );
+        }
+      }
+    } catch {
+      /* unreadable: nothing to reap */
+    }
+    this.save();
+    return n;
+  }
 
   get(project: string): Running | undefined {
     return this.runs.get(project);
@@ -253,6 +312,7 @@ export class Runner {
       const child = shell(recipe.command);
       const run: Running = { project, dir, recipe, url: "", started: Date.now(), child, tail };
       this.runs.set(project, run);
+      this.save();
       this.log(`run ${project}: ${recipe.command} in ${dir} (pid ${child.pid})`);
       let out = "";
       let settled = false;
@@ -272,6 +332,10 @@ export class Runner {
           clearTimeout(timer);
           run.url = url;
           this.log(`run ${project}: up at ${url}`);
+          if (child.pid) {
+            run.tree = treeOf(child.pid);
+            this.save();
+          }
           ev.onUrl(url);
         }
       };
@@ -286,11 +350,15 @@ export class Runner {
       });
       child.on("exit", (code) => {
         this.log(`run ${project}: exited (${code})`);
-        if (this.runs.get(project)?.child === child) this.runs.delete(project);
+        if (this.runs.get(project)?.child === child) {
+          this.runs.delete(project);
+          this.save();
+        }
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        ev.onFail(`it stopped with code ${code}`, tail);
+        const busy = tail.some((l) => /EADDRINUSE|address already in use/i.test(l));
+        ev.onFail(busy ? "its port is already in use" : `it stopped with code ${code}`, tail);
       });
       // a static server prints nothing useful; its address is known
       if (recipe.url) setTimeout(() => seen(Buffer.from("")), 800).unref?.();
@@ -316,6 +384,7 @@ export class Runner {
     const r = this.runs.get(project);
     if (!r) return false;
     this.runs.delete(project);
+    this.save();
     kill(r.child);
     this.log(`run ${project}: stopped`);
     return true;
@@ -328,15 +397,63 @@ export class Runner {
   }
 }
 
+export interface Proc {
+  pid: number;
+  name: string;
+}
+
+/** Every process now: id to name and parent. */
+function processes(): Map<number, { name: string; ppid: number }> {
+  const out = new Map<number, { name: string; ppid: number }>();
+  const r =
+    process.platform === "win32"
+      ? spawnSync(
+          "powershell",
+          [
+            "-NoProfile",
+            "-Command",
+            'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId),$($_.ParentProcessId),$($_.Name)" }',
+          ],
+          { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+        )
+      : spawnSync("ps", ["-A", "-o", "pid=,ppid=,comm="], { encoding: "utf8", timeout: 5000 });
+  for (const line of (r.stdout ?? "").split(/\r?\n/)) {
+    const m =
+      process.platform === "win32"
+        ? /^(\d+),(\d+),(.+)$/.exec(line.trim())
+        : /^(\d+)\s+(\d+)\s+(.+)$/.exec(line.trim());
+    if (m) out.set(Number(m[1]), { ppid: Number(m[2]), name: (m[3] ?? "").trim() });
+  }
+  return out;
+}
+
+/** A process and everything under it, with names. */
+export function treeOf(root: number): Proc[] {
+  const all = processes();
+  const tree: Proc[] = [];
+  const walk = (pid: number) => {
+    const me = all.get(pid);
+    if (!me) return;
+    tree.push({ pid, name: me.name });
+    for (const [child, p] of all) if (p.ppid === pid && child !== pid) walk(child);
+  };
+  walk(root);
+  return tree;
+}
+
+function killPid(pid: number): void {
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+  } else {
+    process.kill(-pid, "SIGTERM");
+  }
+}
+
 /** A shell's whole tree: `npm run dev` is a shell, npm, and node under it. */
 function kill(child: ChildProcess): void {
   if (!child.pid) return;
   try {
-    if (process.platform === "win32") {
-      spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true });
-    } else {
-      process.kill(-child.pid, "SIGTERM");
-    }
+    killPid(child.pid);
   } catch {
     try {
       child.kill();
