@@ -1444,3 +1444,34 @@ with a real voice, the phone path, and a project that needs an install.
 - Never capture the live screen for a check: it caught the user's own
   browser once. Use `--screenshot`.
 
+
+## What Kik does, shown while it happens (2026-09-26)
+
+- **A run has a card from the first second** (`launch`): "Run · X —
+  installing/starting", with the command and the last 14 lines it prints
+  (`RunEvents.onLine`, drawn every 600 ms) and a stop button. It is removed
+  when the address arrives (the web card takes over) and becomes "X did
+  not start — why" with the output when it fails. `onExit` fires only when
+  a server that was up stops by itself (not when Kik stopped it): the web
+  card's title becomes "X · server stopped" and Kik says so.
+- **A plan has a card from the first second** (`startPlan`): "Plan · X —
+  planning" with the job; filled in place by `planReady`; a replan marks
+  it "replanning"; go ahead marks it "carrying out"; drop marks it
+  "dropped" and lets it fade; a new plan retires older undecided ones
+  ("replaced"). While undecided the card has go ahead / change… / drop
+  buttons, which say those words to Kik (`typed`). The Room reads the state
+  from the title (`planOf` in room.js), so there is no new pin field. The
+  work feed no longer posts the same text again as "Kik's agent replied"
+  for a plan run (`WorkOptions.quietReply`, `isPlanPrompt`).
+- **Kik's own work is on the agents card** (`kikWork`, a `kikwork` frame
+  published every 2 s when it changes): agents it started, plans being
+  made, and dev servers (starting, then up with the address), each with a
+  stop button that says "stop the X". An agent that also has a tracker
+  session is shown once. Agents in folders whose hooks never fire now
+  appear at all.
+- **Clocks tick**: `.tick[data-since]` elements count every second without
+  a render (`tick()`, `clock()` in room.js); a working session's clock
+  counts on from the last sessions frame instead of freezing between hook
+  events.
+- Reading the stream from a shell: the SSE frame is `data: {...,"type":…}`
+  with `type` last, so grep for `kikwork` rather than `"type":"kikwork"`.

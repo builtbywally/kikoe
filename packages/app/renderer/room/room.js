@@ -20,6 +20,10 @@ const el = {
 };
 
 let sessions = {};
+/** What Kik itself has running: agents, plans, dev servers (the daemon's kikWork). */
+let kikWork = [];
+/** when the last sessions frame arrived, so a running clock can count on from it */
+let sessionsAt = Date.now();
 let pins = [];
 // the last snapshot from the daemon: the conversation card reads heard from it
 let state = null;
@@ -972,6 +976,38 @@ function pinCard(p) {
       if (p.kind === "diff" || p.kind === "run" || p.kind === "result")
         act("explain", "explain", "ask the agent what this did");
     }
+    // A plan Kik made waits on three words; the buttons say them.
+    const planOf = /^Plan · (.+?)(?: — (planning|replanning|carrying out|dropped|replaced))?$/.exec(
+      p.title || "",
+    );
+    if (p.kind === "markdown" && p.by === "kik" && planOf && !planOf[2]) {
+      const say = (label, words, cls) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        if (cls) b.className = cls;
+        b.addEventListener("click", () => {
+          const w = typeof words === "function" ? words() : words;
+          if (w) window.room.sayToKik(w);
+        });
+        foot.append(b);
+      };
+      say("go ahead", "go ahead", "primary");
+      say("change…", () => {
+        const c = window.prompt("What should change in the plan?");
+        return c?.trim() ? `change the plan: ${c.trim()}` : "";
+      });
+      say("drop", "drop it");
+    }
+    if (p.kind === "markdown" && p.by === "kik" && planOf?.[2])
+      card.dataset.state = planOf[2].replace(" ", "-");
+    const runOf = /^Run · (.+?) — (installing|starting)$/.exec(p.title || "");
+    if (p.kind === "run" && p.by === "kik" && runOf) {
+      card.dataset.state = "starting";
+      const stop = document.createElement("button");
+      stop.textContent = "stop";
+      stop.addEventListener("click", () => window.room.sayToKik(`stop the ${runOf[1]}`));
+      foot.append(stop);
+    }
     if (p.kind === "web") {
       // the address, back, forward and open live in the card's browser bar
     } else if (
@@ -1048,7 +1084,7 @@ function renderBoard() {
       title: "kik · thinking",
       sticky: true,
     });
-  if (Object.keys(sessions).length)
+  if (Object.keys(sessions).length || kikWork.length)
     extra.push({ ...talk, id: "agents", kind: "agents", title: "agents", sticky: true });
   // The thread: the one place that says what has been happening, in order.
   // Only once there is one. On a fresh start it was a second, empty window
@@ -1282,6 +1318,11 @@ function agentsBody() {
             ? `failed${s.last_error ? `: ${s.last_error.slice(0, 80)}` : ""}`
             : `idle · ${ago(s.quiet_for_s)}`;
     row.append(dot, name, what);
+    // the clock counts on between hook events instead of freezing
+    if (s.status === "working") {
+      what.textContent = `${s.current_tool ? s.current_tool.toLowerCase() : "working"} · `;
+      what.append(tick(sessionsAt - (s.running_for_s ?? 0) * 1000));
+    }
     if (s.status === "waiting") {
       const yes = document.createElement("button");
       yes.className = "primary";
@@ -1294,8 +1335,56 @@ function agentsBody() {
     }
     wrap.append(row);
   }
+  // Kik's own work: an agent it started, a plan being made, a server it runs.
+  // A tracker session for the same repo already says what the agent does.
+  const seen = new Set(
+    Object.values(sessions).map((s) => String(s.repo || s.label || "").toLowerCase()),
+  );
+  for (const w of kikWork) {
+    if (w.kind === "agent" && (seen.has(w.project) || seen.has(w.name.toLowerCase()))) continue;
+    const row = document.createElement("div");
+    row.className = "agent-row kik-work";
+    row.dataset.status = w.kind === "server" ? "up" : "working";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const name = document.createElement("b");
+    name.textContent = w.name;
+    const what = document.createElement("span");
+    what.textContent =
+      w.kind === "plan"
+        ? "planning · "
+        : w.kind === "server"
+          ? `${w.url ? `up · ${w.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}` : "starting"} · `
+          : `working${w.job ? ` on “${w.job.slice(0, 60)}”` : ""} · `;
+    what.append(tick(w.since));
+    const stop = document.createElement("button");
+    stop.textContent = "stop";
+    stop.title = w.kind === "server" ? "stop the server" : "stop the agent";
+    stop.addEventListener("click", () => window.room.sayToKik(`stop the ${w.name}`));
+    row.append(dot, name, what, stop);
+    wrap.append(row);
+  }
   return wrap;
 }
+
+/** A clock that counts on by itself, from a moment (ms). */
+function tick(since) {
+  const t = document.createElement("span");
+  t.className = "tick";
+  t.dataset.since = String(since);
+  t.textContent = clock(Date.now() - since);
+  return t;
+}
+function clock(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 3600) return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
+}
+// every clock on screen, once a second, without a render
+setInterval(() => {
+  for (const t of document.querySelectorAll(".tick[data-since]"))
+    t.textContent = clock(Date.now() - Number(t.dataset.since));
+}, 1000);
 
 /** What happened in a repo lately, as the narrator saw it. */
 function eventsBody(repo) {
@@ -1637,8 +1726,14 @@ const handlers = {
   look(f) {
     applyLook(f);
   },
+  kikwork(f) {
+    kikWork = Array.isArray(f.work) ? f.work : [];
+    renderBoard();
+    renderAgents();
+  },
   sessions(f) {
     sessions = f.sessions ?? {};
+    sessionsAt = Date.now();
     renderBoard();
     renderAgents();
     if (el.body.dataset.view === "control") showControl();

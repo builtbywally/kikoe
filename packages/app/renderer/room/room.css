@@ -2037,3 +2037,51 @@ html[data-phone="true"] .ambient-flash {
     animation: none;
   }
 }
+
+/* --- Kik's own work, live ----------------------------------------------------- */
+.tick {
+  font-variant-numeric: tabular-nums;
+}
+.agent-row.kik-work[data-status="up"] .dot {
+  background: #5fae6e;
+}
+.agent-row.kik-work[data-status="working"] .dot {
+  background: #d2683f;
+  animation: kik-pulse 1.4s ease-in-out infinite;
+}
+.agent-row.kik-work button {
+  margin-left: auto;
+}
+.pin[data-state="planning"] .pin-head .title,
+.pin[data-state="replanning"] .pin-head .title,
+.pin[data-state="starting"] .pin-head .title {
+  animation: kik-breathe 1.8s ease-in-out infinite;
+}
+.pin[data-state="dropped"],
+.pin[data-state="replaced"] {
+  opacity: 0.55;
+}
+@keyframes kik-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes kik-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-row.kik-work .dot,
+  .pin[data-state] .pin-head .title {
+    animation: none;
+  }
+}

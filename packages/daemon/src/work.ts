@@ -60,6 +60,8 @@ export interface WorkOptions {
   /** told when a card is worth pulling the canvas to */
   focus?: (id: string) => void;
   log?: (line: string) => void;
+  /** a turn whose reply Kik shows another way (a plan, on its own card) */
+  quietReply?: (e: AgentEvent) => boolean;
 }
 
 interface TurnState {
@@ -151,7 +153,9 @@ export class Work {
     this.projectOf = o.projectOf ?? ((e) => e.repo);
     this.focus = o.focus ?? (() => {});
     this.log = o.log ?? (() => {});
+    this.quietReply = o.quietReply ?? (() => false);
   }
+  private quietReply: (e: AgentEvent) => boolean;
 
   /** Where a session's cards are grouped; starts a turn if none is open. */
   private turn(session: string): TurnState {
@@ -216,7 +220,7 @@ export class Work {
   /** What the agent said at the end of a turn, whole rather than in a snippet. */
   private reply(e: AgentEvent): void {
     const text = (e.text ?? "").trim();
-    if (!text) return;
+    if (!text || this.quietReply(e)) return;
     const pin = this.card(e, {
       kind: "markdown",
       title: "Kik's agent replied",

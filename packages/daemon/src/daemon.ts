@@ -610,6 +610,9 @@ export class Daemon {
       board: this.board,
       projectOf: (e) => this.projects.of(e.cwd, e.repo).id,
       focus: (id) => this.hub.publish("focus", { id }),
+      // a plan run's reply is the plan card; not a second card saying it again
+      quietReply: (e) =>
+        this.agents.running.some((r) => r.session === e.session && isPlanPrompt(r.prompt)),
       log,
     });
     this.arbiter = new Arbiter(new LadderSink(this), {
@@ -4007,6 +4010,50 @@ export class Daemon {
     return micModeLine(mode, this.settings.ptt_key);
   }
 
+  /** Kik's own running work, as rows for the agents card. */
+  kikWork(): Array<{
+    project: string;
+    name: string;
+    kind: "agent" | "plan" | "server";
+    since: number;
+    job?: string;
+    url?: string;
+  }> {
+    const rows: ReturnType<Daemon["kikWork"]> = [];
+    for (const r of this.agents.running) {
+      const p = this.projects.get(r.project);
+      const name = p?.name ?? r.project;
+      const planning = isPlanPrompt(r.prompt);
+      rows.push({
+        project: r.project,
+        name,
+        kind: planning ? "plan" : "agent",
+        since: r.started,
+        job: (this.told.get(name)?.text ?? r.prompt).split("\n")[0]?.slice(0, 140) ?? "",
+      });
+    }
+    for (const s of this.runner.list()) {
+      const p = this.projects.get(s.project);
+      rows.push({
+        project: s.project,
+        name: p?.name ?? s.project,
+        kind: "server",
+        since: s.started,
+        ...(s.url ? { url: s.url } : {}),
+      });
+    }
+    return rows;
+  }
+
+  private lastKikWork = "";
+  private publishKikWork(): void {
+    const work = this.kikWork();
+    const sig = JSON.stringify(work.map((w) => [w.project, w.kind, w.since, w.url]));
+    if (sig === this.lastKikWork) return;
+    this.lastKikWork = sig;
+    this.hub.publish("kikwork", { work });
+  }
+
   // -- run a project, and plan before doing ---------------------------------
 
   /** The dev servers Kik started, one per project (runner.ts). */
@@ -4078,9 +4125,63 @@ export class Daemon {
   }
 
   private launch(p: Project, dir: string, recipe: Recipe): void {
+    // A card from the first second: what it is doing and what it prints, so
+    // the minute an install takes is not a minute of nothing (2026-09-26).
+    const first = recipe.install ?? recipe.command;
+    const card = this.board.add({
+      kind: "run",
+      title: `Run · ${p.name} — ${recipe.install ? "installing" : "starting"}`,
+      body: `$ ${first}`,
+      project: p.id,
+      repo: p.id,
+      by: "kik",
+      size: "wide",
+      sticky: true,
+    });
+    this.hub.publish("focus", { id: card.id });
+    let shown = "";
+    let lineTimer: ReturnType<typeof setTimeout> | null = null;
+    let lines: string[] = [];
+    const show = () => {
+      lineTimer = null;
+      const body = [`$ ${shown || first}`, ...lines.slice(-14)].join("\n");
+      if (this.board.get(card.id)) this.board.update(card.id, { body });
+    };
     this.runner.start(p.id, dir, recipe, {
-      onStep: (line) => log(`run ${p.id}: ${line}`),
+      onStep: (line) => {
+        log(`run ${p.id}: ${line}`);
+        const cmd = /with (.+)$/.exec(line)?.[1];
+        if (cmd) shown = cmd;
+        const what = line.startsWith("installing") ? "installing" : "starting";
+        if (this.board.get(card.id))
+          this.board.update(card.id, { title: `Run · ${p.name} — ${what}` });
+      },
+      onLine: (tail) => {
+        lines = [...tail];
+        if (!lineTimer) lineTimer = setTimeout(show, 600);
+      },
+      onExit: (code) => {
+        const origin = (u: string) => /^https?:\/\/[^/]+/i.exec(u.trim())?.[0]?.toLowerCase() ?? u;
+        const up = this.runner.get(p.id);
+        const web = this.board
+          .list(p.id)
+          .find(
+            (x) =>
+              x.kind === "web" &&
+              x.title.startsWith(p.name) &&
+              (!up || origin(x.body) === origin(up.url)),
+          );
+        if (web) this.board.update(web.id, { title: `${p.name} · server stopped` });
+        this.say(
+          `${p.name}'s server stopped${code ? `, with code ${code}` : ""}.`,
+          ev.SEV_ATTENTION,
+          "head",
+        );
+      },
       onUrl: (url) => {
+        if (lineTimer) clearTimeout(lineTimer);
+        // the page is the card now; what it printed on the way is not needed
+        this.board.remove(card.id);
         this.pinRun(p, url);
         this.focusOn(p);
         const port = /:(\d+)/.exec(url.replace(/^https?:\/\//, ""))?.[1];
@@ -4089,9 +4190,15 @@ export class Daemon {
         this.openWindow(`run ${p.name}`, said);
       },
       onFail: (why, tail) => {
+        if (lineTimer) clearTimeout(lineTimer);
         this.runner.stop(p.id);
         this.focusOn(p);
-        if (tail.length) this.pinOutput(p, `${p.name} did not start`, tail.join("\n"), "run");
+        if (this.board.get(card.id))
+          this.board.update(card.id, {
+            title: `${p.name} did not start — ${why}`,
+            body: [`$ ${shown || first}`, ...tail.slice(-30)].join("\n"),
+          });
+        else if (tail.length) this.pinOutput(p, `${p.name} did not start`, tail.join("\n"), "run");
         const said = `${p.name} didn't start: ${why}.${tail.length ? " What it printed is on the canvas." : ""} Want me to have the agent fix it?`;
         this.say(said, ev.SEV_ATTENTION, "head");
         this.openWindow(`run ${p.name}`, said);
@@ -4171,11 +4278,33 @@ export class Daemon {
     const prompt = again
       ? `Change the plan: ${task}\n\nStill plan only: change nothing yet, and end with the whole revised plan.`
       : `${task}\n\nPlan only: read what you need, change nothing, and end with the plan as numbered steps, the files each touches, and anything you are unsure of.`;
+    // The card exists while the plan is made (34 to 60 s live), not only after.
+    const placeholder = replace || "";
     const r = this.startAgent(p.name, prompt, {
       mode: "plan",
-      onDone: (code, text) => this.planReady(p, code, text, replace),
+      onDone: (code, text) => this.planReady(p, code, text, placeholder || card),
     });
     if (!/^(started|passed)/.test(r)) return r;
+    let card = "";
+    if (placeholder && this.board.get(placeholder)) {
+      this.board.update(placeholder, { title: `Plan · ${p.name} — replanning` });
+    } else {
+      // an older plan nobody decided on is not still asking
+      for (const old of this.board.list(p.id))
+        if (old.kind === "markdown" && old.by === "kik" && old.title === `Plan · ${p.name}`)
+          this.board.update(old.id, { title: `Plan · ${p.name} — replaced`, sticky: false });
+      card = this.board.add({
+        kind: "markdown",
+        title: `Plan · ${p.name} — planning`,
+        body: `_Planning: ${task.split("\n")[0]?.slice(0, 200)}_`,
+        project: p.id,
+        repo: p.id,
+        by: "kik",
+        size: "wide",
+        sticky: true,
+      }).id;
+      this.hub.publish("focus", { id: card });
+    }
     this.planWaiting = null;
     return again ? `Replanning ${p.name}` : `Planning it in ${p.name}. I'll show you the plan`;
   }
@@ -4191,7 +4320,7 @@ export class Daemon {
     }
     // a replan rewrites the card it replaces, rather than stacking a second
     const old = replace ? this.board.list(p.id).find((x) => x.id === replace) : undefined;
-    if (old) this.board.update(old.id, { body: text });
+    if (old) this.board.update(old.id, { body: text, title: `Plan · ${p.name}` });
     const pin =
       old ??
       this.board.add({
@@ -4224,7 +4353,13 @@ export class Daemon {
     const p = w ? this.projects.get(w.project) : undefined;
     this.planWaiting = null;
     if (!w || !p) return "There's no plan waiting";
-    if (v === "drop") return "Dropped it. Nothing was changed";
+    if (v === "drop") {
+      if (this.board.get(w.pin))
+        this.board.update(w.pin, { title: `Plan · ${p.name} — dropped`, sticky: false });
+      return "Dropped it. Nothing was changed";
+    }
+    if (v === "go" && this.board.get(w.pin))
+      this.board.update(w.pin, { title: `Plan · ${p.name} — carrying out` });
     if (v === "change") return this.startPlan(p, words, true, w.pin);
     const r = this.startAgent(p.name, "Go ahead: carry out the plan you just made.");
     return /^(started|passed)/.test(r) ? `Going ahead in ${p.name}` : r;
@@ -5080,6 +5215,10 @@ export class Daemon {
     const first = setTimeout(() => void this.refreshAgenda(), 30_000);
     first.unref();
     this.timers.push(setInterval(() => void this.refreshAgenda(), 3600_000));
+    // What Kik itself has running (agents, servers, a plan being made) for
+    // the agents card: an agent in a folder whose hooks never fire was
+    // otherwise invisible. Published when it changes.
+    this.timers.push(setInterval(() => this.publishKikWork(), 2000));
     // servers a killed Kikoe left behind hold their ports; stop them first
     if (this.persistBoard) this.runner.reapOrphans();
     if (this.persistBoard && this.settings.project_scan !== false) {
@@ -5168,6 +5307,11 @@ function safeSpeaker(): Speaker {
  * true.
  */
 /** A tool's answer, said out loud: a capital and a full stop. */
+/** Is this the prompt of a plan-mode run (startPlan)? */
+function isPlanPrompt(prompt: string): boolean {
+  return /\bPlan only\b|\bStill plan only\b/.test(prompt);
+}
+
 /** A web card's height when it is made: room for the browser bar and a page. */
 const WEB_CARD_H = 600;
 

@@ -215,6 +215,10 @@ export interface RunEvents {
   onUrl: (url: string) => void;
   /** it exited before it was up, or never printed an address */
   onFail: (why: string, tail: string[]) => void;
+  /** what it printed lately, as it prints it, for a live card */
+  onLine?: (tail: string[]) => void;
+  /** it was up, and then it stopped on its own (not stopped by Kik) */
+  onExit?: (code: number | null) => void;
 }
 
 export class Runner {
@@ -294,6 +298,7 @@ export class Runner {
         tail.push(line.slice(0, 300));
         if (tail.length > 40) tail.shift();
       }
+      ev.onLine?.(tail);
     };
     const shell = (command: string) =>
       spawn(command, {
@@ -309,6 +314,7 @@ export class Runner {
       });
 
     const serve = () => {
+      ev.onStep?.(`starting, with ${recipe.command}`);
       const child = shell(recipe.command);
       const run: Running = { project, dir, recipe, url: "", started: Date.now(), child, tail };
       this.runs.set(project, run);
@@ -350,11 +356,16 @@ export class Runner {
       });
       child.on("exit", (code) => {
         this.log(`run ${project}: exited (${code})`);
-        if (this.runs.get(project)?.child === child) {
+        // still ours when it went: it stopped by itself, not because Kik stopped it
+        const onItsOwn = this.runs.get(project)?.child === child;
+        if (onItsOwn) {
           this.runs.delete(project);
           this.save();
         }
-        if (settled) return;
+        if (settled) {
+          if (onItsOwn && run.url) ev.onExit?.(code);
+          return;
+        }
         settled = true;
         clearTimeout(timer);
         const busy = tail.some((l) => /EADDRINUSE|address already in use/i.test(l));

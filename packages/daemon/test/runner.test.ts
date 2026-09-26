@@ -139,6 +139,50 @@ describe("Runner", () => {
     await expect(fetch(url)).rejects.toThrow();
   });
 
+  it("streams what it prints, and says when it stops by itself after it was up", async () => {
+    const dir = folder({
+      "brief.js":
+        "const s=require('http').createServer((q,r)=>r.end('ok'));s.listen(0,'127.0.0.1',()=>{console.log('compiling');console.log('ready on http://localhost:'+s.address().port);setTimeout(()=>process.exit(3),400)});",
+    });
+    const runner = new Runner();
+    const seen: string[][] = [];
+    const exited = await new Promise<number | null>((resolve, reject) => {
+      runner.start(
+        "brief",
+        dir,
+        { command: "node brief.js", what: "a test" },
+        { onUrl: () => {}, onFail: reject, onLine: (t) => seen.push([...t]), onExit: resolve },
+      );
+    });
+    expect(exited).toBe(3);
+    expect(seen.flat().join("\n")).toMatch(/compiling/);
+    expect(runner.get("brief")).toBeUndefined();
+  });
+
+  it("does not call a stop Kik asked for a stop on its own", async () => {
+    const dir = folder({
+      "server.js":
+        "const s=require('http').createServer((q,r)=>r.end('ok'));s.listen(0,'127.0.0.1',()=>console.log('http://localhost:'+s.address().port));",
+    });
+    const runner = new Runner();
+    let exits = 0;
+    await new Promise<void>((resolve, reject) => {
+      runner.start(
+        "mine",
+        dir,
+        { command: "node server.js", what: "a test" },
+        {
+          onUrl: () => resolve(),
+          onFail: reject,
+          onExit: () => exits++,
+        },
+      );
+    });
+    runner.stop("mine");
+    await new Promise((r) => setTimeout(r, 500));
+    expect(exits).toBe(0);
+  });
+
   it("says why when it dies before it is up", async () => {
     const dir = folder({
       "bad.js": "console.error('Error: cannot find module next'); process.exit(1)",
