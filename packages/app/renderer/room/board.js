@@ -587,6 +587,11 @@
   const built = new Map();
   const LIVE = new Set(["conversation", "session", "agents", "events"]);
   function signature(pin) {
+    // A web card is a browser: moving it, resizing it, keeping it, a new
+    // title or a new address from Kik are patched onto the live page (the
+    // `patch` hook), never a rebuild that reloads it and loses where the
+    // user had browsed to. Every drag used to do exactly that.
+    if (pin.kind === "web") return JSON.stringify([pin.kind, pin.ask, pin.answer, pin.by]);
     return JSON.stringify([
       pin.kind,
       pin.title,
@@ -646,7 +651,7 @@
     a.onfinish = () => el.remove();
   }
 
-  function render(pins, renderPin, fresh) {
+  function render(pins, renderPin, fresh, patch) {
     const first = lastPins.length === 0 && pins.length > 0;
     lastPins = pins;
     byId = new Map(pins.map((p) => [p.id, p]));
@@ -691,6 +696,9 @@
           const age = el.querySelector(".pin-head .age");
           if (age && age.textContent !== f.age) age.textContent = f.age;
         }
+        // what changed on a kept card, patched in place (a web card's title,
+        // its keep button, a new address to load)
+        if (patch) patch(el, pin);
         // a new size (the grip, a viewport button) applies without a rebuild
         if (pin.w > 0) el.style.width = `${pin.w}px`;
         if (pin.h > 0) {

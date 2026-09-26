@@ -93,6 +93,7 @@ export type HandsLike = Pick<
   | "screenshot"
   | "close"
 >;
+import { browseAsk } from "./browse.js";
 import { type MicMode, micModeAsk, micModeLine, micModeOf } from "./micmode.js";
 import { Board, type Pin } from "./pins.js";
 import { type Verdict, planAsk, planSteps, planVerdict } from "./plan.js";
@@ -580,6 +581,9 @@ export class Daemon {
         // Every pin says whose board it is on, so the Room can ignore one
         // that belongs to a project you are not looking at.
         this.hub.publish("pin", { ...e, project: e.pin?.project ?? "" });
+        // a web card that browsed somewhere: "open it on the computer" means there
+        if (e.op === "update" && e.pin?.kind === "web" && /^https?:/i.test(e.pin.body))
+          this.lastCanvasSite = { url: e.pin.body.trim(), at: Date.now() };
         if (this.persistBoard) this.saveBoardSoon(e.pin?.project);
       },
       undefined,
@@ -1044,6 +1048,36 @@ export class Daemon {
       this.say(said, ev.SEV_ATTENTION, "head");
       this.hub.publish("mic", { phase: "idle" });
       return { kind: "command", intent: `mic:${micAsk}`, said };
+    }
+
+    // "Go back", "reload the page", "go to github": the web card in front is
+    // a browser now, and the Room drives it. Only with one on this board.
+    const browse = browseAsk(rest);
+    const webHere = this.board.list(this.projects.current.id).some((x) => x.kind === "web");
+    if (browse && webHere) {
+      this.hub.publish("browse", {
+        action: browse.action,
+        ...(browse.url ? { url: browse.url } : {}),
+      });
+      const said =
+        browse.action === "go"
+          ? `Going to ${(browse.url ?? "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}.`
+          : browse.action === "back"
+            ? "Back."
+            : browse.action === "forward"
+              ? "Forward."
+              : browse.action === "reload"
+                ? "Reloading."
+                : browse.action === "stop"
+                  ? "Stopped loading."
+                  : browse.action === "zoom-in"
+                    ? "Bigger."
+                    : "Smaller.";
+      record(d.kind, `browse:${browse.action}`, said);
+      this.rememberExchange(clean, said);
+      this.say(said, ev.SEV_ATTENTION, "head");
+      this.hub.publish("mic", { phase: "idle" });
+      return { kind: "command", intent: `browse:${browse.action}`, said };
     }
 
     // "Stop the commerce project": the router hears any "stop" as "stop
@@ -1646,6 +1680,8 @@ export class Daemon {
       repo: "kik",
       by: "kik",
       size: "wide",
+      // tall enough to browse in: a web card is a browser now
+      h: WEB_CARD_H,
       ttl_s: 3600,
     });
     this.hub.publish("focus", { id: pin.id });
@@ -4066,7 +4102,11 @@ export class Daemon {
   /** The running app as a live card on its project's board, one per address. */
   private pinRun(p: Project, url: string): void {
     const title = `${p.name} · ${url.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
-    const open = this.board.list(p.id).find((x) => x.kind === "web" && x.body === url);
+    // the card may have browsed on since: same origin is the same app
+    const origin = (u: string) => /^https?:\/\/[^/]+/i.exec(u.trim())?.[0]?.toLowerCase() ?? u;
+    const open = this.board
+      .list(p.id)
+      .find((x) => x.kind === "web" && origin(x.body) === origin(url));
     if (open) {
       this.hub.publish("focus", { id: open.id });
       return;
@@ -4079,6 +4119,7 @@ export class Daemon {
       repo: p.id,
       by: "kik",
       size: "wide",
+      h: WEB_CARD_H,
       sticky: true,
     });
     this.hub.publish("focus", { id: pin.id });
@@ -5127,6 +5168,9 @@ function safeSpeaker(): Speaker {
  * true.
  */
 /** A tool's answer, said out loud: a capital and a full stop. */
+/** A web card's height when it is made: room for the browser bar and a page. */
+const WEB_CARD_H = 600;
+
 /** What the agent is asked when a folder does not say how it runs (runner.ts). */
 const RUN_QUESTION = `Work out how to run this project locally for development. Do not run, install or change anything. Answer with only these lines:
 WHAT: what it is, in a few words (for example: a Next.js app)

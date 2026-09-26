@@ -1406,3 +1406,41 @@ tax) → go ahead → built, 6/6 tests, `/checkout` shows $66.00 / $6.60 /
 $72.60, stop by voice, orphan reaped on restart. Not covered: push to talk
 with a real voice, the phone path, and a project that needs an install.
 
+## A web card is a browser (2026-09-26)
+
+- **A move reloaded the page.** `board.js signature()` included
+  `pin.updated`, which every `Board.update` bumps, so dragging, resizing,
+  "keep" or a title rebuilt the card and threw away where the user had
+  browsed. A web card's signature is now only kind/ask/answer/by; anything
+  else is patched onto the live card by `patchPin` (room.js), and a new
+  address from Kik is loaded into the page, not a new card.
+- **The page is a `<webview>` in the desk app** (`webviewTag: true` on the
+  Room; `will-attach-webview` strips any preload, forces no Node, context
+  isolation, sandbox, and refuses anything but http(s)). It gives the bar
+  real back/forward, reload/stop, an address you type in (`addressOf`: an
+  address, `localhost:4800`, a bare port, or a Google search), zoom, and
+  open ↗ with the *current* URL. Alt+←/→, Ctrl+R, Ctrl+L. On the phone and
+  a browser Room it is the old iframe (`web-iframe`), with reload, the
+  address and open only.
+- **The pin follows the page**: `did-navigate`/`did-navigate-in-page` and
+  the page title are reported (debounced 700 ms) with `updatePin`; `told`
+  keeps this screen's own reports so their echo is not taken for a new
+  address. So Kik, "open it on the computer" (`lastCanvasSite` follows web
+  updates), a restart and the phone all see where the user is. `pinRun`
+  finds a browsed card by origin.
+- **Popups** from a page become a new web card beside it (`near`); a
+  Ctrl-click (background tab) goes to the real browser. main.ts maps a
+  guest's web contents to its card (`room:webview`, sent on `dom-ready`).
+  The Room's own window.open goes to the browser, never a bare window.
+- **By voice** (`browse.ts`): "go back", "forward", "reload the page",
+  "stop loading", "zoom in/out", "go to github" (a bare word is .com;
+  "localhost 4800/checkout", "port 5173", "x dot com slash y") publish a
+  `browse` frame that the Room runs on the card last touched. Only when
+  the board in front has a web card.
+- New web cards are 600 px tall (`WEB_CARD_H`). Screenshot mode now also
+  writes `<name>-web.png` with the web card in focus and prints the
+  webview's size, URL and title: a window capture never includes a
+  webview's page.
+- Never capture the live screen for a check: it caught the user's own
+  browser once. Use `--screenshot`.
+

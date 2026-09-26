@@ -63,7 +63,9 @@ contextBridge.exposeInMainWorld("room", {
   native: true,
   /** where the daemon serves pages: a card frames `${base}/artifact/<id>` */
   artifactBase: ipcRenderer.sendSync("room:artifactBase") as string,
-  openArtifact: (id: string) => ipcRenderer.invoke("room:openArtifact", id),
+  openArtifact: (id: string, url?: string) => ipcRenderer.invoke("room:openArtifact", id, url),
+  /** a web card's page is a webview here; main maps it to its card, for popups */
+  webview: (id: string, contentsId: number) => ipcRenderer.invoke("room:webview", id, contentsId),
   saveArtifact: (id: string) => ipcRenderer.invoke("room:saveArtifact", id),
   onView: (fn: (v: { view: string; page?: string }) => void) =>
     ipcRenderer.on("room:view", (_e, v: { view: string; page?: string }) => fn(v)),

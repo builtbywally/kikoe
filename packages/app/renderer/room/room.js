@@ -469,7 +469,9 @@ function renderBody(pin) {
       // and sanitised, so it is a picture and not a program.
       return sanitizeSvg(pin.body);
     }
-    case "web": {
+    case "web":
+      return webBody(pin);
+    case "web-iframe": {
       // A live page: an app on localhost, a site, a browser. Its own origin,
       // its own scripts; it can never reach the Room.
       const f = document.createElement("iframe");
@@ -577,6 +579,273 @@ function pinFresh(p) {
                   ? "pinned now"
                   : `${ago(Math.round(age))} · fades in ${ago(Math.round(left))}`;
   return { opacity, age: text };
+}
+
+// --- web cards are browsers ------------------------------------------------------
+
+/** The pin as the Room has it now (a kept card's `p` is the one it was built from). */
+function byIdPin(id) {
+  return pins.find((x) => x.id === id);
+}
+
+/** The last addresses this screen told the daemon about, so their echo is not a navigation. */
+const told = new Map();
+/** The web card last touched, for "go back" said with no card named. */
+let lastWeb = "";
+
+function looksLikeUrl(s) {
+  return /^(https?:\/\/|localhost|127\.0\.0\.1|\[?::1)|^[\w-]+(\.[\w-]+)+(:\d+)?(\/|$)|^[\w-]+:\d+/i.test(
+    s,
+  );
+}
+
+/** What was typed in the address bar: an address, or a search. */
+function addressOf(typed) {
+  const s = typed.trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?/i.test(s)) return `http://${s}`;
+  if (/^:?\d{2,5}$/.test(s)) return `http://localhost:${s.replace(":", "")}`;
+  if (looksLikeUrl(s) && !/\s/.test(s)) return `https://${s}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
+}
+
+/**
+ * A web card: a browser bar over the page. In the desk app the page is a
+ * <webview>, which has real history, a real address and a title; on the
+ * phone and in a browser it is an iframe, which has none of those, so the
+ * bar offers what an iframe can do: reload, go to an address, open it.
+ */
+function webBody(pin) {
+  const url = pin.body.trim();
+  const wrap = document.createElement("div");
+  wrap.className = "browser";
+  const bar = document.createElement("div");
+  bar.className = "web-bar";
+  const btn = (label, title, cls) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `web-btn ${cls}`;
+    b.textContent = label;
+    b.title = title;
+    return b;
+  };
+  const back = btn("‹", "back (Alt+←)", "back");
+  const fwd = btn("›", "forward (Alt+→)", "fwd");
+  const reload = btn("↻", "reload (Ctrl+R)", "reload");
+  const addr = document.createElement("input");
+  addr.className = "web-addr";
+  addr.type = "text";
+  addr.spellcheck = false;
+  addr.value = url;
+  addr.title = "an address, or words to search (Ctrl+L)";
+  const zoomOut = btn("−", "smaller", "zoom-out");
+  const zoomIn = btn("+", "larger", "zoom-in");
+  const open = btn("↗", "open in your browser", "open");
+  const native = window.room.native === true && !!window.room.webview;
+  let page;
+  if (native) {
+    page = document.createElement("webview");
+    page.setAttribute("src", url);
+    page.setAttribute("allowpopups", "");
+    page.className = "web-page";
+  } else {
+    page = renderBody({ ...pin, kind: "web-iframe" });
+    back.hidden = true;
+    fwd.hidden = true;
+    zoomOut.hidden = true;
+    zoomIn.hidden = true;
+  }
+  bar.append(back, fwd, reload, addr, zoomOut, zoomIn, open);
+  wrap.append(bar, page);
+  wrap.dataset.url = url;
+  wrap.dataset.loading = "1";
+
+  const frame = () => (page.tagName === "IFRAME" ? page : page.querySelector?.("iframe")) ?? page;
+  const current = () => {
+    if (native) {
+      try {
+        return page.getURL() || wrap.dataset.url;
+      } catch {
+        return wrap.dataset.url;
+      }
+    }
+    return wrap.dataset.url;
+  };
+  const go = (to) => {
+    if (!to) return;
+    lastWeb = pin.id;
+    wrap.dataset.url = to;
+    addr.value = to;
+    wrap.dataset.loading = "1";
+    if (native) page.loadURL(to).catch(() => {});
+    else frame().src = to;
+    report(to);
+  };
+  // Where the page went, told to the daemon once it settles: Kik, "open",
+  // a restart and the phone then all see where the user actually is.
+  let reportTimer = 0;
+  const report = (to, title) => {
+    clearTimeout(reportTimer);
+    reportTimer = setTimeout(() => {
+      if (document.documentElement.dataset.readonly === "true") return;
+      const known = byIdPin(pin.id);
+      if (known && known.body === to && (!title || known.title === title)) return;
+      const seen = told.get(pin.id) ?? [];
+      told.set(pin.id, [...seen.slice(-4), to]);
+      window.room.updatePin?.(pin.id, title ? { body: to, title } : { body: to });
+    }, 700);
+  };
+  const history = () => {
+    if (!native) return;
+    try {
+      back.disabled = !page.canGoBack();
+      fwd.disabled = !page.canGoForward();
+    } catch {
+      /* not attached yet */
+    }
+  };
+  wrap.go = go;
+  wrap.act = (action, to) => {
+    lastWeb = pin.id;
+    if (action === "back" && native && page.canGoBack()) page.goBack();
+    else if (action === "forward" && native && page.canGoForward()) page.goForward();
+    else if (action === "reload") {
+      if (native) page.reload();
+      else frame().src = wrap.dataset.url;
+    } else if (action === "stop" && native) page.stop();
+    else if (action === "go") go(addressOf(to ?? ""));
+    else if ((action === "zoom-in" || action === "zoom-out") && native) {
+      const z = Number(wrap.dataset.zoom || 1);
+      const next = Math.max(0.3, Math.min(3, action === "zoom-in" ? z + 0.1 : z - 0.1));
+      wrap.dataset.zoom = String(next.toFixed(2));
+      page.setZoomFactor(next);
+    } else if (action === "open") {
+      window.room.openArtifact(pin.id, current());
+    }
+  };
+
+  back.addEventListener("click", () => wrap.act("back"));
+  fwd.addEventListener("click", () => wrap.act("forward"));
+  reload.addEventListener("click", () =>
+    wrap.act(wrap.dataset.loading === "1" && native ? "stop" : "reload"),
+  );
+  zoomIn.addEventListener("click", () => wrap.act("zoom-in"));
+  zoomOut.addEventListener("click", () => wrap.act("zoom-out"));
+  open.addEventListener("click", () => wrap.act("open"));
+  addr.addEventListener("focus", () => {
+    lastWeb = pin.id;
+    addr.select();
+  });
+  addr.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      go(addressOf(addr.value));
+      addr.blur();
+    } else if (e.key === "Escape") {
+      addr.value = current();
+      addr.blur();
+    }
+  });
+  wrap.addEventListener("keydown", (e) => {
+    if (e.target === addr) return;
+    if (e.altKey && e.key === "ArrowLeft") wrap.act("back");
+    else if (e.altKey && e.key === "ArrowRight") wrap.act("forward");
+    else if (e.ctrlKey && e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      wrap.act("reload");
+    } else if (e.ctrlKey && e.key.toLowerCase() === "l") {
+      e.preventDefault();
+      addr.focus();
+    }
+  });
+
+  if (native) {
+    page.addEventListener("did-start-loading", () => {
+      wrap.dataset.loading = "1";
+      reload.textContent = "×";
+      reload.title = "stop";
+    });
+    page.addEventListener("did-stop-loading", () => {
+      wrap.dataset.loading = "";
+      reload.textContent = "↻";
+      reload.title = "reload (Ctrl+R)";
+      history();
+    });
+    const moved = (e) => {
+      if (e.isMainFrame === false) return;
+      const to = e.url || current();
+      wrap.dataset.url = to;
+      if (document.activeElement !== addr) addr.value = to;
+      history();
+      report(to);
+    };
+    page.addEventListener("did-navigate", moved);
+    page.addEventListener("did-navigate-in-page", moved);
+    page.addEventListener("page-title-updated", (e) => {
+      const card = wrap.closest(".pin");
+      const t = card?.querySelector(".pin-head .title span:last-child");
+      if (t && e.title) t.textContent = e.title;
+      report(current(), e.title?.slice(0, 120));
+    });
+    page.addEventListener("dom-ready", () => {
+      // the main process maps this page to its card, for popups
+      try {
+        window.room.webview(pin.id, page.getWebContentsId());
+      } catch {
+        /* not ready */
+      }
+      history();
+    });
+    page.addEventListener("focus", () => {
+      lastWeb = pin.id;
+    });
+  } else {
+    frame().addEventListener("load", () => {
+      wrap.dataset.loading = "";
+    });
+  }
+  return wrap;
+}
+
+/** Drive a card's browser: from the bar, from Kik, from a keyboard. */
+function browseCard(id, action, url) {
+  const card =
+    (id && document.querySelector(`.pin[data-id="${CSS.escape(id)}"][data-kind="web"]`)) ||
+    (lastWeb &&
+      document.querySelector(`.pin[data-id="${CSS.escape(lastWeb)}"][data-kind="web"]`)) ||
+    document.querySelector('.pin[data-kind="web"]');
+  const wrap = card?.querySelector(".browser");
+  if (!wrap?.act) return false;
+  wrap.act(action, url);
+  card.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  return true;
+}
+
+/**
+ * A kept card, brought up to date without rebuilding it: its title, its
+ * keep button, and, for a web card, an address Kik (not this screen) asked
+ * for, loaded into the live page.
+ */
+function patchPin(el, pin) {
+  const t = el.querySelector(".pin-head .title span:last-child");
+  if (t && pin.title && pin.kind !== "web" && t.textContent !== pin.title)
+    t.textContent = pin.title;
+  if (pin.sticky) el.dataset.sticky = "1";
+  else delete el.dataset.sticky;
+  const keep = el.querySelector(".pin-foot .keep");
+  if (keep) {
+    keep.textContent = pin.sticky ? "unpin" : "keep";
+    keep.title = pin.sticky ? "let it fade" : "keep it until removed";
+  }
+  if (pin.kind !== "web") return;
+  const wrap = el.querySelector(".browser");
+  if (!wrap?.go) return;
+  const to = pin.body.trim();
+  const mine = told.get(pin.id) ?? [];
+  // our own report coming back, or where the page already is: nothing to do
+  if (to === wrap.dataset.url || mine.includes(to)) return;
+  wrap.go(to);
 }
 
 function pinCard(p) {
@@ -704,17 +973,7 @@ function pinCard(p) {
         act("explain", "explain", "ask the agent what this did");
     }
     if (p.kind === "web") {
-      const addr = document.createElement("span");
-      addr.className = "note";
-      addr.textContent = p.body
-        .trim()
-        .replace(/^https?:\/\//, "")
-        .slice(0, 60);
-      const open = document.createElement("button");
-      open.textContent = "open";
-      open.title = "in your browser";
-      open.addEventListener("click", () => window.room.openArtifact(p.id));
-      foot.append(addr, open);
+      // the address, back, forward and open live in the card's browser bar
     } else if (
       p.kind === "html" ||
       p.kind === "react" ||
@@ -743,7 +1002,11 @@ function pinCard(p) {
     const keep = document.createElement("button");
     keep.textContent = p.sticky ? "unpin" : "keep";
     keep.title = p.sticky ? "let it fade" : "keep it until removed";
-    keep.addEventListener("click", () => window.room.updatePin(p.id, { sticky: !p.sticky }));
+    keep.className = "keep";
+    keep.addEventListener("click", () => {
+      const now = byIdPin(p.id) ?? p;
+      window.room.updatePin(p.id, { sticky: !now.sticky });
+    });
     const x = document.createElement("button");
     x.textContent = "dismiss";
     x.addEventListener("click", () => window.room.removePin(p.id));
@@ -811,7 +1074,7 @@ function renderBoard() {
         repo,
         sticky: true,
       });
-  window.board.render([talk, ...extra, ...ordered], pinCard, pinFresh);
+  window.board.render([talk, ...extra, ...ordered], pinCard, pinFresh, patchPin);
 }
 
 /** The one place you can type instead of talk; both threads carry it. */
@@ -1538,6 +1801,10 @@ const handlers = {
     renderBoard();
     renderAgents();
     renderProject();
+  },
+  /** "Go back", "reload the page", "go to github": Kik drives a web card. */
+  browse(f) {
+    browseCard(f.id, f.action, f.url);
   },
   pin(f) {
     // A card for a project you are not looking at still exists; it is just

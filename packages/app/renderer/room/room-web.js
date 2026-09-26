@@ -73,10 +73,11 @@
     sayToKik: (text) => post("/say", { text }),
     native: false,
     artifactBase: base,
-    openArtifact: (id) => {
+    openArtifact: (id, url) => {
       const p = document.querySelector(`[data-id="${id}"][data-kind="web"] iframe`);
-      if (p?.src) {
-        window.open(p.src, "_blank", "noopener");
+      const to = url || p?.src;
+      if (to) {
+        window.open(to, "_blank", "noopener");
         return { ok: true };
       }
       return { error: "open it from the app" };

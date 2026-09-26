@@ -1945,3 +1945,95 @@ html[data-phone="true"] .ambient-flash {
   border-color: var(--ember);
   background: rgba(210, 104, 63, 0.14);
 }
+
+/* --- a web card is a browser --------------------------------------------- */
+.pin[data-kind="web"] .pin-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.browser {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.web-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+}
+.web-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font: 15px / 1 var(--mono, ui-monospace, monospace);
+  background: transparent;
+  color: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.web-btn:hover:not(:disabled) {
+  opacity: 1;
+  border-color: var(--line, rgba(255, 255, 255, 0.15));
+}
+.web-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.web-addr {
+  flex: 1;
+  min-width: 60px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  font: 12px / 1 var(--mono, ui-monospace, monospace);
+  color: inherit;
+  background: rgba(127, 127, 127, 0.12);
+  border: 1px solid transparent;
+  outline: none;
+  text-overflow: ellipsis;
+}
+.web-addr:focus {
+  border-color: #d2683f;
+  background: rgba(127, 127, 127, 0.18);
+}
+.browser[data-loading="1"] .web-addr {
+  background-image: linear-gradient(90deg, transparent, rgba(210, 104, 63, 0.35), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: web-loading 1.1s linear infinite;
+}
+@keyframes web-loading {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+.browser > .web-page,
+.browser > iframe,
+.browser > .web-wrap {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+}
+.browser > .web-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.browser > .web-wrap > iframe {
+  flex: 1;
+  border: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser[data-loading="1"] .web-addr {
+    animation: none;
+  }
+}

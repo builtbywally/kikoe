@@ -577,7 +577,25 @@ function openRoom(): void {
       preload: path.join(__dirname, "preload-room.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // A web card is a <webview>: real back, forward, address and title,
+      // which a cross-origin iframe can never give. Locked down below.
+      webviewTag: true,
     },
+  });
+  // Every page a card opens is a guest with no Node, no preload of ours,
+  // its own sandbox, and only an http(s) address.
+  roomWin.webContents.on("will-attach-webview", (e, prefs, params) => {
+    Reflect.deleteProperty(prefs, "preload");
+    prefs.nodeIntegration = false;
+    prefs.contextIsolation = true;
+    prefs.sandbox = true;
+    prefs.webSecurity = true;
+    if (!/^https?:\/\//i.test(String(params.src ?? ""))) e.preventDefault();
+  });
+  // Nothing the Room itself opens becomes a bare Electron window.
+  roomWin.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
   });
   // A web card is an iframe. Sites that forbid framing would show a blank
   // card, so for subframes only, those headers are dropped. The frame is
@@ -849,11 +867,57 @@ const ARTIFACT_EXT: Record<string, string> = {
   react: "jsx",
 };
 /** An artboard in its own window: the page as a page, the drawing as a drawing. */
-ipcMain.handle("room:openArtifact", (_e, id: string) => {
+/** A card's webview, by the id of its web contents: popups become cards beside it. */
+const webviewPins = new Map<number, string>();
+ipcMain.handle("room:webview", (_e, id: string, contentsId: number) => {
+  if (typeof contentsId === "number") webviewPins.set(contentsId, String(id));
+  return { ok: true };
+});
+
+/**
+ * A page in a card that opens a window (a login, a link with target=_blank)
+ * gets a new card beside its own; Ctrl-click, which asks for a background
+ * tab, goes to the real browser. The user chose this, 2026-09-26.
+ */
+app.on("web-contents-created", (_e, contents) => {
+  if (contents.getType() !== "webview") return;
+  contents.setWindowOpenHandler(({ url, disposition }) => {
+    if (!/^https?:\/\//i.test(url)) return { action: "deny" };
+    const parent = webviewPins.get(contents.id);
+    const from = parent ? daemon?.board.get(parent) : undefined;
+    if (disposition === "background-tab" || !daemon || !from) {
+      void shell.openExternal(url);
+      return { action: "deny" };
+    }
+    let host = url;
+    try {
+      host = new URL(url).host;
+    } catch {
+      /* the whole address, then */
+    }
+    daemon.board.add({
+      kind: "web",
+      title: host,
+      body: url,
+      project: from.project,
+      repo: from.repo,
+      by: "kik",
+      size: "wide",
+      h: 600,
+      near: from.id,
+      ttl_s: 3600,
+    });
+    return { action: "deny" };
+  });
+  contents.on("destroyed", () => webviewPins.delete(contents.id));
+});
+
+ipcMain.handle("room:openArtifact", (_e, id: string, current?: string) => {
   const p = daemon?.board.get(String(id));
   if (!p) return { error: "no such pin" };
   if (p.kind === "web") {
-    const url = p.body.trim();
+    // where the page is now, not where the card started
+    const url = (typeof current === "string" && current ? current : p.body).trim();
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
     return { ok: true };
   }
@@ -1449,7 +1513,7 @@ if (!app.requestSingleInstanceLock()) {
         h: 620,
       });
       // a live web card, framing the daemon itself so the shot needs no network
-      daemon?.board.add({
+      const webShot = daemon?.board.add({
         kind: "web",
         title: "the shop on localhost",
         body: `http://127.0.0.1:${loadSettings().port}/`,
@@ -1460,6 +1524,19 @@ if (!app.requestSingleInstanceLock()) {
       await new Promise((r) => setTimeout(r, 2500));
       const img = await roomWin?.webContents.capturePage();
       if (img) writeFileSync(shotPath, img.toPNG());
+      // the web card up close: its browser bar, and the page in its webview
+      if (webShot) {
+        daemon?.hub.publish("focus", { id: webShot.id });
+        await new Promise((r) => setTimeout(r, 1500));
+        const web = await roomWin?.webContents.capturePage();
+        if (web) writeFileSync(shotPath.replace(/\.png$/, "-web.png"), web.toPNG());
+        // a window capture leaves a webview's page out; its size and address say it is there
+        const page = await roomWin?.webContents.executeJavaScript(
+          `(() => { const w = document.querySelector('.pin[data-kind="web"] webview'); if (!w) return null; const r = w.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), url: w.getURL(), title: w.getTitle() }; })()`,
+        );
+        process.stdout.write(`${JSON.stringify({ webview: page })}
+`);
+      }
       // and the settings view, in the same window
       roomWin?.webContents.send("room:view", { view: "settings", page: "welcome" });
       await new Promise((r) => setTimeout(r, 1200));
