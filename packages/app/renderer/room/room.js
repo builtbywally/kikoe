@@ -1421,6 +1421,22 @@ function agentsBody() {
     const name = document.createElement("b");
     name.textContent = w.name;
     const what = document.createElement("span");
+    if (w.kind === "decide") {
+      row.dataset.status = "waiting";
+      name.textContent = w.name;
+      what.textContent = "plan ready · ";
+      what.append(tick(w.since));
+      const go = document.createElement("button");
+      go.className = "primary";
+      go.textContent = "go ahead";
+      go.addEventListener("click", () => window.room.sayToKik("go ahead"));
+      const drop = document.createElement("button");
+      drop.textContent = "drop";
+      drop.addEventListener("click", () => window.room.sayToKik("drop it"));
+      row.append(dot, name, what, go, drop);
+      wrap.append(row);
+      continue;
+    }
     what.textContent =
       w.kind === "plan"
         ? "planning · "
@@ -1436,6 +1452,38 @@ function agentsBody() {
     wrap.append(row);
   }
   return wrap;
+}
+
+/**
+ * While Kik speaks about something on the canvas, that card glows and the
+ * light moves toward it: the agent whose session is speaking, the repo a
+ * line opens with ("In billiar, …"), or a card whose name the line says.
+ */
+function glowSpoken(f) {
+  for (const c of document.querySelectorAll(".pin.spoken")) c.classList.remove("spoken");
+  if (!f) return;
+  const text = String(f.text ?? "").toLowerCase();
+  const repo =
+    (f.session && sessions[f.session]?.repo) || /^In ([\w.-]+), /.exec(f.text ?? "")?.[1] || "";
+  const hits = [];
+  for (const c of document.querySelectorAll(".pin[data-id]")) {
+    if (c.dataset.live === "1") continue;
+    const title = c.querySelector(".pin-head .title span:last-child")?.textContent ?? "";
+    const name =
+      title
+        .split(/ · | — /)
+        .find((x) => !/^(plan|run)$/i.test(x.trim()))
+        ?.trim() ?? "";
+    const byRepo = repo && (c.dataset.repo || "").toLowerCase() === repo.toLowerCase();
+    const byName = name.length >= 4 && text.includes(name.toLowerCase());
+    if (byRepo || byName) hits.push(c);
+  }
+  for (const c of hits.slice(0, 3)) c.classList.add("spoken");
+  const first = hits[0];
+  if (first && window.ambient?.flash) {
+    const r = first.getBoundingClientRect();
+    window.ambient.flash(r.left + r.width / 2, r.top + r.height / 2, "arrive");
+  }
 }
 
 /** A clock that counts on by itself, from a moment (ms). */
@@ -1877,6 +1925,7 @@ const handlers = {
       speaking = true;
       thinking = false;
       renderBoard();
+      glowSpoken(f);
       const isAsk = /shall i\?|apply it\?$/i.test(f.text ?? "");
       const repo = /^In ([\w.-]+), /.exec(f.text ?? "")?.[1] ?? "";
       const text = repo
@@ -1887,6 +1936,7 @@ const handlers = {
       return;
     }
     speaking = false;
+    glowSpoken(null);
     if (pendingPermission) return showPermission();
     if (asking) return showAsking();
     setOrb("idle", "quiet");

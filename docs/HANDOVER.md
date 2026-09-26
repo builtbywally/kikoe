@@ -1495,3 +1495,23 @@ with a real voice, the phone path, and a project that needs an install.
   posts its level every 120 ms (`live: true`), the daemon forwards it as a
   `level` mic frame, and the Room draws a meter. Checked live with the key
   pressed from a script: `push-open`, then ~8 level frames a second.
+
+## Smaller touches (2026-09-26)
+
+- **A plan waiting on the user is Kik's work too**: `kikWork` has a
+  `decide` row while `planWaiting` holds (the agents card shows "plan ready"
+  with go ahead / drop; the island shows "plan ready · X · go ahead?").
+- **The island's resting line knows Kik's own work** when no agent session
+  says more: plan ready, planning (with a clock), an agent Kik started,
+  a server starting or up (`kikwork` frame in island.js).
+- **The card Kik is talking about glows** (`glowSpoken` in room.js): the
+  cards of the speaking agent's repo, the repo a line opens with ("In
+  billiar, …"), or a card whose name the line says; at most three; the
+  ambient light flashes at the first. Cleared when speech ends. Not yet
+  seen on screen: the offscreen screenshot's staged line names no staged
+  card, and the live screen is not captured (see above).
+- **A locked phone hears about finished work** when `push_topic` is set:
+  "Plan ready: X" with the step count, and "X: done/stopped" with the
+  agent's first line when a job Kik started took over a minute (not the
+  desk, not plan runs). ntfy titles are ASCII only: the Title header
+  strips anything else, so use ":" rather than "·".

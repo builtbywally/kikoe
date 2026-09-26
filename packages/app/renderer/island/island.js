@@ -68,6 +68,14 @@ let detailTimer = null;
 let quietTimer = null;
 let lastSpokeAt = 0;
 let current = "disconnected";
+/** What Kik itself has running: agents, plans, servers, a plan to decide (daemon kikWork). */
+let kikWork = [];
+function since(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  return s < 3600
+    ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+    : `${Math.floor(s / 3600)}h`;
+}
 /** how the computer's mic listens, and the push-to-talk key, said aloud */
 let micMode = "open";
 let micKey = "control shift space";
@@ -148,6 +156,22 @@ function rest() {
       .join(" · ");
     return render("working", { label: "working", text: bits });
   }
+  // Kik's own work, when no agent session says more: a plan to decide first
+  const decide = kikWork.find((w) => w.kind === "decide");
+  if (decide)
+    return render("permission", { label: "plan ready", text: `${decide.name} · go ahead?` });
+  const plan = kikWork.find((w) => w.kind === "plan");
+  if (plan)
+    return render("working", { label: "planning", text: `${plan.name} · ${since(plan.since)}` });
+  const job = kikWork.find((w) => w.kind === "agent");
+  if (job)
+    return render("working", { label: "working", text: `${job.name} · ${since(job.since)}` });
+  const server = kikWork.find((w) => w.kind === "server");
+  if (server)
+    return render("idle", {
+      label: server.url ? "up" : "starting",
+      text: `${server.name}${server.url ? ` · ${server.url.replace(/^https?:\/\/(localhost|127\.0\.0\.1)/, "")}` : ""}`,
+    });
   // idle says how to be heard: push to talk and a muted mic are not "idle"
   if (micMode === "push") return render("idle", { label: "push to talk", text: micKey });
   if (micMode === "muted")
@@ -184,6 +208,11 @@ const handlers = {
 
   usage(f) {
     renderRings(f.providers);
+  },
+
+  kikwork(f) {
+    kikWork = Array.isArray(f.work) ? f.work : [];
+    if (["idle", "working", "permission"].includes(current)) rest();
   },
 
   sessions(f) {

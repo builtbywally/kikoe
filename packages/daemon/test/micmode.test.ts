@@ -123,6 +123,38 @@ describe("the daemon", () => {
     await d.close();
   });
 
+  it("puts a ready plan on the agents card and buzzes a locked phone", async () => {
+    const calls: Array<{ url: string; title: string }> = [];
+    const d = new dmod.Daemon({
+      settings: {
+        ...config.DEFAULTS,
+        tts: "none",
+        port: 0,
+        jev: false,
+        brain: false,
+        push_topic: "kikoe-test-topic",
+      },
+      audio: false,
+      persistBoard: false,
+      fetchImpl: (async (url: string, init: { headers: Record<string, string> }) => {
+        calls.push({ url: String(url), title: init.headers.Title ?? "" });
+        return new Response("ok");
+      }) as unknown as typeof fetch,
+    });
+    const p = d.projects.ensure("Commerce Project", "C:/nowhere/Commerce Project");
+    (d as unknown as { planReady(p: unknown, c: number, t: string): void }).planReady(
+      p,
+      0,
+      "1. Add the footer\n2. Test it",
+    );
+    expect(d.kikWork().find((w) => w.kind === "decide")?.name).toBe("Commerce Project");
+    expect(calls[0]).toMatchObject({
+      url: "https://ntfy.sh/kikoe-test-topic",
+      title: "Plan ready: Commerce Project",
+    });
+    await d.close();
+  });
+
   it("drops a plan when there is none waiting", async () => {
     const d = daemon();
     expect(d.planDecide("go", "go ahead")).toMatch(/no plan/i);

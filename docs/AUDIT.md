@@ -274,6 +274,19 @@ Gaps:
   needless installs, "stop <project>". `docs/HANDOVER.md`, "QA: a whole
   project through Kik".
 
+- **The canvas browses, and shows Kik's work as it happens
+  (2026-09-26).** Web cards are browsers (a webview with back, forward,
+  reload, an address bar, zoom, open, popups as cards, and voice verbs);
+  moving a card no longer reloads it; runs and plans have cards from the
+  first second; the agents card lists Kik's own agents, plans, servers and
+  a plan to decide, with stop buttons and clocks that tick; the mic's mode
+  is in the title bar and push to talk shows "talk now" with a meter; the
+  card Kik talks about glows; a locked phone hears when a plan or a job is
+  done. `docs/HANDOVER.md`, "A web card is a browser" onward. Still open:
+  a web card on the phone has no back/forward (an iframe cannot), the glow
+  has not been seen on screen, and a browsed card's address reaches the
+  daemon only from the desk app.
+
 ## Flows that do not exist yet
 
 1. **Starting an agent from Kik.** "Start a session in the wallet repo"

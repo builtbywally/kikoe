@@ -4022,7 +4022,7 @@ export class Daemon {
   kikWork(): Array<{
     project: string;
     name: string;
-    kind: "agent" | "plan" | "server";
+    kind: "agent" | "plan" | "server" | "decide";
     since: number;
     job?: string;
     url?: string;
@@ -4039,6 +4039,11 @@ export class Daemon {
         since: r.started,
         job: (this.told.get(name)?.text ?? r.prompt).split("\n")[0]?.slice(0, 140) ?? "",
       });
+    }
+    const w = this.planWaiting;
+    if (w && Date.now() < w.until) {
+      const p = this.projects.get(w.project);
+      rows.push({ project: w.project, name: p?.name ?? w.project, kind: "decide", since: w.at });
     }
     for (const s of this.runner.list()) {
       const p = this.projects.get(s.project);
@@ -4256,7 +4261,7 @@ export class Daemon {
   }
 
   /** A plan on the canvas, waiting on the user. */
-  private planWaiting: { project: string; until: number; pin: string } | null = null;
+  private planWaiting: { project: string; until: number; pin: string; at: number } | null = null;
 
   /**
    * "Plan mode, add dark mode to Marine": the agent plans and changes
@@ -4327,6 +4332,7 @@ export class Daemon {
       return;
     }
     // a replan rewrites the card it replaces, rather than stacking a second
+    const n = planSteps(text);
     const old = replace ? this.board.list(p.id).find((x) => x.id === replace) : undefined;
     if (old) this.board.update(old.id, { body: text, title: `Plan · ${p.name}` });
     const pin =
@@ -4347,9 +4353,19 @@ export class Daemon {
       this.publishProject();
     }
     this.hub.publish("focus", { id: pin.id });
-    this.planWaiting = { project: p.id, until: Date.now() + 30 * 60_000, pin: pin.id };
+    this.planWaiting = {
+      project: p.id,
+      until: Date.now() + 30 * 60_000,
+      pin: pin.id,
+      at: Date.now(),
+    };
+    this.publishKikWork();
+    // off the couch: the plan is worth a buzz on a locked phone
+    this.notify(
+      `Plan ready: ${p.name}`,
+      `${n ? `${n} steps. ` : ""}Go ahead, change it, or drop it.`,
+    );
     this.focusOn(p);
-    const n = planSteps(text);
     const said = `The plan for ${p.name} is on the canvas${n ? `, ${n} steps` : ""}. Go ahead, change something, or drop it?`;
     this.say(said, ev.SEV_ATTENTION, "head");
     this.openWindow(`plan ${p.name}`, said);
@@ -4418,9 +4434,22 @@ export class Daemon {
     const session = this.projects.sessionFor(project.id);
     // Opus for the work, Fable for what Jev judged hard (the user, 2026-09-24)
     const model = opts.hard ? this.settings.deep_model : this.settings.agent_model;
+    const started = Date.now();
     const { ok, said } = this.agents.start(project.id, cwd, task, session, fresh, model, {
       ...(opts.mode ? { mode: opts.mode } : {}),
-      ...(opts.onDone ? { onDone: opts.onDone } : {}),
+      onDone: (code, text) => {
+        opts.onDone?.(code, text);
+        this.publishKikWork();
+        // a finished job is worth a buzz on a locked phone, when it took a while
+        if (opts.mode !== "plan" && project.id !== "desk" && Date.now() - started > 60_000)
+          this.notify(
+            `${project.name}: ${code === 0 ? "done" : "stopped"}`,
+            text
+              .split("\n")
+              .find((l) => l.trim())
+              ?.slice(0, 200) ?? `The agent in ${project.name} finished.`,
+          );
+      },
     });
     if (ok) this.told.set(project.name, { text: task, at: Date.now() });
     if (ok) this.saveProjects();
