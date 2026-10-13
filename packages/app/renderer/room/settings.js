@@ -249,6 +249,7 @@
     $("agenda").checked = s.agenda !== false;
     $("push-topic").value = s.push_topic || "";
     $("place").value = s.place || "";
+    $("ultrahuman-email").value = s.ultrahuman_email || "";
     $("artifact-model").value = s.artifact_model || "claude-opus-5-5";
     $("anthropic-key").placeholder = info.hasAnthropicKey
       ? "key saved in the keychain (paste to replace)"
@@ -603,6 +604,7 @@
       agenda: $("agenda").checked,
       push_topic: $("push-topic").value.trim(),
       place: $("place").value.trim(),
+      ultrahuman_email: $("ultrahuman-email").value.trim(),
       artifact_model: $("artifact-model").value,
     };
     if (key) patch.anthropicKey = key;

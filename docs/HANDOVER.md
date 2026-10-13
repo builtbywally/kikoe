@@ -1636,3 +1636,59 @@ The user asked for K.A.R.A's hologram (augmaimaginarium.com/kara) for Kik.
 - **Gotcha:** `\b` written into a Python heredoc that patches TypeScript
   becomes a backspace character. Biome's `noControlCharactersInRegex`
   caught one. Write patch scripts with the Write tool.
+
+## The life behind Kik (2026-10-13, KARA-PLAN phase 4)
+
+**`life.ts`** has the pieces; `whatsapp.ts` has the WhatsApp bridge. They
+appear on the desk's Life, Comms, Work and You tabs, in the morning brief's
+facts, and in four brain tools: `todo`, `inbox`, `github`, `health`. The
+timers run only in the real app (`persistBoard`), never in a test.
+
+- **To-dos:**
+  - `~/.kikoe/todos.json`; the brain's `todo` tool adds, ticks off (by the
+    words used) and lists;
+  - a done item shows for a day;
+  - `todoAsk` parses the common phrasings, but nothing calls it yet; the
+    brain does the hearing.
+- **GitHub:**
+  - the `gh` CLI, already signed in, every 5 minutes: review requests, and
+    the user's own open pull requests with their checks;
+  - a new review request, or CI turning red or green, is said aloud;
+  - checked live on 2026-10-13: two open pull requests, nothing to review.
+- **One inbox** (`~/.kikoe/inbox.json`, 300 messages, a seen mark):
+  - Sources, all checked against fakes:
+    - **Mail:** the desk session reads Gmail hourly (`MAIL_PROMPT`, JSON
+      lines, `deskAsk`).
+    - **Slack:** `slack_token.txt`, a user token with `search:read`
+      (`to:me`), every 2 minutes.
+    - **Telegram:** `telegram_token.txt`, a bot via `getUpdates`, every 2
+      minutes. It only sees what is sent to the bot.
+    - **Discord:** `discord_token.txt`, a bot over the gateway, live: DMs
+      and mentions.
+    - **WhatsApp:** the bridge.
+  - New messages are said as "Messages: 3 new: 2 from Slack, 1 from Mail",
+    at most every 15 minutes, between 8 and 23, and only when recent.
+  - The `inbox` tool reads them out (as quoted data) and marks them seen.
+  - **LINE has no way in for a personal account** (only official-account
+    bots behind a public webhook), so it is left out. The user said
+    iMessage does not matter.
+- **WhatsApp**, through Baileys (the open-source WhatsApp Web client), as a
+  linked device:
+  - **Pairing:** the desk's Comms → "link WhatsApp" (or `POST /whatsapp`)
+    installs `@whiskeysockets/baileys@6.7.18` and `qrcode` with npm into
+    `~/.kikoe/bridges/whatsapp` the first time, then runs `bridge.cjs` on
+    the app's own node. The QR appears on the desk to scan. The pairing
+    lives in `bridges/whatsapp/auth`.
+  - **Read only:** it never sends.
+  - **Gotcha:** Baileys' built-in protocol version is refused with 405, so
+    the bridge asks `fetchLatestBaileysVersion()` first.
+  - Tested to the QR, in a scratch folder; not linked to a phone.
+- **The ring:**
+  - Ultrahuman's partner API (`ultrahuman_token.txt` plus the
+    `ultrahuman_email` setting), or Oura v2 (`oura_token.txt`), every 30
+    minutes;
+  - sleep score and time, HRV, recovery and steps;
+  - **the response shapes are written from the docs, untested against a
+    real account.**
+- **Tokens** are never printed, and `keyFile()` only reads them. Each
+  source that has no token shows how to connect it on the Comms tab.

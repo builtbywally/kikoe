@@ -474,6 +474,55 @@
     return w?.hours?.findIndex((x) => Number(x.slice(0, 2)) === h) ?? -1;
   }
 
+  const SOURCE = {
+    mail: "mail",
+    slack: "slack",
+    telegram: "telegram",
+    discord: "discord",
+    whatsapp: "whatsapp",
+    line: "line",
+  };
+  function ago(at) {
+    const m = Math.round((Date.now() - at) / 60000);
+    return m < 1
+      ? "now"
+      : m < 60
+        ? `${m}m`
+        : m < 1440
+          ? `${Math.round(m / 60)}h`
+          : `${Math.round(m / 1440)}d`;
+  }
+  function ringTiles(d) {
+    const n = d?.health;
+    if (!n)
+      return notYet(
+        d?.sources?.ring
+          ? "the ring has not been read yet"
+          : "no ring connected: ultrahuman_token.txt and your email in settings, or oura_token.txt",
+      );
+    const hrs =
+      n.sleepMinutes != null
+        ? `${Math.floor(n.sleepMinutes / 60)}h${String(Math.round(n.sleepMinutes % 60)).padStart(2, "0")}`
+        : "–";
+    return `<div class="dk-tiles">${tile(n.sleepScore != null ? Math.round(n.sleepScore) : "–", "sleep score")}${tile(hrs, "asleep")}${tile(n.hrv != null ? Math.round(n.hrv) : "–", "hrv")}${tile(n.recovery != null ? Math.round(n.recovery) : "–", "recovery")}</div>`;
+  }
+  function githubBody(g) {
+    if (!g) return notYet("not read yet: is the gh CLI signed in?");
+    const rows = [
+      ...g.reviews.map(
+        (p) =>
+          `<li data-status="waiting"><span>${esc(p.title)}</span><i>review · ${esc(p.repo)}</i></li>`,
+      ),
+      ...g.mine.map(
+        (p) =>
+          `<li data-status="${p.checks === "fail" ? "failed" : p.checks === "pending" ? "working" : "idle"}"><span>${esc(p.title)}</span><i>${esc(p.checks)} · ${esc(p.repo)}#${p.number}</i></li>`,
+      ),
+    ];
+    return rows.length
+      ? `<ul class="dk-list">${rows.slice(0, 8).join("")}</ul>`
+      : notYet("nothing waiting on you");
+  }
+
   const TABS = {
     home(d) {
       const w = d?.weather;
@@ -520,12 +569,25 @@
     },
     life(d) {
       const rem = (d?.reminders ?? []).slice().sort((a, b) => a.at - b.at);
+      const todos = (d?.todos ?? []).slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0));
       const left = [
         panel(
-          "reminders and to-dos",
+          `to-do · ${todos.filter((t) => !t.done).length} open`,
+          todos.length
+            ? `<ul class="dk-list">${todos
+                .slice(0, 10)
+                .map(
+                  (t) =>
+                    `<li class="${t.done ? "done" : ""}"><span>${esc(t.text)}</span><i>${t.done ? "done" : ""}</i></li>`,
+                )
+                .join("")}</ul>`
+            : notYet("nothing on the list. Say “add … to my list”"),
+        ),
+        panel(
+          "reminders",
           rem.length
             ? `<ul class="dk-list">${rem
-                .slice(0, 8)
+                .slice(0, 6)
                 .map(
                   (r) =>
                     `<li><span>${esc(r.text)}</span><i>${new Date(r.at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}</i></li>`,
@@ -534,14 +596,52 @@
             : notYet("nothing to remember. Say “remind me to…”"),
         ),
       ];
-      const right = [panel("health", notYet("no ring connected yet"))];
+      const right = [panel("the ring", ringTiles(d))];
       return { left, right };
     },
-    comms() {
-      return {
-        left: [panel("inbox", notYet("no inbox connected yet"))],
-        right: [panel("messages", notYet("Slack, Discord, Telegram, LINE and WhatsApp come next"))],
-      };
+    comms(d) {
+      const inbox = d?.inbox;
+      const items = inbox?.items ?? [];
+      const src = d?.sources ?? {};
+      const left = [
+        panel(
+          `inbox · ${inbox ? esc(inbox.summary) : "not read"}`,
+          items.length
+            ? `<ul class="dk-list dk-inbox">${items
+                .slice(0, 12)
+                .map(
+                  (m) =>
+                    `<li><span><b>${esc(m.from)}</b> ${esc(String(m.text).slice(0, 90))}</span><i>${esc(SOURCE[m.source] ?? m.source)} · ${ago(m.at)}</i></li>`,
+                )
+                .join("")}</ul>`
+            : notYet("nothing has arrived yet"),
+        ),
+      ];
+      const chip = (on, name, how) =>
+        `<li data-status="${on ? "working" : "idle"}"><span>${name}</span><i>${on ? "connected" : esc(how)}</i></li>`;
+      const wa = d?.whatsapp;
+      const waBody =
+        wa?.phase === "scan" && wa.qr
+          ? `<div class="dk-qr"><img src="${wa.qr}" alt="WhatsApp pairing code"/><p>On the phone: WhatsApp → Settings → Linked devices → Link a device, and scan this.</p></div>`
+          : wa?.phase === "open"
+            ? `<p class="dk-text">Linked. New messages arrive in the inbox; nothing is ever sent.</p><button class="dk-btn" data-wa="off">unlink</button>`
+            : wa?.phase === "installing" || wa?.phase === "starting"
+              ? `<p class="dk-text">${wa.phase === "installing" ? "Installing the bridge (a minute, once)…" : "Starting…"}</p>`
+              : `${wa?.detail ? `<p class="dk-empty">${esc(wa.detail)}</p>` : ""}<button class="dk-btn" data-wa="on">link WhatsApp</button>`;
+      const right = [
+        panel(
+          "sources",
+          `<ul class="dk-list">
+            ${chip(src.mail, "Mail", "the desk reads Gmail hourly")}
+            ${chip(src.slack, "Slack", "slack_token.txt in the data folder")}
+            ${chip(src.telegram, "Telegram", "telegram_token.txt (a bot)")}
+            ${chip(src.discord, "Discord", "discord_token.txt (a bot)")}
+            ${chip(wa?.phase === "open", "WhatsApp", "link it below")}
+          </ul>`,
+        ),
+        panel("whatsapp", waBody),
+      ];
+      return { left, right };
     },
     work(d) {
       const ss = Object.values(d?.sessions ?? {});
@@ -561,6 +661,7 @@
                 .join("")}</ul>`
             : notYet("no agents running"),
         ),
+        panel("github", githubBody(d?.github)),
       ];
       const usage = (d?.usage ?? []).filter((u) => u.windows?.length);
       const right = [
@@ -583,10 +684,18 @@
       ];
       return { left, right };
     },
-    you() {
+    you(d) {
+      const n = d?.health;
       return {
-        left: [panel("sleep", notYet("no ring connected yet"))],
-        right: [panel("activity", notYet("no ring connected yet"))],
+        left: [panel("last night", ringTiles(d))],
+        right: [
+          panel(
+            "today",
+            n
+              ? `<div class="dk-tiles">${tile(n.steps ?? "–", "steps")}${tile(n.recovery != null ? Math.round(n.recovery) : "–", "recovery")}${tile(n.restingHr != null ? Math.round(n.restingHr) : "–", "resting hr")}</div>`
+              : notYet("no ring connected yet"),
+          ),
+        ],
       };
     },
   };
@@ -722,6 +831,9 @@
         S.tab = b.dataset.tab;
         localStorage.setItem("kik.desk.tab", S.tab);
         render();
+      } else if (b.dataset.wa) {
+        b.disabled = true;
+        void window.room?.whatsapp?.(b.dataset.wa === "on").then(() => setTimeout(refresh, 1500));
       } else if (b.classList.contains("dk-theme")) {
         S.theme = S.theme === "neon" ? "ember" : "neon";
         localStorage.setItem("kik.desk.theme", S.theme);
@@ -750,6 +862,10 @@
         host.hidden = true;
         cancelAnimationFrame(raf);
         clearInterval(poll);
+      },
+      /** Something the desk shows changed (a message, a QR, GitHub): read it again. */
+      changed() {
+        if (S.visible) void refresh();
       },
       /** Kik's state: the sphere fires faster when thinking, swells when speaking. */
       state(state, label) {

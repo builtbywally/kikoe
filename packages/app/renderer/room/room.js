@@ -2069,6 +2069,16 @@ const handlers = {
     holo?.level(f.level);
     desk?.level(f.level);
   },
+  // the life behind Kik changed: the desk reads it again
+  inbox() {
+    desk?.changed();
+  },
+  whatsapp() {
+    desk?.changed();
+  },
+  github() {
+    desk?.changed();
+  },
   mic(f) {
     if (f.mode) micMode = f.mode;
     if (f.key) micKey = f.key;

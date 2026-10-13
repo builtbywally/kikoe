@@ -161,6 +161,10 @@ export interface Settings {
    * Empty: guessed from the IP address once a day.
    */
   place: string;
+  /** WhatsApp into the inbox, through the bridge (whatsapp.ts): off until paired */
+  whatsapp: boolean;
+  /** the email the Ultrahuman ring's account uses, for its partner API */
+  ultrahuman_email: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -218,6 +222,8 @@ export const DEFAULTS: Settings = {
   mic_mode: "push",
   ptt_key: "CommandOrControl+Shift+Space",
   place: "",
+  whatsapp: false,
+  ultrahuman_email: "",
 };
 
 const FILE = () => path.join(HOME, "config.local.json");

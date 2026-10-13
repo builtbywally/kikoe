@@ -63,6 +63,7 @@
       fetch(`${base}/dashboard`, { headers })
         .then((r) => r.json())
         .catch(() => null),
+    whatsapp: (on) => post("/whatsapp", { on: Boolean(on) }),
     answerPin: (id, answer) => post(`/pins/${encodeURIComponent(id)}/answer`, { answer }),
     answerWord: (word) => post("/answer", { word }),
     removePin: (id) =>

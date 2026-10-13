@@ -153,7 +153,7 @@ it updates without a touch for a day.
 **Acceptance:** "Hey Kik" from the sofa works nine times in ten, and never
 wakes her during a film. The network unplugged still gets an answer.
 
-### Phase 4: Her life (the integrations)
+### Phase 4: Her life (the integrations) — built 2026-10-13: to-dos, GitHub, Mail, Slack, Telegram, Discord, WhatsApp, the ring; LINE has no personal API, iMessage not wanted
 
 1. **One inbox:**
    - Gmail is in.

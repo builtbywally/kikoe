@@ -276,6 +276,46 @@
   opacity: 0.5;
 }
 
+/* the life tabs: done to-dos, the inbox, WhatsApp's pairing code */
+.dk-list li.done span {
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+.dk-inbox li span b {
+  font-weight: 600;
+  margin-right: 6px;
+}
+.dk-btn {
+  margin-top: 6px;
+  color: var(--dk-ink);
+  background: rgba(var(--dk-a-rgb), 0.15);
+  border: 1px solid rgba(var(--dk-a-rgb), 0.45);
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font: 10px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.dk-qr {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.dk-qr img {
+  width: 150px;
+  height: 150px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+}
+.dk-qr p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
 /* a topic card, sliding in over the sphere as Kik speaks */
 .dk-topic {
   grid-area: mid;

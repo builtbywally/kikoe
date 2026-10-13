@@ -855,6 +855,12 @@ ipcMain.handle("island:config", () => daemonConfig());
 ipcMain.on("island:openSettings", (_e, page?: string) => openSettings(page ?? ""));
 ipcMain.handle("room:state", () => daemon?.state() ?? null);
 ipcMain.handle("room:dashboard", () => daemon?.desk() ?? null);
+// WhatsApp into the inbox: the desk's switch, kept in the settings
+ipcMain.handle("room:whatsapp", (_e, on: boolean) => {
+  saveSettings({ whatsapp: Boolean(on) });
+  daemon?.setWhatsApp(Boolean(on));
+  return { ok: true };
+});
 ipcMain.handle("room:answerPin", (_e, id: string, answer: string) => ({
   ok: daemon?.board.answer(String(id), String(answer)) ?? false,
 }));
