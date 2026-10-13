@@ -1544,3 +1544,21 @@ The user asked for K.A.R.A's hologram (augmaimaginarium.com/kara) for Kik.
     `scene.background`;
   - Electron exits 127 when an `http://` URL is a command-line argument to a
     script, so pass arguments in a file.
+
+## The voice fix, and the K.A.R.A plan (2026-10-13)
+
+- **Every Piper and Kokoro line was failing in the app** with "TTS
+  settlement failed", so Kik spoke in the Windows voice.
+  - **Cause:** Electron forbids external ArrayBuffers, and sherpa returns
+    audio in them by default. Plain node allows them, so no test saw it.
+  - **Fix:** `generateAsync` passes `enableExternalBuffer: false`
+    (`tts.ts`), pinned by `test/tts.test.ts`.
+  - **To reproduce an engine problem as the app sees it:** run a script
+    with `ELECTRON_RUN_AS_NODE=1 kikoe.exe script.cjs`. Plain node would
+    pass.
+- **ElevenLabs refuses with 401 `payment_required`** (a failed invoice on
+  the account). The ladder falls past it to Piper. Pay the invoice, or set
+  the voice to kokoro.
+- **`docs/KARA-PLAN.md`** is the plan for the whole K.A.R.A experience, in
+  seven phases, with the decisions only the user can make. It draws on
+  their maker's reel (@tonythetechie, 2026-10-07), as well as the site.
