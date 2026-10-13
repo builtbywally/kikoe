@@ -2222,6 +2222,8 @@ $("btn-board").addEventListener("click", showControl);
 $("btn-desk").addEventListener("click", () =>
   el.body.dataset.view === "desk" ? showRoom() : showDesk(),
 );
+// the phone's "day" button opens the desk and closes it (phone.js)
+window.kikView = { desk: showDesk, room: showRoom };
 // a wall screen opens straight onto the desk: …/room/?token=…#desk
 if (location.hash === "#desk") setTimeout(showDesk, 0);
 $("btn-body").addEventListener("click", () =>

@@ -89,7 +89,16 @@ export function voicePatch(raw: Record<string, unknown>): VoicePatch {
 }
 
 /** What the phone may read through us: the viewer's routes, and nothing that acts. */
-export const ROOM_READS = ["/state", "/sessions", "/stream", "/pins", "/backdrop", "/usage"];
+// /dashboard: the desk, which the phone opens with its "day" button
+export const ROOM_READS = [
+  "/state",
+  "/sessions",
+  "/stream",
+  "/pins",
+  "/backdrop",
+  "/usage",
+  "/dashboard",
+];
 
 /** Is this path one the phone may read through the proxy? */
 export function proxiable(pathname: string): boolean {

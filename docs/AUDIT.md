@@ -233,6 +233,29 @@ Gaps:
 - She has three poses and three gestures; K.A.R.A has dozens with an auto
   mode. **later**.
 
+## 13. The K.A.R.A experience (added 2026-10-13, docs/KARA-PLAN.md)
+
+Works:
+- The body has moods and modes, a bar, a close-up with gaze rings, and a
+  mouth that follows the voice meter.
+- The desk (T) has weather, air, a city map, the calendar, to-dos, the
+  inbox, GitHub and the ring. A TV opens it with `#desk`; the phone opens it
+  with "day".
+- "Hey Kik" (mic mode `wake`).
+- A voice whose account refuses is rested for six hours.
+- The holo keyboard (`/room/keys.html`).
+- Holo-Explorer (hands over the webcam).
+- The inbox reads Mail, Slack, Telegram, Discord and WhatsApp.
+
+Gaps:
+- The wake word, the gestures and the ring have been checked only on
+  synthetic input. **now**: try them for real.
+- Slack, Telegram, Discord and the ring need tokens from the user;
+  WhatsApp needs a scan. **now**.
+- LINE has no personal API, and a watch face needs native code (Xcode).
+  ntfy pushes already reach a paired watch. **later**.
+- The body is still the young VRoid sample. **when the user sends a VRM**.
+
 ## Closed since this was written (2026-09-07)
 
 - **The agent's work is on the canvas.** Diffs per edited file, run cards,

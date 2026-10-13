@@ -1753,3 +1753,20 @@ timers run only in the real app (`persistBoard`), never in a test.
   (`--use-fake-device-for-media-stream`): the feed, the tracker loading and
   running, 13 ms frames. **The gestures have not met real hands yet**; the
   thresholds may want tuning against a webcam.
+
+## The phone and the watch (2026-10-13, KARA-PLAN phase 7)
+
+- **The phone's "day" button** (beside "voice", phone.js) opens the desk,
+  laid out for a phone (`html[data-phone="true"] .desk` in desk.css): the
+  dock under the greeting, one column, room left for the talk orb.
+- `/dashboard` is in the walkie's `ROOM_READS`, so the phone reads the day
+  with the viewer token.
+- The desk's switches (WhatsApp) are refused there, as everything that acts
+  is.
+- **Not built:**
+  - **Her bust as the talk button:** the body is 7 MB of script, too heavy
+    to load on every phone visit. The orb stays the button.
+  - **A watch face:** it needs native code (watchOS through Xcode on a Mac,
+    or Wear OS through Android Studio). What does reach a paired watch today
+    are the ntfy pushes (`push_topic`): reminders, questions waiting on the
+    user, plan ready, work done.

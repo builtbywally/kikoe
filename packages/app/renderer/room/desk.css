@@ -399,3 +399,32 @@ body[data-view="desk"] #btn-desk {
     overflow: auto;
   }
 }
+
+/* on the phone: the dock under the greeting, one column, room for the talk button */
+html[data-phone="true"] .desk {
+  inset: 0;
+  grid-template-columns: 1fr;
+  grid-template-areas: "top" "dock" "left" "right";
+  grid-template-rows: auto auto auto auto;
+  overflow: auto;
+  padding-bottom: 210px;
+}
+html[data-phone="true"] .dk-dock {
+  padding: 12px 0 0;
+  flex-wrap: wrap;
+}
+html[data-phone="true"] .dk-topic {
+  display: none;
+}
+html[data-phone="true"] .dk-tiles {
+  grid-template-columns: repeat(2, 1fr);
+}
+html[data-phone="true"] .dk-col {
+  overflow: visible;
+}
+html[data-phone="true"] .dk-clock b {
+  font-size: 28px;
+}
+html[data-phone="true"] .dk-hello b {
+  font-size: 26px;
+}

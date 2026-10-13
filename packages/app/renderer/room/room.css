@@ -1821,7 +1821,8 @@ html[data-phone="true"] .ambient-flash {
 }
 
 /* The phone's voice panel and open mic (phone.js). */
-#phone-gear {
+#phone-gear,
+#phone-day {
   pointer-events: auto;
   width: 52px;
   height: 52px;
@@ -1831,7 +1832,8 @@ html[data-phone="true"] .ambient-flash {
   color: var(--dim);
   font: 600 10px / 1.15 var(--mono);
 }
-#phone-gear[aria-expanded="true"] {
+#phone-gear[aria-expanded="true"],
+#phone-day[aria-pressed="true"] {
   color: var(--fg);
   border-color: rgba(var(--fg-rgb), 0.4);
 }

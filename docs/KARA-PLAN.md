@@ -207,7 +207,7 @@ alone.
 **Acceptance:** with no mouse, explode and reassemble her, and spin her,
 on the first try, in ordinary room light.
 
-### Phase 7: The phone and the watch
+### Phase 7: The phone and the watch — the phone's day built 2026-10-13; the watch face needs native code (ntfy pushes reach the watch)
 
 1. **The phone page gets a home:** her bust as the talk button, the day
    in cards, the inbox and to-dos.
