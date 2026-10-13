@@ -139,7 +139,7 @@ abstract class SherpaRung implements Rung {
     }
   }
 
-  private async generate(
+  protected async generate(
     tts: any,
     text: string,
     speaker: Speaker,
@@ -156,6 +156,10 @@ abstract class SherpaRung implements Rung {
       text,
       sid,
       speed: 1.0,
+      // Electron forbids external ArrayBuffers: with sherpa's default every
+      // line failed "TTS settlement failed" in the app (never under plain
+      // node, so no test saw it), and the ladder fell through to the OS voice.
+      enableExternalBuffer: false,
       onProgress: ({ samples: chunk }: { samples: Float32Array }) => {
         if (signal.aborted) return false;
         if (ttfa < 0) ttfa = performance.now() - start;
