@@ -12,7 +12,7 @@
  * what the ear is doing.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
@@ -25,6 +25,16 @@ const MODEL = process.env.KIKOE_STT_MODEL || "tiny";
 const UNLOAD_MS = 10 * 60 * 1000;
 const RATE = 16000;
 const FRAME = 320; // 20 ms
+const KWS_DIR = process.env.KIKOE_KWS || "";
+/**
+ * "Hey Kik", spelled in the spotter's BPE pieces (SentencePiece on its
+ * bpe.model: HEY KIK is ▁HE Y ▁K I K, HEY KICK is ▁HE Y ▁K IC K). Tested on
+ * Piper's voice: both caught; "Kik" alone, "Hey Rick", "Hey kid" and "quick
+ * question" not.
+ */
+const WAKE_KEYWORDS = "▁HE Y ▁K I K :2.0 #0.15 @HEY_KIK\n▁HE Y ▁K IC K :2.0 #0.15 @HEY_KIK\n";
+/** what Whisper makes of the wake words alone, which is not a request */
+const ONLY_WAKE = /^\W*(?:hey|hi|hay|okay|ok)?\W*(?:kik|kick|keek|kit|kicks)\W*$/i;
 
 let chain: Promise<void> = Promise.resolve();
 /** Posts are serialised: each leaves after the last was answered, so the
@@ -186,11 +196,77 @@ function main(): void {
   // The mode (daemon/src/micmode.ts). Muted and push-to-talk close the
   // device's stream, so the OS shows the mic as off; the process stays up,
   // because the phone's clips are transcribed here too.
-  let mode = (process.env.KIKOE_MIC_MODE || "open") as "open" | "muted" | "push";
+  let mode = (process.env.KIKOE_MIC_MODE || "open") as "open" | "muted" | "push" | "wake";
   let talking = false;
   let talkTimer: ReturnType<typeof setTimeout> | null = null;
   let streaming = false;
-  const live = () => mode === "open" || (mode === "push" && talking);
+  const live = () => mode === "open" || mode === "wake" || (mode === "push" && talking);
+
+  // The wake word: a keyword spotter that hears every frame while in wake
+  // mode and nothing is open, and the last second and a half kept, so
+  // "Hey Kik, what's on today" said in one breath loses no words.
+  let kws: any = null;
+  let kwsStream: any = null;
+  function loadSpotter(): boolean {
+    if (kws) return true;
+    try {
+      const f = (n: string) => path.join(KWS_DIR, n);
+      if (!KWS_DIR || !existsSync(f("tokens.txt"))) throw new Error("the keyword model is missing");
+      const keywords = f("kikoe-keywords.txt");
+      writeFileSync(keywords, WAKE_KEYWORDS);
+      kws = new sherpa.KeywordSpotter({
+        featConfig: { sampleRate: RATE, featureDim: 80 },
+        modelConfig: {
+          transducer: {
+            encoder: f("encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
+            decoder: f("decoder-epoch-12-avg-2-chunk-16-left-64.onnx"),
+            joiner: f("joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
+          },
+          tokens: f("tokens.txt"),
+          numThreads: 1,
+          provider: "cpu",
+          debug: 0,
+        },
+        keywordsFile: keywords,
+      });
+      kwsStream = kws.createStream();
+      say("wake word: listening for hey kik");
+      return true;
+    } catch (e) {
+      say(`wake word unavailable: ${(e as Error).message}`);
+      post("/mic", { phase: "dead", text: `wake word: ${(e as Error).message}` });
+      return false;
+    }
+  }
+  const PREROLL = RATE * 1.5;
+  const preroll = new Float32Array(PREROLL);
+  let prerollAt = 0;
+  function keep(samples: Float32Array): void {
+    for (const v of samples) {
+      preroll[prerollAt] = v;
+      prerollAt = (prerollAt + 1) % PREROLL;
+    }
+  }
+  function prerolled(): Float32Array {
+    const out = new Float32Array(PREROLL);
+    out.set(preroll.subarray(prerollAt));
+    out.set(preroll.subarray(0, prerollAt), PREROLL - prerollAt);
+    return out;
+  }
+  /** The wake word was heard: open one sentence, as the push-to-talk key does. */
+  function woken(): void {
+    talking = true;
+    post("/mic", { phase: "push-open", wake: true });
+    if (talkTimer) clearTimeout(talkTimer);
+    // nothing said in 10 s closes it again
+    talkTimer = setTimeout(endTalk, 10_000);
+    try {
+      vad.reset?.();
+    } catch {
+      /* an older sherpa has no reset */
+    }
+    vad.acceptWaveform(prerolled());
+  }
   function setStream(on: boolean): void {
     if (on === streaming) return;
     try {
@@ -258,6 +334,21 @@ function main(): void {
         livePeak = 0;
       }
     }
+    if (mode === "wake" && !talking) {
+      keep(samples);
+      if (!kws && !loadSpotter()) return;
+      kwsStream.acceptWaveform({ sampleRate: RATE, samples });
+      while (kws.isReady(kwsStream)) {
+        kws.decode(kwsStream);
+        if (kws.getResult(kwsStream).keyword) {
+          kws.reset(kwsStream);
+          say("wake word heard");
+          woken();
+          break;
+        }
+      }
+      if (!talking) return;
+    }
     vad.acceptWaveform(samples);
     const detected: boolean = vad.isDetected();
     if (detected) {
@@ -277,8 +368,14 @@ function main(): void {
       // Electron forbids external ArrayBuffers; ask for a copy
       const seg = vad.front(false);
       vad.pop();
-      const pushed = mode === "push" && talking;
-      transcribe(seg.samples, seg.samples.length / RATE, pushed);
+      const pushed = (mode === "push" || mode === "wake") && talking;
+      if (mode === "wake" && talking) {
+        // "Hey Kik" alone, then a pause: the sentence is still to come
+        const t = Date.now();
+        const text = recognize(seg.samples);
+        if (ONLY_WAKE.test(text)) continue;
+        transcribe(seg.samples, seg.samples.length / RATE, true, { text, ms: Date.now() - t });
+      } else transcribe(seg.samples, seg.samples.length / RATE, pushed);
       // push to talk is one sentence
       if (pushed) endTalk();
     }
@@ -298,14 +395,19 @@ function main(): void {
     return String(rec.getResult(stream).text ?? "").trim();
   }
 
-  function transcribe(samples: Float32Array, durS: number, pushed = false): void {
+  function transcribe(
+    samples: Float32Array,
+    durS: number,
+    pushed = false,
+    done?: { text: string; ms: number },
+  ): void {
     post("/mic", { phase: "transcribing" });
     const t = Date.now();
-    const text = recognize(samples);
+    const text = done ? done.text : recognize(samples);
     post("/heard", {
       text,
       dur_s: Number(durS.toFixed(2)),
-      stt_ms: Date.now() - t,
+      stt_ms: done ? done.ms : Date.now() - t,
       ...(pushed ? { ptt: true } : {}),
     });
   }
@@ -321,7 +423,7 @@ function main(): void {
     (e: { data?: { type?: string; id?: number; pcm?: unknown; mode?: string; on?: boolean } }) => {
       const m = e?.data;
       if (m?.type === "mode") {
-        mode = m.mode === "muted" || m.mode === "push" ? m.mode : "open";
+        mode = m.mode === "muted" || m.mode === "push" || m.mode === "wake" ? m.mode : "open";
         talking = false;
         if (talkTimer) clearTimeout(talkTimer);
         setStream(live());
@@ -361,6 +463,7 @@ function main(): void {
   post("/mic", { phase: "ready", text: String(dev?.name ?? id), rate });
   if (mode !== "open") post("/mic", { phase: mode });
   say(`${mode === "open" ? "listening" : mode} on ${dev?.name ?? id} at ${rate} Hz`);
+  if (mode === "wake") loadSpotter();
 
   process.on("SIGTERM", () => {
     try {

@@ -290,7 +290,15 @@ function renderProject(agents) {
   if (!chip.dataset.wired) {
     chip.dataset.wired = "1";
     chip.addEventListener("click", () => {
-      const next = micMode === "push" ? "open" : micMode === "open" ? "muted" : "push";
+      // push → wake word → open → muted → push
+      const next =
+        micMode === "push"
+          ? "wake"
+          : micMode === "wake"
+            ? "open"
+            : micMode === "open"
+              ? "muted"
+              : "push";
       window.room.setMicMode?.(next);
     });
   }
@@ -299,6 +307,7 @@ function renderProject(agents) {
 function micChipText() {
   if (micMode === "muted") return "mic off · phone only";
   if (micMode === "push") return `push to talk · ${micKey}`;
+  if (micMode === "wake") return "wake word · say hey kik";
   return "mic · listening";
 }
 
@@ -306,6 +315,7 @@ function micChipText() {
 function idleLabel() {
   if (micMode === "muted") return "phone only";
   if (micMode === "push") return micKey;
+  if (micMode === "wake") return "say hey kik";
   return "listening";
 }
 
@@ -1762,9 +1772,11 @@ function renderControl(state) {
       state?.mic?.enabled
         ? micMode === "push"
           ? `Nothing heard yet. Press ${micKey} and talk.`
-          : micMode === "muted"
-            ? "The computer's mic is off; talk to the phone."
-            : "Nothing heard yet. Say “hey kikoe”."
+          : micMode === "wake"
+            ? "Nothing heard yet. Say “hey Kik”, then what you want."
+            : micMode === "muted"
+              ? "The computer's mic is off; talk to the phone."
+              : "Nothing heard yet. Say “hey kikoe”."
         : "The microphone is off. Turn it on under General.",
     );
   for (const h of state?.heard ?? []) {

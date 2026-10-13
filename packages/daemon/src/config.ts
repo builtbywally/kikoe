@@ -153,7 +153,7 @@ export interface Settings {
    * hears nothing on the PC but the phone still works, "push" listens for
    * one sentence after the push-to-talk key.
    */
-  mic_mode: "open" | "muted" | "push";
+  mic_mode: "open" | "muted" | "push" | "wake";
   /** the push-to-talk key, an Electron accelerator */
   ptt_key: string;
   /**

@@ -70,6 +70,19 @@ export const WHISPER_MULTI: ModelSpec = {
   marker: "base-tokens.txt",
 };
 
+/**
+ * The wake word's ear: a 3.3M-parameter streaming keyword spotter (English,
+ * GigaSpeech), small enough to listen all day. The phrase is spelled in its
+ * BPE pieces in mic.ts.
+ */
+export const KWS: ModelSpec = {
+  name: "keyword-spotter",
+  dir: "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01",
+  url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2",
+  size: 17_626_723,
+  marker: "tokens.txt",
+};
+
 /** The VAD is a single file, not an archive. */
 export const VAD_URL = `${ASR}silero_vad.onnx`;
 
@@ -79,6 +92,7 @@ export const SPECS: Record<string, ModelSpec> = {
   "whisper-tiny": WHISPER_TINY,
   "whisper-base": WHISPER_BASE,
   "whisper-base-multilingual": WHISPER_MULTI,
+  kws: KWS,
 };
 
 /** Fetch the VAD file if it is missing. Small, so no progress. */

@@ -54,3 +54,66 @@ describe("sherpa voices", () => {
     expect(res.backend).toBe("piper");
   });
 });
+
+describe("the ladder", () => {
+  const speaker = {
+    rate: 48000,
+    push: () => {},
+    flush: () => {},
+    drop: () => {},
+    queuedSeconds: () => 0,
+    quiet: async () => {},
+    resetClock: () => {},
+    info: () => ({ device: "test", rate: 48000, api: "test" }),
+    close: () => {},
+  };
+  const rung = (name: string, fail?: string) => {
+    const r = {
+      name,
+      tries: 0,
+      available: () => true,
+      async streamTo() {
+        r.tries++;
+        if (fail) throw new Error(fail);
+        return { backend: name, ttfaMs: 1, audioS: 1 };
+      },
+    };
+    return r;
+  };
+
+  it("rests an account that refuses, and tries it again after six hours", async () => {
+    const { Ladder, BENCH_MS } = await import("../src/tts.js");
+    const { DEFAULTS } = await import("../src/config.js");
+    let now = 1_000_000;
+    const eleven = rung("eleven", 'elevenlabs 401: {"detail":{"status":"payment_issue"}}');
+    const piper = rung("piper");
+    const ladder = new Ladder({ settings: DEFAULTS, rungs: [eleven, piper], now: () => now });
+    const signal = new AbortController().signal;
+    expect((await ladder.speak("one", speaker, signal)).backend).toBe("piper");
+    expect((await ladder.speak("two", speaker, signal)).backend).toBe("piper");
+    expect(eleven.tries).toBe(1);
+    expect(Object.keys(ladder.resting)).toEqual(["eleven"]);
+    now += BENCH_MS + 1;
+    await ladder.speak("three", speaker, signal);
+    expect(eleven.tries).toBe(2);
+  });
+
+  it("rests on the status code alone", async () => {
+    const { Ladder } = await import("../src/tts.js");
+    const { DEFAULTS } = await import("../src/config.js");
+    const eleven = rung("eleven", "elevenlabs 401: unauthorized");
+    const ladder = new Ladder({ settings: DEFAULTS, rungs: [eleven, rung("piper")] });
+    await ladder.speak("one", speaker, new AbortController().signal);
+    expect(Object.keys(ladder.resting)).toEqual(["eleven"]);
+  });
+
+  it("does not rest a voice for an ordinary failure", async () => {
+    const { Ladder } = await import("../src/tts.js");
+    const { DEFAULTS } = await import("../src/config.js");
+    const kokoro = rung("kokoro", "TTS settlement failed");
+    const piper = rung("piper");
+    const ladder = new Ladder({ settings: DEFAULTS, rungs: [kokoro, piper] });
+    await ladder.speak("one", speaker, new AbortController().signal);
+    expect(ladder.resting).toEqual({});
+  });
+});

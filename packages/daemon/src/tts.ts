@@ -417,17 +417,35 @@ export class SystemRung implements Rung {
 export interface LadderOptions {
   settings: Settings;
   elevenKey?: string;
+  /** the rungs in order, instead of the ones the settings choose (tests) */
+  rungs?: Rung[];
+  now?: () => number;
 }
+
+/** An account that refuses (billing, quota, a dead key) is rested this long. */
+export const BENCH_MS = 6 * 3600_000;
+const REFUSED =
+  /\b(401|402|403|429)\b|payment_required|payment_issue|quota_exceeded|insufficient|invalid_api_key/i;
 
 export class Ladder {
   readonly rungs: Rung[];
   readonly strict: boolean;
   private readonly byName = new Map<string, Rung>();
   private promoted: Rung | null = null;
+  /** rungs whose account refused, and until when they sit out */
+  private readonly benched = new Map<string, number>();
+  private readonly now: () => number;
   lastBackend = "";
 
   constructor(opts: LadderOptions) {
     const s = opts.settings;
+    this.now = opts.now ?? Date.now;
+    if (opts.rungs) {
+      this.rungs = opts.rungs;
+      for (const r of opts.rungs) this.byName.set(r.name, r);
+      this.strict = s.tts_strict;
+      return;
+    }
     const eleven = new ElevenRung({
       key: opts.elevenKey ?? elevenKeyFromFile(),
       voice: s.elevenlabs_voice,
@@ -469,12 +487,26 @@ export class Ladder {
     return this.rungs.map((r) => r.name);
   }
 
+  /** The rungs resting after a refusal, and until when. */
+  get resting(): Record<string, number> {
+    const t = this.now();
+    return Object.fromEntries([...this.benched].filter(([, until]) => until > t));
+  }
+
   async speak(
     text: string,
     speaker: Speaker,
     signal: AbortSignal,
     hint: VoiceHint = {},
   ): Promise<SpokenResult> {
+    // a rest that is over: the preferred voice gets its turn again, ahead of
+    // the fallback that was promoted while it rested
+    for (const [name, until] of this.benched) {
+      if (until <= this.now()) {
+        this.benched.delete(name);
+        this.promoted = null;
+      }
+    }
     const order: Rung[] = [];
     const hinted = hint.backend ? this.byName.get(hint.backend) : undefined;
     if (hinted) order.push(hinted);
@@ -482,7 +514,10 @@ export class Ladder {
     order.push(...this.rungs);
     const tried = [...new Set(order)];
     let lastErr: unknown = new Error("no TTS backend available");
-    for (const rung of this.strict ? tried.slice(0, 1) : tried) {
+    // a rung on the bench is passed over without a try: ElevenLabs refusing
+    // a failed invoice used to cost a round trip and a log line every line
+    const ready = tried.filter((r) => (this.benched.get(r.name) ?? 0) <= this.now());
+    for (const rung of this.strict ? ready.slice(0, 1) : ready) {
       if (signal.aborted) throw new Error("cancelled");
       try {
         const res = await rung.streamTo(
@@ -498,6 +533,10 @@ export class Ladder {
         lastErr = e;
         if ((e as Error).message === "cancelled") throw e;
         log(`tts ${rung.name} failed: ${(e as Error).message}`);
+        if (REFUSED.test((e as Error).message)) {
+          this.benched.set(rung.name, this.now() + BENCH_MS);
+          log(`tts ${rung.name}: the account refused; resting it for six hours`);
+        }
         if (rung === this.promoted) this.promoted = null;
         speaker.drop();
       }

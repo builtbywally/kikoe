@@ -41,6 +41,14 @@ describe("micModeAsk", () => {
     expect(mm.micModeAsk("run Marine")).toBeNull();
   });
 
+  it("hears the wake word mode, and keeps it", () => {
+    expect(mm.micModeAsk("use the wake word")).toBe("wake");
+    expect(mm.micModeAsk("listen for hey kik")).toBe("wake");
+    expect(mm.micModeAsk("hey kick mode")).toBe("wake");
+    expect(mm.micModeOf("wake")).toBe("wake");
+    expect(mm.micModeLine("wake", "")).toMatch(/hey Kik/);
+  });
+
   it("says the key out loud", () => {
     expect(mm.spokenKey("CommandOrControl+Shift+Space")).toBe("control shift space");
   });

@@ -44,6 +44,7 @@ export {
   WHISPER_TINY,
   WHISPER_BASE,
   WHISPER_MULTI,
+  KWS,
 } from "./models.js";
 export type { ModelSpec, Progress } from "./models.js";
 export {

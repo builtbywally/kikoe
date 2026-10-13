@@ -1595,3 +1595,44 @@ The user asked for K.A.R.A's hologram (augmaimaginarium.com/kara) for Kik.
   - CSS makes the water black, the land dim and the roads bright
     (brightness 1.7, contrast 6), and the theme's gradient is multiplied
     over it.
+
+## "Hey Kik" and a voice that rests (2026-10-13, KARA-PLAN phase 3)
+
+- **A fourth mic mode, `wake`.** Choose it in Settings → Listening, cycle the
+  mic chip (push → wake → open → muted), or say "use the wake word".
+  - The stream stays open, but only a keyword spotter hears it:
+    sherpa-onnx's 3.3M GigaSpeech zipformer (`KWS` in models.ts, 17.6 MB,
+    fetched once when the ear starts, whatever the mode).
+  - "Hey Kik" opens one sentence, as the push-to-talk key does
+    (`push-open` with `wake: true`, closed after 10 s of nothing).
+  - The last 1.5 s are kept and handed to the VAD, so a request said in the
+    same breath keeps its words.
+  - A segment that is only the wake words ("hey kik", "kick") is not sent;
+    the sentence is still to come.
+  - Nothing is transcribed until the wake word.
+- **The keywords are BPE pieces, not text.**
+  - "HEY KIK" is `▁HE Y ▁K I K`, and "HEY KICK" is `▁HE Y ▁K IC K`. I got
+    them from SentencePiece on the model's bpe.model, in a venv with
+    `pip install sentencepiece`. A hand-guessed spelling (`▁K I CK`) caught
+    nothing.
+  - Written to `kikoe-keywords.txt` in the model folder with `:2.0 #0.15`
+    (a boost and a threshold).
+  - Tested on Piper's voice, under node and under `ELECTRON_RUN_AS_NODE`:
+    - caught: "Hey Kik", "Hey Kik, what's the weather?", "Hey, Kick";
+    - not caught: "Kik", "Hey Rick", "Hey kid", "Okay, quick question", and
+      the model's two test recordings.
+  - **Not yet heard through a real microphone.**
+- **The phone** keeps hold-to-talk; a wake word in the browser is not built.
+- **A voice whose account refuses is rested for six hours** (`Ladder`,
+  `BENCH_MS`).
+  - It triggers on 401, 402, 403 or 429, and on payment_required, quota or
+    invalid key.
+  - When the rest ends, the promoted fallback is dropped, so the preferred
+    voice is tried first again.
+  - `/state` → `tts.resting` shows it.
+- **No local model for the mind:** the user keeps the Claude Code
+  subscription. (Ollama is installed with gemma4:26b, which ran out of GPU
+  memory when tried.)
+- **Gotcha:** `\b` written into a Python heredoc that patches TypeScript
+  becomes a backspace character. Biome's `noControlCharactersInRegex`
+  caught one. Write patch scripts with the Write tool.

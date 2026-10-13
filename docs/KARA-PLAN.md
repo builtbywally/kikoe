@@ -139,7 +139,7 @@ No frame is over 17 ms on this machine.
 **Acceptance:** on the TV from across the room, it reads at a glance, and
 it updates without a touch for a day.
 
-### Phase 3: She hears her name anywhere (voice parity)
+### Phase 3: She hears her name anywhere (voice parity) — built 2026-10-13 on the desktop; the phone keeps hold-to-talk; no local mind (the user keeps the Claude Code subscription)
 
 1. **A real wake word, "Hey Kik"**: openWakeWord or the sherpa-onnx keyword
    spotter, local, on the desktop. The phone page uses the same model in the

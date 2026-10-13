@@ -16,6 +16,7 @@ import {
   Daemon,
   HOME,
   KOKORO,
+  KWS,
   MODELS,
   type Settings,
   Supervisor,
@@ -372,6 +373,10 @@ async function spawnEar(): Promise<void> {
   // The ear's models come on demand, the first time it is turned on.
   try {
     await fetchVad();
+    // the wake word's spotter: small, fetched once whatever the mode, so
+    // switching to wake later needs no restart; the ear works without it
+    if (!modelInstalled(KWS))
+      await fetchModel(KWS).catch((e) => log(`kws: ${(e as Error).message}`));
     const spec =
       s.stt_model === "multi"
         ? WHISPER_MULTI
@@ -404,6 +409,7 @@ async function spawnEar(): Promise<void> {
       KIKOE_MIC_DEVICE: s.mic_device,
       KIKOE_STT_MODEL: s.stt_model,
       KIKOE_MIC_MODE: s.mic_mode ?? "open",
+      KIKOE_KWS: path.join(MODELS, KWS.dir),
     },
   });
   ear = child;

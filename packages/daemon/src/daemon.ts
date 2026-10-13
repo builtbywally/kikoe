@@ -4713,6 +4713,7 @@ export class Daemon {
         last: this.ladder.lastBackend,
         strict: this.ladder.strict,
         loaded: loadedEngines(),
+        resting: this.ladder.resting,
       },
       speaker: this.speaker.info(),
       arbiter: this.arbiter.state(),
