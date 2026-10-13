@@ -1,0 +1,115 @@
+/* The holo keyboard (keys.js): neon arcs on black, after K.A.R.A's. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(ellipse at 50% 90%, #120a24 0%, #05030a 60%);
+  color: #dff1ff;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  font: 14px var(--sans, system-ui, sans-serif);
+}
+body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+.hk-top {
+  padding: 18px 26px 6px;
+}
+.hk-said {
+  font: 400 17px / 1.4 var(--serif, Georgia, serif);
+  opacity: 0.85;
+  min-height: 24px;
+}
+.hk-said small {
+  font: 10px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.3em;
+  color: #6fd3ff;
+  margin-right: 10px;
+}
+.hk-line {
+  margin-top: 12px;
+  padding: 12px 16px;
+  min-height: 26px;
+  border: 1px solid rgba(110, 200, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(30, 60, 110, 0.15);
+  box-shadow: inset 0 0 18px rgba(80, 170, 255, 0.12);
+  font: 20px var(--mono, ui-monospace, monospace);
+}
+.hk-caret {
+  display: inline-block;
+  width: 2px;
+  height: 22px;
+  margin-left: 2px;
+  vertical-align: -4px;
+  background: #8fdcff;
+  animation: hk-blink 1s steps(2) infinite;
+}
+@keyframes hk-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.hk-keys {
+  width: 100%;
+  height: 100%;
+  max-height: calc(100vh - 150px);
+  filter: drop-shadow(0 0 6px rgba(70, 160, 255, 0.35));
+}
+.hk-key path,
+.hk-key circle {
+  fill: rgba(20, 60, 120, 0.22);
+  stroke: rgba(120, 200, 255, 0.75);
+  stroke-width: 1.2;
+  transition: fill 0.12s;
+  cursor: pointer;
+}
+.hk-key text {
+  fill: #cfeaff;
+  font: 15px var(--mono, ui-monospace, monospace);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.hk-key.letter text {
+  font-size: 19px;
+  text-transform: none;
+}
+.hk-key.cmd path {
+  fill: rgba(70, 40, 140, 0.25);
+  stroke: rgba(190, 150, 255, 0.7);
+}
+.hk-key.cmd text {
+  font-size: 12.5px;
+  fill: #e6dcff;
+}
+.hk-key.view path {
+  stroke-dasharray: 4 3;
+}
+.hk-kik circle {
+  fill: rgba(40, 120, 220, 0.35);
+  stroke: #8fdcff;
+  stroke-width: 2;
+}
+.hk-kik text {
+  font: 600 26px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.3em;
+}
+.hk-key.down path,
+.hk-key.down circle {
+  fill: rgba(140, 210, 255, 0.55);
+}
+.hk-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 22px 14px;
+  font: 10px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}

@@ -2148,7 +2148,10 @@ const handlers = {
     }
   },
   view(f) {
+    // the holo keyboard switches to the desk and the body too
     if (f.view === "control") showControl();
+    else if (f.view === "desk") showDesk();
+    else if (f.view === "body") void showBody();
     else showRoom();
   },
   heard(f) {

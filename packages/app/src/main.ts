@@ -153,6 +153,8 @@ async function startDaemon(): Promise<void> {
   daemon.onMicReady = () => earKeeper.ready();
   // "Mute the computer" said to the phone, or the tray, or Settings
   daemon.onMicMode = (mode) => applyMicMode(mode);
+  // the holo keyboard's KIK key: one sentence, as the push-to-talk key opens it
+  daemon.onTalk = () => ear?.postMessage({ type: "talk" });
   applyMicMode(settings.mic_mode ?? "open");
   keepHooks();
   if (!hooksTimer) hooksTimer = setInterval(keepHooks, 5 * 60_000);
@@ -1329,8 +1331,10 @@ ipcMain.handle("settings:inputDevices", () => {
 });
 ipcMain.handle("settings:copyLink", (_e, kind: string) => {
   if (!daemon) return { error: "daemon not running" };
-  const token = kind === "full" ? daemon.token : daemon.viewer;
-  clipboard.writeText(`http://127.0.0.1:${daemon.settings.port}/room/?token=${token}`);
+  const token = kind === "full" || kind === "keys" ? daemon.token : daemon.viewer;
+  // the holo keyboard on this computer; a tablet opens /room/keys.html on the walkie's link
+  const page = kind === "keys" ? "room/keys.html" : "room/";
+  clipboard.writeText(`http://127.0.0.1:${daemon.settings.port}/${page}?token=${token}`);
   return { ok: true };
 });
 ipcMain.handle("settings:openHome", () => shell.openPath(HOME));

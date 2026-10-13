@@ -464,6 +464,8 @@ export class Daemon {
   onMicReady?: () => void;
   /** the app tells the ear (main.ts): the mic's mode changed */
   onMicMode?: (mode: MicMode) => void;
+  /** the app opens one push-to-talk sentence on the ear (the holo keyboard's KIK key) */
+  onTalk?: () => void;
   /** until when an utterance without the name still counts as for us */
   private attentionUntil = 0;
   private anthropicKey = "";
@@ -2850,6 +2852,7 @@ export class Daemon {
           log(`walkie: typed ${text.split(/\s+/).length} words`);
           return this.typed(text, "phone").kind;
         },
+        onKey: (action) => this.keyAction(action),
         ...(this.roomDir ? { room: { port: daemonPort, viewer: this.viewer } } : {}),
         log,
       });
@@ -4850,6 +4853,28 @@ export class Daemon {
     });
   }
 
+  /**
+   * The holo keyboard's keys that are not words: switch the Room's view, open
+   * push to talk on the computer's mic, clear the board. Nothing else is
+   * accepted, whoever asks.
+   */
+  keyAction(action: string): boolean {
+    const view = /^view:(room|desk|body|control)$/.exec(action)?.[1];
+    if (view) {
+      this.hub.publish("view", { view });
+      return true;
+    }
+    if (action === "talk") {
+      this.onTalk?.();
+      return Boolean(this.onTalk);
+    }
+    if (action === "clear") {
+      this.board.clear();
+      return true;
+    }
+    return false;
+  }
+
   /** Mail, read by the desk from the user's Gmail. */
   async refreshMail(): Promise<void> {
     if (this.settings.agenda === false || !this.settings.agents) return;
@@ -5199,6 +5224,11 @@ export class Daemon {
         const b = JSON.parse((await this.body(req)) || "{}");
         this.setWhatsApp(b.on === true);
         return this.json(res, 200, { ok: true, phase: this.whatsapp?.phase ?? "off" });
+      }
+      case "POST /keys": {
+        const b = JSON.parse((await this.body(req)) || "{}");
+        const ok = this.keyAction(String(b.action ?? ""));
+        return this.json(res, ok ? 200 : 400, { ok });
       }
       case "POST /inbox/seen":
         this.inbox.seen();

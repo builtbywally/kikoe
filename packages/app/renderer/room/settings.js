@@ -673,6 +673,10 @@
       r.ok ? "good" : "bad",
     );
   });
+  $("copy-keys").addEventListener("click", async () => {
+    const r = await api.copyLink("keys");
+    note("screens-note", r.ok ? "Keyboard link copied." : r.error, r.ok ? "good" : "bad");
+  });
   $("copy-full").addEventListener("click", async () => {
     const r = await api.copyLink("full");
     note(

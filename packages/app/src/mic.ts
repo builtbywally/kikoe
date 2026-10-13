@@ -432,6 +432,11 @@ function main(): void {
         return;
       }
       if (m?.type === "talk") {
+        // in wake mode the key (or the holo keyboard) is the wake word
+        if (mode === "wake") {
+          if (!talking) woken();
+          return;
+        }
         if (mode !== "push") return;
         // the key again, while talking, ends the sentence
         if (talking || m.on === false) return endTalk();

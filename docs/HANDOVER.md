@@ -1692,3 +1692,28 @@ timers run only in the real app (`persistBoard`), never in a test.
     real account.**
 - **Tokens** are never printed, and `keyFile()` only reads them. Each
   source that has no token shows how to connect it on the Comms tab.
+
+## The holo keyboard (2026-10-13, KARA-PLAN phase 5)
+
+- **`renderer/room/keys.html`** (`keys.js`, `keys.css`) is K.A.R.A's curved
+  keyboard for a tablet. It is served from the Room's folder, so it comes
+  through the walkie like the phone page: on a tablet, the phone's link plus
+  `/room/keys.html`, riding the walkie's cookie. On this computer, Settings →
+  Screens → Holo keyboard copies `…/room/keys.html?token=<full token>`.
+- **The layout:**
+  - three arcs of letters (shift, del, space, return);
+  - a violet ring of commands: new, open, save, copy, paste, stack, clear;
+  - a ring of views and asks: room, desk, body, brief, inbox;
+  - the KIK disc at the centre;
+  - Kik's last spoken line along the top, from `/stream`.
+- **What the keys do:**
+  - Letters build a line that RETURN posts to `/say`, as if typed on the
+    canvas.
+  - Command keys post a short sentence to `/say` ("keep that card", "tidy
+    the board").
+  - Keys that are not words go to `POST /keys` (daemon and walkie). The
+    whitelist is `Daemon.keyAction`: `view:room|desk|body|control` (a
+    `view` frame, handled in room.js), `talk`, `clear`; anything else is
+    refused (`test/keys.test.ts`).
+  - KIK sends `talk`: `daemon.onTalk` (main.ts) opens one sentence on the
+    ear. In wake mode it acts as the wake word.

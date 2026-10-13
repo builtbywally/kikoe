@@ -175,7 +175,7 @@ wakes her during a film. The network unplugged still gets an answer.
 **Acceptance:** the morning brief covers calendar, messages, sleep and
 weather in under 30 seconds, every morning, unasked.
 
-### Phase 5: The Holo Keyboard
+### Phase 5: The Holo Keyboard — built 2026-10-13
 
 A page the daemon serves to a tablet or phone (like the phone page):
 - the arc layout, glowing, with command keys: new, open, save, copy, paste,

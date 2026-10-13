@@ -62,6 +62,8 @@ export interface WalkieOptions {
   room?: { port: number; viewer: string };
   /** a sentence typed on the phone; the same power as saying it */
   onText?: (text: string) => Promise<string> | string;
+  /** a key on the holo keyboard (keys.html): the daemon's short whitelist */
+  onKey?: (action: string) => boolean;
   log?: (line: string) => void;
 }
 
@@ -383,6 +385,23 @@ export class Walkie {
         "cache-control": "no-store",
       });
       res.end(body);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/keys" && this.opts.onKey) {
+      let raw = "";
+      for await (const c of req) {
+        raw += c;
+        if (raw.length > 500) break;
+      }
+      let action = "";
+      try {
+        action = String(JSON.parse(raw || "{}").action ?? "").slice(0, 40);
+      } catch {
+        /* not json */
+      }
+      const ok = this.opts.onKey(action);
+      res.writeHead(ok ? 200 : 400, { ...headers, "content-type": "application/json" });
+      res.end(JSON.stringify({ ok }));
       return;
     }
     if (req.method === "POST" && url.pathname === "/say" && this.opts.onText) {
