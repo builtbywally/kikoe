@@ -129,6 +129,48 @@ the title bar opens and closes the view. The HUD shows the frame time. If
 frames average over 24 ms, the body cloud draws fewer points; the points
 were drawn at random, so any prefix is an even subset.
 
+## Moods, modes, the bar (2026-10-13, KARA-PLAN phase 1)
+
+- **The bar** (bottom right) works as K.A.R.A's does, in four groups:
+  - moods: neutral, happy, concerned, thinking;
+  - speak, sphere, auto;
+  - modes: idle, hover, talk, present r, present l, operate;
+  - close-up.
+- **Moods.**
+  - A pinned mood (click again to unpin) beats the mood of the line, which
+    beats the state's. A line that sounds concerned ("failed", "sorry",
+    "red") or happy ("done", "passed", "!") sets the mood while it is said
+    and for three seconds after.
+  - Each mood is a face (VRM expressions), a posture and a tint: teal
+    happy, rose concerned, violet thinking.
+  - Asking keeps its amber and failing its red.
+- **Modes and auto.**
+  - The state's pose (thinking, listening, asking) beats the mode's, and
+    talking adds the talk pose when no mode is held.
+  - Hover lifts her about 0.4 m, seated on nothing, with a slow bob; the
+    camera follows her up.
+  - Auto walks idle → hover → present r → idle → operate → present l → talk,
+    every 8 to 15 seconds, while she is idle and not talking.
+- **The mouth follows the voice as it is heard.**
+  - The daemon's `VoiceMeter` (speaker.ts) measures every 60 ms of what the
+    speaker is handed. It sends a `voice` frame `{ level }` when that slice
+    reaches the speaker, not when it was made, and closes the mouth on a
+    cut-off.
+  - The level sets how open the mouth is; the letter the text is at sets
+    the vowel shape. The talking hands beat on the louder syllables.
+- **Close-up** (z, double-click, or the button): the camera moves to her
+  face, and two rings sit over her eyes, which follow you.
+- **The panel is fed** from the Room (`holoPanel` in room.js):
+  - test counts in a line ("16 passed") give a figure and the agent rows;
+  - a temperature gives the weather;
+  - a line that opens with a project gives that project's agents.
+
+  It closes 4 seconds after the line ends, unless Kik is asking. It rises
+  on the hand the mode holds (present l uses the left).
+- **The speak button** asks Kik for a one-line hello (`room.sayToKik`).
+- **Keys:** h hover, a auto, z close-up, w wave, plus space, d, v and r as
+  before.
+
 ## Gotchas found building it
 
 - **RenderPass into the composer's half-float target lost the clear
@@ -146,10 +188,6 @@ were drawn at random, so any prefix is an even subset.
 
 ## Not done yet
 
-- Nothing calls the panel yet. An agent's status or test counts are the
-  natural first use.
 - The phone does not load her.
-- The mouth follows the text, not the audio. Driving it from the TTS
-  audio's level would match Kik's real timing.
-- K.A.R.A has dozens of poses with an auto mode; Kik has three poses and
-  three gestures.
+- Her body still looks young: waiting on a VRoid Studio export from the
+  user (KARA-PLAN, decision 1).

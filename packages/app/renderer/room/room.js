@@ -1822,6 +1822,42 @@ function showRoom() {
 }
 
 // --- Kik's body ------------------------------------------------------------------
+
+let holoPanelTimer = 0;
+/**
+ * What Kik is saying, as a panel above the hologram's hand: test counts, a
+ * temperature, or the agents of the project the line is about. Null when
+ * the line carries nothing a panel would add.
+ */
+function holoPanel(text, repo) {
+  const tests = /(\d+)\s+(?:tests?\s+)?(pass(?:ed|ing)?|fail(?:ed|ing)?)/i.exec(text);
+  const rows = Object.values(sessions)
+    .filter((s) => !repo || s.label === repo)
+    .slice(0, 4)
+    .map((s) => [
+      s.label,
+      s.status === "working" ? (s.current_tool || "working").toLowerCase() : s.status,
+      s.status === "working"
+        ? 0.8
+        : s.status === "waiting"
+          ? 0.5
+          : s.status === "failed"
+            ? 0.15
+            : 0.3,
+    ]);
+  if (tests) {
+    return {
+      kicker: `${repo || "kik"} · tests`,
+      figure: tests[1],
+      unit: tests[2].toLowerCase(),
+      rows,
+    };
+  }
+  const temp = /(-?\d+)\s?°/.exec(text);
+  if (temp) return { kicker: "weather · now", figure: `${temp[1]}°`, text: text.slice(0, 90) };
+  if (repo && rows.length) return { kicker: `${repo} · agents`, rows };
+  return null;
+}
 // The hologram (body.js) is three.js and a packed body, about 7 MB of script,
 // so it loads the first time it is opened, not with the Room.
 
@@ -1839,6 +1875,11 @@ async function showBody() {
     for (const src of ["vendor/three-body.js", "vendor/kik-body.js", "body.js"])
       await loadScript(src);
     holo = window.KikBody?.mount(document.getElementById("holo")) ?? null;
+    // the bar's "speak": Kik says something of its own, as the button asks
+    if (holo)
+      holo.onAction = (a) => {
+        if (a === "speak") void window.room.sayToKik("Say hello to me in one short sentence.");
+      };
   })();
   el.control.hidden = true;
   el.body.dataset.view = "body";
@@ -1977,14 +2018,25 @@ const handlers = {
       setOrb("speaking", "speaking");
       holoLine = text;
       holo?.say(text);
+      const panel = holoPanel(text, repo);
+      clearTimeout(holoPanelTimer);
+      if (panel) holo?.panel(panel);
       return;
     }
     speaking = false;
     holo?.quiet();
+    clearTimeout(holoPanelTimer);
+    holoPanelTimer = setTimeout(() => {
+      if (!speaking && !pendingPermission) holo?.panel(null);
+    }, 4000);
     glowSpoken(null);
     if (pendingPermission) return showPermission();
     if (asking) return showAsking();
     setOrb("idle", "quiet");
+  },
+  /** How loud Kik's voice is as it is heard: the hologram's mouth and hands. */
+  voice(f) {
+    holo?.level(f.level);
   },
   mic(f) {
     if (f.mode) micMode = f.mode;

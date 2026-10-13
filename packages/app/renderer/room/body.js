@@ -667,7 +667,95 @@
       ["head", Y, -0.2],
       ["head", X, 0.06],
     ],
+    // the same with the left hand, the panel on the other side
+    presentL: [
+      ["leftUpperArm", X, -0.45],
+      ["leftUpperArm", Z, 0.3],
+      ["leftLowerArm", X, -1.15],
+      ["leftHand", Z, -1.4],
+      ["head", Y, 0.2],
+      ["head", X, 0.06],
+    ],
+    // hovering: sitting on nothing, one leg over the other, hands in the lap
+    hover: [
+      ["spine", X, -0.06],
+      ["leftUpperLeg", X, -1.4],
+      ["leftLowerLeg", X, 1.45],
+      ["rightUpperLeg", X, -1.25],
+      ["rightUpperLeg", Z, 0.22],
+      ["rightLowerLeg", X, 1.15],
+      ["leftUpperArm", X, -0.35],
+      ["leftLowerArm", X, -0.7],
+      ["rightUpperArm", X, -0.35],
+      ["rightLowerArm", X, -0.7],
+      ["head", Z, 0.06],
+    ],
+    // operating: both hands on a panel at the waist, eyes on the work
+    operate: [
+      ["leftUpperArm", X, -0.22],
+      ["leftUpperArm", Z, -0.1],
+      ["leftLowerArm", X, -0.95],
+      ["rightUpperArm", X, -0.22],
+      ["rightUpperArm", Z, 0.1],
+      ["rightLowerArm", X, -0.95],
+      ["neck", X, 0.12],
+      ["head", X, 0.22],
+    ],
+    // talking: hands up a little, ready to move with the words
+    talk: [
+      ["leftUpperArm", X, -0.15],
+      ["leftLowerArm", X, -0.75],
+      ["rightUpperArm", X, -0.15],
+      ["rightLowerArm", X, -0.75],
+    ],
   };
+  // a posture for each mood, layered on whatever pose she holds
+  const MOOD_POSES = {
+    happy: [
+      ["chest", X, -0.04],
+      ["head", Z, 0.07],
+      ["head", X, -0.03],
+    ],
+    concerned: [
+      ["chest", X, 0.07],
+      ["neck", X, 0.06],
+      ["head", X, 0.06],
+      ["head", Z, -0.06],
+      ["leftShoulder", Z, 0.06],
+      ["rightShoulder", Z, -0.06],
+    ],
+    thinking: [
+      ["head", Z, -0.08],
+      ["head", X, -0.05],
+    ],
+  };
+  // each mood's face, as VRM expressions, and its colour
+  const MOOD_FACE = {
+    neutral: { relaxed: 0.08 },
+    happy: { happy: 0.38, relaxed: 0.1 },
+    concerned: { sad: 0.5, surprised: 0.12 },
+    thinking: { relaxed: 0.15 },
+  };
+  const MOOD_TINT = {
+    happy: [0.42, 0.95, 0.88],
+    concerned: [1.0, 0.45, 0.42],
+    thinking: [0.6, 0.6, 1.0],
+  };
+  // what a line sounds like it means, for the mood it is said in
+  const SOUNDS_CONCERNED =
+    /\b(fail(ed|s|ing)?|error|broke(n)?|red|sorry|can'?t|cannot|couldn'?t|problem|denied|blocked|crash(ed)?|wrong|stuck|lost|careful)\b/i;
+  const SOUNDS_HAPPY =
+    /\b(done|passed|passing|green|great|ready|fixed|works|nice|good news|shipped|merged|perfect|welcome|hello|hi)\b|!/i;
+  // the modes the bar offers, and the pose each one holds
+  const MODE_POSE = {
+    idle: "",
+    talk: "talk",
+    hover: "hover",
+    presentR: "present",
+    presentL: "presentL",
+    operate: "operate",
+  };
+  const AUTO_CYCLE = ["idle", "hover", "presentR", "idle", "operate", "presentL", "talk"];
   // one-off gestures: a duration and rotations scaled by an envelope; the
   // time argument adds motion within the hold (the wave's hand)
   const GESTURES = {
@@ -742,7 +830,22 @@
       <svg class="holo-wires" aria-hidden="true"></svg>
       <div class="holo-panel" hidden></div>
       <div class="holo-caption" aria-live="polite"></div>
-      <div class="holo-keys">space: sphere ↔ body · d: dissolve · v: vanish · r: reset · w: wave · drag to turn</div>
+      <div class="holo-gaze" aria-hidden="true"><i></i><i></i></div>
+      <div class="holo-keys">space: sphere ↔ body · d: dissolve · v: vanish · r: reset · z: close-up</div>
+      <div class="holo-bar" role="toolbar" aria-label="Kik's body">
+        <span class="hb-group" data-group="mood">
+          <button data-mood="neutral">neutral</button><button data-mood="happy">happy</button><button data-mood="concerned">concerned</button><button data-mood="thinking">thinking</button>
+        </span>
+        <span class="hb-group">
+          <button data-act="speak">speak</button><button data-act="sphere">sphere</button><button data-act="auto">auto</button>
+        </span>
+        <span class="hb-group" data-group="mode">
+          <button data-mode="idle">idle</button><button data-mode="hover">hover</button><button data-mode="talk">talk</button><button data-mode="presentR">present r</button><button data-mode="presentL">present l</button><button data-mode="operate">operate</button>
+        </span>
+        <span class="hb-group">
+          <button data-act="close">close-up</button>
+        </span>
+      </div>
       <div class="holo-loading">gathering the light…</div>`;
     host.appendChild(hud);
     const $ = (k) => hud.querySelector(k);
@@ -752,6 +855,8 @@
     const panelEl = $(".holo-panel");
     const captionEl = $(".holo-caption");
     const loadingEl = $(".holo-loading");
+    const gazeEl = $(".holo-gaze");
+    const barEl = $(".holo-bar");
 
     const renderer = new T.WebGLRenderer({ canvas, antialias: false, alpha: false });
     const scene = new T.Scene();
@@ -769,6 +874,7 @@
 
     const tint = new T.Color().setRGB(...TINT.idle);
     const tintTarget = new T.Color().setRGB(...TINT.idle);
+    const tintGoal = new T.Color().setRGB(...TINT.idle);
     const hot = new T.Color(0.9, 0.97, 1);
 
     // the floor projector, its beam and the dust in the air
@@ -869,6 +975,24 @@
       surpriseUntil: 0,
       pose: {},
       poseTo: "",
+      // the mood: pinned from the bar, or read from the line, or from the state
+      moodPin: "",
+      moodLine: "",
+      moodLineUntil: 0,
+      moodNow: "neutral",
+      moodPose: { happy: sp(), concerned: sp(), thinking: sp() },
+      // the mode: what the bar asked for, or what auto chose
+      mode: "idle",
+      auto: false,
+      autoAt: 0,
+      autoIndex: 0,
+      lift: sp(0),
+      close: sp(0),
+      closeTo: 0,
+      // the voice as it is heard (the daemon's meter), for the mouth and hands
+      level: sp(0),
+      levelTo: 0,
+      levelAt: -10,
       gesture: null,
       scanAt: 1.2,
       glitch: 0,
@@ -878,6 +1002,7 @@
       lod: BODY_POINTS,
     };
     for (const k of Object.keys(POSES)) S.pose[k] = sp();
+    let rootObj = null;
 
     let U = null; // the point uniforms, shared by the body and the face
     let bodyPts = null;
@@ -895,10 +1020,12 @@
     let raf = 0;
     let last = 0;
     let height = 1.5;
+    let baseY = 0;
 
     async function build() {
       const [gltf, tex] = await Promise.all([parseBody(), loadTextures()]);
       const root = gltf.scene;
+      rootObj = root;
       stage.add(root);
       root.updateMatrixWorld(true);
       const nodes = {};
@@ -1016,6 +1143,7 @@
       rig = sourceRig();
       mixer = new T.AnimationMixer(rig.root);
       mixer.clipAction(rig.clips.idle).play();
+      baseY = root.position.y;
       rest = {};
       for (const [mx, hb] of Object.entries(MIXAMO)) {
         const s = rig.byName[`mixamorig:${mx}`];
@@ -1145,9 +1273,50 @@
       L.push(["leftLowerArm", X, -0.18]);
       L.push(["rightLowerArm", X, -0.18]);
 
+      // the pose: the state's when it has one (thinking, listening, asking),
+      // else the mode's; auto walks through the modes while she is idle
+      if (S.auto && S.state === "idle" && !S.talking && t > S.autoAt) {
+        S.autoIndex = (S.autoIndex + 1) % AUTO_CYCLE.length;
+        S.mode = AUTO_CYCLE[S.autoIndex];
+        S.autoAt = t + 8 + Math.random() * 7;
+        markBar();
+      }
+      const fromMode = MODE_POSE[S.mode] ?? "";
+      const pose = S.poseTo || (S.talking && !fromMode ? "talk" : fromMode);
       for (const [name, s] of Object.entries(S.pose)) {
-        spring(s, S.poseTo === name ? 1 : 0, 5, dt);
+        spring(s, pose === name ? 1 : 0, 4.5, dt);
         if (s.x > 0.001) for (const [b, ax, a] of POSES[name]) L.push([b, ax, a * s.x]);
+      }
+      // hovering lifts her off the floor and bobs
+      spring(S.lift, pose === "hover" ? 0.42 + Math.sin(t * 1.1) * 0.025 : 0, 2.2, dt);
+      if (rootObj) rootObj.position.y = baseY + S.lift.x;
+      // the mood's posture
+      S.moodNow =
+        S.moodPin ||
+        (t < S.moodLineUntil ? S.moodLine : "") ||
+        (S.state === "failed" ? "concerned" : S.state === "thinking" ? "thinking" : "neutral");
+      for (const [name, s] of Object.entries(S.moodPose)) {
+        spring(s, S.moodNow === name ? 1 : 0, 3, dt);
+        if (s.x > 0.001) for (const [b, ax, a] of MOOD_POSES[name]) L.push([b, ax, a * s.x]);
+      }
+      // the voice as heard: a held level decays when the meter goes quiet
+      if (t - S.levelAt > 0.25) S.levelTo = 0;
+      spring(S.level, S.levelTo, 22, dt);
+      // talking hands: small beats on the louder syllables, never in sync
+      if (S.talking || pose === "talk") {
+        const beat = S.level.x;
+        const r = wander(t * 2.3, 5.1);
+        const l = wander(t * 2.1, 9.4);
+        L.push(["rightLowerArm", X, -0.25 * beat * (0.6 + 0.4 * r)]);
+        L.push(["leftLowerArm", X, -0.2 * beat * (0.6 + 0.4 * l)]);
+        L.push(["rightHand", Z, 0.25 * beat * r]);
+        L.push(["leftHand", Z, -0.25 * beat * l]);
+        L.push(["head", X, 0.05 * beat]);
+      }
+      // operating: the fingers' work, as small hand moves
+      if (pose === "operate") {
+        L.push(["rightHand", X, Math.sin(t * 7.3) * 0.08 * S.pose.operate.x]);
+        L.push(["leftHand", X, Math.sin(t * 6.1 + 1.7) * 0.08 * S.pose.operate.x]);
       }
       if (S.gesture) {
         const g = GESTURES[S.gesture.name];
@@ -1166,7 +1335,7 @@
           pitch: (S.state === "thinking" ? -0.14 : (Math.random() - 0.5) * 0.12) * away,
         };
       }
-      const following = t - S.pointerAt < 3 || S.state === "listening";
+      const following = t - S.pointerAt < 3 || S.state === "listening" || S.close.x > 0.5;
       const ty = following ? S.lookTarget.yaw : S.glance.yaw;
       const tp = following ? S.lookTarget.pitch : S.glance.pitch;
       // the eyes get there first, the head follows
@@ -1211,21 +1380,24 @@
       if (S.talking && S.text) {
         const el = t - S.talkStarted;
         const at = Math.floor(el * 14.5); // letters per second
+        // the meter, when it is talking, says how open; the letter says which shape
+        const heard = t - S.levelAt < 0.4;
+        const open = heard ? S.level.x : 0.8;
         if (at < S.text.length) {
           const ch = S.text[at].toLowerCase();
           const v = VOWEL[ch];
-          if (v) target[v] = 0.8;
-          else if (/[a-z]/.test(ch)) target.ih = 0.15; // a consonant: nearly closed
-        }
+          if (v) target[v] = 0.25 + 0.75 * open;
+          else if (/[a-z]/.test(ch)) target[heard ? "aa" : "ih"] = heard ? 0.6 * open : 0.15;
+        } else if (heard) target.aa = 0.7 * open;
         captionTick(el);
-        if (at >= S.text.length + 8) S.talking = false;
+        if (at >= S.text.length + 8 && !heard) S.talking = false;
       }
       for (const [k, s] of Object.entries(S.visemes)) spring(s, target[k], 32, dt);
-      const st = S.state;
-      spring(S.mood.happy, st === "speaking" ? 0.14 : st === "idle" ? 0.06 : 0, 3, dt);
-      spring(S.mood.relaxed, st === "idle" ? 0.12 : 0.04, 2, dt);
-      spring(S.mood.sad, st === "failed" ? 0.55 : 0, 2, dt);
-      spring(S.mood.surprised, t < S.surpriseUntil ? 0.35 : 0, 6, dt);
+      const face = MOOD_FACE[S.moodNow] ?? MOOD_FACE.neutral;
+      spring(S.mood.happy, face.happy ?? 0, 3, dt);
+      spring(S.mood.relaxed, face.relaxed ?? 0, 2, dt);
+      spring(S.mood.sad, face.sad ?? 0, 2.5, dt);
+      spring(S.mood.surprised, t < S.surpriseUntil ? 0.35 : (face.surprised ?? 0), 6, dt);
 
       // the face shapes, from the expressions
       const infl = facePts.morphTargetInfluences;
@@ -1268,6 +1440,28 @@
     }
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
+    // --- gaze rings: where her eyes are, in a close-up ------------------------
+
+    const ge = new T.Vector3();
+    function placeGaze() {
+      const on = S.close.x;
+      if (on < 0.05 || !human?.leftEye) {
+        if (gazeEl.style.opacity !== "0") gazeEl.style.opacity = "0";
+        return;
+      }
+      gazeEl.style.opacity = String(Math.min(1, on * 1.4));
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      [human.leftEye, human.rightEye].forEach((eye, i) => {
+        eye.getWorldPosition(ge);
+        // in front of the eyeball, where the iris is
+        ge.z += 0.012;
+        ge.project(camera);
+        const ring = gazeEl.children[i];
+        ring.style.transform = `translate(${(ge.x * 0.5 + 0.5) * w}px, ${(-ge.y * 0.5 + 0.5) * h}px) translate(-50%, -50%)`;
+      });
+    }
+
     // --- the panel above her hand -------------------------------------------
 
     const pv = new T.Vector3();
@@ -1276,7 +1470,8 @@
         if (wires.firstChild) wires.textContent = "";
         return;
       }
-      hand.getWorldPosition(pv);
+      const left = S.pose.presentL.x > S.pose.present.x;
+      (left ? human.leftHand : hand).getWorldPosition(pv);
       pv.y += 0.05;
       pv.project(camera);
       const w = host.clientWidth;
@@ -1285,14 +1480,17 @@
       const y = (-pv.y * 0.5 + 0.5) * h;
       const pw = panelEl.offsetWidth;
       const ph = panelEl.offsetHeight;
-      const left = clamp(x - pw - 40, 16, w - pw - 16);
+      // the panel sits on the side of the raised hand
+      const px0 = left ? clamp(x + 40, 16, w - pw - 16) : clamp(x - pw - 40, 16, w - pw - 16);
       const top = clamp(y - ph - 50, 48, h - ph - 16);
-      panelEl.style.transform = `translate(${left}px, ${top}px)`;
-      const a = (S.pose.present.x * 0.6).toFixed(2);
+      panelEl.style.transform = `translate(${px0}px, ${top}px)`;
+      const a = (Math.max(S.pose.present.x, S.pose.presentL.x) * 0.6).toFixed(2);
+      const near = left ? px0 : px0 + pw;
+      const far = left ? px0 + pw : px0;
       wires.innerHTML = [
-        [left, top + ph],
-        [left + pw, top + ph],
-        [left + pw, top],
+        [far, top + ph],
+        [near, top + ph],
+        [near, top],
       ]
         .map(([px, py]) => `<line x1="${x}" y1="${y}" x2="${px}" y2="${py}" style="opacity:${a}"/>`)
         .join("");
@@ -1315,7 +1513,11 @@
       }
       stage.rotation.y = S.turn;
 
-      tint.lerp(tintTarget, 1 - Math.exp(-2.5 * dt));
+      // the colour: asking and failing keep theirs; otherwise a mood's, if any
+      const moodTint = S.state !== "asking" && S.state !== "failed" ? MOOD_TINT[S.moodNow] : null;
+      if (moodTint) tintGoal.setRGB(...moodTint);
+      else tintGoal.copy(tintTarget);
+      tint.lerp(tintGoal, 1 - Math.exp(-2.5 * dt));
       floorU.uTime.value = t;
       dustU.uTime.value = t;
 
@@ -1345,16 +1547,22 @@
         wire.mat.opacity = 0.016 * bodyOn;
         floorU.uOn.value = damp(floorU.uOn.value, 0.3 + 0.7 * bodyOn, 3, dt);
         placePanel();
+        placeGaze();
       }
 
-      // the camera breathes very slightly, so the room is never a photograph
+      // the camera breathes very slightly, so the room is never a photograph;
+      // a close-up moves in on her face
+      spring(S.close, S.closeTo, 2.6, dt);
+      const c = S.close.x;
       const dist = (height * 0.62) / Math.tan(((camera.fov / 2) * Math.PI) / 180);
+      const headY = human?.head ? human.head.getWorldPosition(ge).y + 0.06 : height * 0.92;
+      const lift = S.lift.x;
       camera.position.set(
-        Math.sin(t * 0.11) * 0.05,
-        height * 0.62 + Math.sin(t * 0.17) * 0.015,
-        dist,
+        Math.sin(t * 0.11) * 0.05 * (1 - c),
+        (height * 0.62 + lift * 0.8) * (1 - c) + headY * c + Math.sin(t * 0.17) * 0.015,
+        dist * (1 - c) + 0.95 * c,
       );
-      camera.lookAt(0, height * 0.5, 0);
+      camera.lookAt(0, (height * 0.5 + lift * 0.8) * (1 - c) + (headY - 0.05) * c, 0);
       composer.render(dt);
 
       // frame time, and fewer points if the machine is struggling
@@ -1396,7 +1604,7 @@
     let dragX = 0;
     let dragT = 0;
     host.addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".holo-panel")) return;
+      if (e.target.closest(".holo-panel, .holo-bar")) return;
       S.dragging = true;
       dragX = e.clientX;
       dragT = performance.now();
@@ -1418,6 +1626,33 @@
       dragT = now;
       S.lastDrag = now;
     });
+    host.addEventListener("dblclick", (e) => {
+      if (!e.target.closest(".holo-bar, .holo-panel")) api.closeUp();
+    });
+    barEl.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.dataset.mood) api.mood(S.moodPin === b.dataset.mood ? "" : b.dataset.mood);
+      else if (b.dataset.mode) api.mode(b.dataset.mode);
+      else if (b.dataset.act === "speak") api.onAction?.("speak");
+      else if (b.dataset.act === "sphere") api.morph();
+      else if (b.dataset.act === "auto") api.auto(!S.auto);
+      else if (b.dataset.act === "close") api.closeUp();
+    });
+    /** Light the bar's buttons for what is on. */
+    function markBar() {
+      for (const b of barEl.querySelectorAll("button")) {
+        const on =
+          (b.dataset.mood && b.dataset.mood === (S.moodPin || S.moodNow)) ||
+          (b.dataset.mode && b.dataset.mode === S.mode) ||
+          (b.dataset.act === "auto" && S.auto) ||
+          (b.dataset.act === "close" && S.closeTo > 0.5) ||
+          (b.dataset.act === "sphere" && S.morphTo < 0.5);
+        b.classList.toggle("on", Boolean(on));
+        if (b.dataset.mood) b.classList.toggle("pinned", b.dataset.mood === S.moodPin);
+      }
+    }
+    setInterval(() => S.visible && markBar(), 400);
     const endDrag = () => {
       S.dragging = false;
       S.lastDrag = performance.now();
@@ -1433,6 +1668,9 @@
       else if (k === "v") api.vanish();
       else if (k === "r") api.reset();
       else if (k === "w") api.gesture("wave");
+      else if (k === "h") api.mode(S.mode === "hover" ? "idle" : "hover");
+      else if (k === "a") api.auto(!S.auto);
+      else if (k === "z") api.closeUp();
       else return;
       e.preventDefault();
     };
@@ -1499,6 +1737,14 @@
       },
       /** Kik starts to say a line: the mouth shapes its vowels, the caption writes itself. */
       say(text) {
+        const line = String(text ?? "");
+        // the line's mood holds while it is said and a little after
+        S.moodLine = SOUNDS_CONCERNED.test(line)
+          ? "concerned"
+          : SOUNDS_HAPPY.test(line)
+            ? "happy"
+            : "";
+        S.moodLineUntil = S.t + 3 + line.length / 14.5;
         S.talking = true;
         S.talkStarted = S.t;
         S.text = String(text ?? "").slice(0, 600);
@@ -1518,7 +1764,7 @@
       panel(p) {
         if (!p) {
           panelEl.hidden = true;
-          if (S.poseTo === "present" && S.state !== "asking") S.poseTo = "";
+          if (/^present/.test(S.poseTo) && S.state !== "asking") S.poseTo = "";
           return;
         }
         const rows = (p.rows ?? [])
@@ -1544,10 +1790,40 @@
             : ""
         }${p.text ? `<div class="hp-text">${esc(p.text)}</div>` : ""}${spark}${rows}`;
         panelEl.hidden = false;
-        S.poseTo = "present";
+        // the hand the mode raises, or the right
+        S.poseTo = S.mode === "presentL" ? "presentL" : "present";
       },
       gesture(name) {
         if (GESTURES[name] && S.built) S.gesture = { name, at: S.t };
+      },
+      /** How loud the voice is as it is heard, 0..1 (the daemon's voice frames). */
+      level(l) {
+        S.levelTo = clamp(Number(l) || 0, 0, 1);
+        S.levelAt = S.t;
+      },
+      /** Pin a mood (neutral, happy, concerned, thinking), or "" to let the day choose. */
+      mood(m) {
+        S.moodPin = MOOD_FACE[m] ? m : "";
+        markBar();
+      },
+      /** Hold a mode: idle, talk, hover, presentR, presentL, operate. */
+      mode(m) {
+        if (!(m in MODE_POSE)) return;
+        S.mode = m;
+        S.auto = false;
+        markBar();
+      },
+      /** Let her walk through the modes on her own while idle. */
+      auto(on) {
+        S.auto = Boolean(on);
+        S.autoAt = S.t + 1;
+        if (!S.auto) S.mode = "idle";
+        markBar();
+      },
+      /** In on her face, with rings where her eyes look; again to step back. */
+      closeUp(on) {
+        S.closeTo = (on ?? !(S.closeTo > 0.5)) ? 1 : 0;
+        markBar();
       },
       morph() {
         S.morphTo = S.morphTo > 0.5 ? 0 : 1;
@@ -1564,7 +1840,12 @@
         S.vanishTo = -1;
         S.turnV = 0;
         S.gesture = null;
+        S.mode = "idle";
+        S.auto = false;
+        S.moodPin = "";
+        S.closeTo = 0;
         api.panel(null);
+        markBar();
       },
       destroy() {
         api.hide();

@@ -99,6 +99,52 @@ export class TappedSpeaker implements Speaker {
   }
 }
 
+/**
+ * How loud Kik's voice is, as it is heard: the level of each 60 ms of what
+ * the speaker was handed, sent when that slice reaches the ear rather than
+ * when it was made (generation runs ahead of playback). The hologram's mouth
+ * follows it. `queued` is the speaker's backlog in seconds, read after the
+ * chunk was pushed.
+ */
+export class VoiceMeter {
+  static readonly BLOCK_S = 0.06;
+  private timers = new Set<ReturnType<typeof setTimeout>>();
+  constructor(
+    private readonly queued: () => number,
+    private readonly emit: (level: number) => void,
+  ) {}
+
+  pcm(samples: Float32Array, sourceRate: number): void {
+    const block = Math.max(1, Math.round(sourceRate * VoiceMeter.BLOCK_S));
+    // this chunk starts playing once what was queued before it has played
+    const startS = Math.max(0, this.queued() - samples.length / sourceRate);
+    for (let at = 0; at < samples.length; at += block) {
+      let sum = 0;
+      const end = Math.min(samples.length, at + block);
+      for (let i = at; i < end; i++) sum += samples[i]! * samples[i]!;
+      const rms = Math.sqrt(sum / Math.max(1, end - at));
+      // speech sits around 0.05–0.3 RMS; map it onto 0..1
+      const level = Math.min(1, Math.max(0, (rms - 0.01) * 4));
+      const t = setTimeout(
+        () => {
+          this.timers.delete(t);
+          this.emit(Math.round(level * 100) / 100);
+        },
+        (startS + at / sourceRate) * 1000,
+      );
+      t.unref?.();
+      this.timers.add(t);
+    }
+  }
+
+  /** The line was cut off: forget what was scheduled, and close the mouth. */
+  drop(): void {
+    for (const t of this.timers) clearTimeout(t);
+    this.timers.clear();
+    this.emit(0);
+  }
+}
+
 /** A speaker that plays nothing, for tests and `--no-audio`. */
 export class NullSpeaker implements Speaker {
   readonly rate = 24000;

@@ -115,6 +115,7 @@ import {
   RtAudioSpeaker,
   type Speaker,
   TappedSpeaker,
+  VoiceMeter,
   earcon,
 } from "./speaker.js";
 import { NO_TAILNET, type Tailnet, setServe, tailnetStatus } from "./tailnet.js";
@@ -556,9 +557,21 @@ export class Daemon {
     this.adapter = new ClaudeCodeAdapter({ readTranscript });
     // Tapped, so a phone on the walkie can hear Kik too. The walkie is looked
     // up on every sample, not captured: it comes and goes with its setting.
+    // The meter tells the Room how loud the voice is as it is heard, for the
+    // hologram's mouth.
+    const meter = new VoiceMeter(
+      () => this.speaker.queuedSeconds(),
+      (level) => this.hub.publish("voice", { level }),
+    );
     this.speaker = new TappedSpeaker(opts.audio === false ? new NullSpeaker() : safeSpeaker(), {
-      pcm: (s, r) => this.walkie?.voice(s, r),
-      drop: () => this.walkie?.voiceDrop(),
+      pcm: (s, r) => {
+        this.walkie?.voice(s, r);
+        meter.pcm(s, r);
+      },
+      drop: () => {
+        this.walkie?.voiceDrop();
+        meter.drop();
+      },
     });
     this.ladder = new Ladder({
       settings: this.settings,
