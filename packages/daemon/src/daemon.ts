@@ -92,6 +92,7 @@ import {
 } from "./life.js";
 import { LiveBrain } from "./livebrain.js";
 import { pageText, weather, wikipedia } from "./lookup.js";
+import { HANDS_DIR, HANDS_FILES } from "./models.js";
 import { knownFolder, launch, launchFor } from "./pc.js";
 import { Reminders, clockTime, duration, whenSaid } from "./reminders.js";
 import { WhatsAppBridge } from "./whatsapp.js";
@@ -5150,6 +5151,24 @@ export class Daemon {
         "cache-control": "no-cache",
       });
       res.end(readFileSync(candidate));
+      return;
+    }
+    // the hand tracker's public files (models.ts, HANDS_FILES), for the Room
+    if (req.method === "GET" && url.pathname.startsWith("/mediapipe/")) {
+      const name = url.pathname.slice("/mediapipe/".length);
+      if (!(name in HANDS_FILES)) return this.json(res, 404, { error: "no such file" });
+      const file = path.join(HANDS_DIR(), name);
+      if (!existsSync(file)) return this.json(res, 404, { error: "not fetched yet" });
+      res.writeHead(200, {
+        "content-type": name.endsWith(".wasm")
+          ? "application/wasm"
+          : name.endsWith(".js")
+            ? "text/javascript"
+            : "application/octet-stream",
+        "cache-control": "max-age=86400",
+        "access-control-allow-origin": "*",
+      });
+      res.end(readFileSync(file));
       return;
     }
     const grant = this.grant(req, url);

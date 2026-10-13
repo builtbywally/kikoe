@@ -27,8 +27,10 @@ import {
   anthropicKeyFromFile,
   crashSource,
   elevenKeyFromFile,
+  fetchHands,
   fetchModel,
   fetchVad,
+  handsInstalled,
   hasCurl,
   hookStatus,
   installHooks,
@@ -857,6 +859,16 @@ ipcMain.handle("island:config", () => daemonConfig());
 ipcMain.on("island:openSettings", (_e, page?: string) => openSettings(page ?? ""));
 ipcMain.handle("room:state", () => daemon?.state() ?? null);
 ipcMain.handle("room:dashboard", () => daemon?.desk() ?? null);
+// Holo-Explorer: the hand tracker's files, fetched once; the Room loads them from the daemon
+ipcMain.handle("room:hands", async () => {
+  if (!daemon) return { error: "daemon not running" };
+  try {
+    if (!handsInstalled()) await fetchHands();
+    return { base: `http://127.0.0.1:${daemon.settings.port}/mediapipe/` };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+});
 // WhatsApp into the inbox: the desk's switch, kept in the settings
 ipcMain.handle("room:whatsapp", (_e, on: boolean) => {
   saveSettings({ whatsapp: Boolean(on) });

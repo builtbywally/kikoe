@@ -95,6 +95,44 @@ export const SPECS: Record<string, ModelSpec> = {
   kws: KWS,
 };
 
+/**
+ * The hand tracker for Holo-Explorer (body.js): MediaPipe's WebAssembly and
+ * its hand landmarker model, 21 MB, fetched the first time hands are turned
+ * on and served to the Room by the daemon at /mediapipe/ (the Room's CSP
+ * allows scripts and wasm from the loopback address). The JavaScript API is
+ * bundled in the app (vendor/mediapipe-vision.js); these must match its
+ * version.
+ */
+export const MEDIAPIPE_VERSION = "1.1.0";
+export const HANDS_FILES: Record<string, string> = {
+  "vision_wasm_internal.js": `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm/vision_wasm_internal.js`,
+  "vision_wasm_internal.wasm": `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm/vision_wasm_internal.wasm`,
+  "hand_landmarker.task":
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+};
+export const HANDS_DIR = () => path.join(MODELS, "mediapipe");
+
+export function handsInstalled(): boolean {
+  return Object.keys(HANDS_FILES).every((f) => existsSync(path.join(HANDS_DIR(), f)));
+}
+
+/** Fetch the hand tracker's files that are missing. Idempotent. */
+export async function fetchHands(): Promise<string> {
+  const dir = HANDS_DIR();
+  mkdirSync(dir, { recursive: true });
+  for (const [name, url] of Object.entries(HANDS_FILES)) {
+    const file = path.join(dir, name);
+    if (existsSync(file)) continue;
+    const res = await fetch(url, { redirect: "follow" });
+    if (!res.ok || !res.body) throw new Error(`${name}: download failed (${res.status})`);
+    await pipeline(Readable.fromWeb(res.body as any), createWriteStream(`${file}.part`));
+    const { renameSync } = await import("node:fs");
+    renameSync(`${file}.part`, file);
+    log(`model hands: ${name}`);
+  }
+  return dir;
+}
+
 /** Fetch the VAD file if it is missing. Small, so no progress. */
 export async function fetchVad(): Promise<string> {
   const file = path.join(MODELS, "silero_vad.onnx");

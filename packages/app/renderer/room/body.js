@@ -843,10 +843,13 @@
           <button data-mode="idle">idle</button><button data-mode="hover">hover</button><button data-mode="talk">talk</button><button data-mode="presentR">present r</button><button data-mode="presentL">present l</button><button data-mode="operate">operate</button>
         </span>
         <span class="hb-group">
-          <button data-act="close">close-up</button>
+          <button data-act="close">close-up</button><button data-act="hands">hands</button>
         </span>
       </div>
-      <div class="holo-loading">gathering the light…</div>`;
+      <div class="holo-loading">gathering the light…</div>
+      <canvas class="holo-hands" aria-hidden="true"></canvas>
+      <div class="holo-gesture" hidden></div>
+      <div class="holo-help" hidden>pinch and hold: sphere ↔ body · fist: move · point and flick: spin · two fists apart, or palms together then apart: explode · clap: assemble · b black and white · f mirror · x hands off</div>`;
     host.appendChild(hud);
     const $ = (k) => hud.querySelector(k);
     const tagState = $('[data-k="state"]');
@@ -856,6 +859,9 @@
     const captionEl = $(".holo-caption");
     const loadingEl = $(".holo-loading");
     const gazeEl = $(".holo-gaze");
+    const handsC = $(".holo-hands");
+    const gestureEl = $(".holo-gesture");
+    const helpEl = $(".holo-help");
     const barEl = $(".holo-bar");
 
     const renderer = new T.WebGLRenderer({ canvas, antialias: false, alpha: false });
@@ -1496,6 +1502,314 @@
         .join("");
     }
 
+    // --- Holo-Explorer: her, over the camera, moved with bare hands -----------
+    // After K.A.R.A's: the webcam fills the stage behind her (mirrored,
+    // dimmed, black and white if asked), MediaPipe's hand landmarker reads up
+    // to two hands about thirty times a second, and gestures move, spin,
+    // explode and reassemble her. All on this machine; nothing leaves it.
+
+    const H = {
+      on: false,
+      starting: false,
+      video: null,
+      stream: null,
+      landmarker: null,
+      last: -1,
+      hands: [],
+      bw: false,
+      mirror: true,
+      label: "",
+      pinchAt: 0,
+      pinchFired: false,
+      fist: null,
+      offset: { x: sp(), y: sp() },
+      offsetTo: { x: 0, y: 0 },
+      flick: [],
+      apart: [],
+      coolUntil: 0,
+    };
+    const bgU = {
+      uTex: { value: null },
+      uMirror: { value: 1 },
+      uBw: { value: 0 },
+      uDim: { value: 0.62 },
+      uFit: { value: new T.Vector2(1, 1) },
+      uOn: { value: 0 },
+    };
+    const bg = new T.Mesh(
+      new T.PlaneGeometry(2, 2),
+      new T.ShaderMaterial({
+        uniforms: bgU,
+        depthTest: false,
+        depthWrite: false,
+        vertexShader:
+          /* glsl */ "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.999, 1.0); }",
+        fragmentShader: /* glsl */ `
+          uniform sampler2D uTex; uniform float uMirror, uBw, uDim, uOn; uniform vec2 uFit;
+          varying vec2 vUv;
+          void main() {
+            vec2 uv = vec2(mix(vUv.x, 1.0 - vUv.x, uMirror), vUv.y);
+            uv = 0.5 + (uv - 0.5) * uFit;
+            vec3 c = texture2D(uTex, uv).rgb;
+            float l = dot(c, vec3(0.299, 0.587, 0.114));
+            c = mix(c, vec3(l) * vec3(0.75, 0.9, 1.1), uBw);
+            gl_FragColor = vec4(c * (1.0 - uDim) * uOn, 1.0);
+          }`,
+      }),
+    );
+    bg.frustumCulled = false;
+    bg.renderOrder = -100;
+    bg.visible = false;
+    scene.add(bg);
+
+    async function handsOn() {
+      if (H.on || H.starting) return;
+      H.starting = true;
+      gestureEl.hidden = false;
+      gestureEl.textContent = "starting the camera…";
+      try {
+        const where = await (window.room?.hands?.() ??
+          Promise.resolve({ error: "only in the app" }));
+        if (!where?.base) throw new Error(where?.error ?? "no hand tracker");
+        if (!window.KikVision) {
+          await new Promise((resolve, reject) => {
+            const sc = document.createElement("script");
+            sc.src = "vendor/mediapipe-vision.js";
+            sc.onload = resolve;
+            sc.onerror = () => reject(new Error("could not load the hand tracker"));
+            document.body.appendChild(sc);
+          });
+        }
+        const V = window.KikVision;
+        gestureEl.textContent = "loading the hand tracker…";
+        const fileset = await V.FilesetResolver.forVisionTasks(where.base.replace(/\/$/, ""));
+        const make = (delegate) =>
+          V.HandLandmarker.createFromOptions(fileset, {
+            baseOptions: { modelAssetPath: `${where.base}hand_landmarker.task`, delegate },
+            runningMode: "VIDEO",
+            numHands: 2,
+          });
+        // the GPU when it is there, else the CPU
+        H.landmarker = await make("GPU").catch(() => make("CPU"));
+        H.stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 },
+          audio: false,
+        });
+        H.video = document.createElement("video");
+        H.video.srcObject = H.stream;
+        H.video.muted = true;
+        H.video.playsInline = true;
+        await H.video.play();
+        const tex = new T.VideoTexture(H.video);
+        tex.colorSpace = T.SRGBColorSpace;
+        bgU.uTex.value = tex;
+        bg.visible = true;
+        // a lit room behind her would bloom into a haze
+        bloom.strength = 0.28;
+        H.on = true;
+        helpEl.hidden = false;
+        gestureEl.textContent = "hands: show me one";
+      } catch (e) {
+        gestureEl.textContent = `hands: ${e.message ?? e}`;
+        setTimeout(() => {
+          if (!H.on) gestureEl.hidden = true;
+        }, 5000);
+      } finally {
+        H.starting = false;
+        markBar();
+      }
+    }
+    function handsOff() {
+      H.on = false;
+      for (const t of H.stream?.getTracks?.() ?? []) t.stop();
+      H.stream = null;
+      H.video = null;
+      bg.visible = false;
+      bloom.strength = 0.55;
+      helpEl.hidden = true;
+      gestureEl.hidden = true;
+      H.hands = [];
+      H.offsetTo = { x: 0, y: 0 };
+      const g = handsC.getContext("2d");
+      g.clearRect(0, 0, handsC.width, handsC.height);
+      markBar();
+    }
+
+    // where a landmark (0..1 of the video) is on the screen, mirrored and cover-fitted
+    function toScreen(l) {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      const fx = bgU.uFit.value.x;
+      const fy = bgU.uFit.value.y;
+      const x = H.mirror ? 1 - l.x : l.x;
+      return [(0.5 + (x - 0.5) / fx) * w, (0.5 + (l.y - 0.5) / fy) * h];
+    }
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    /** What one hand is doing: fist, point, pinch, open, or nothing clear. */
+    function pose(lm) {
+      const wrist = lm[0];
+      const size = dist(wrist, lm[9]) || 1e-3;
+      const out = (tip, pip) => dist(wrist, lm[tip]) > dist(wrist, lm[pip]) * 1.18;
+      const ext = [out(8, 6), out(12, 10), out(16, 14), out(20, 18)];
+      const n = ext.filter(Boolean).length;
+      if (dist(lm[4], lm[8]) < size * 0.32 && !ext[1]) return "pinch";
+      if (n === 0) return "fist";
+      if (ext[0] && n === 1) return "point";
+      if (n >= 4) return "open";
+      return "";
+    }
+    const center = (lm) => ({ x: (lm[0].x + lm[9].x) / 2, y: (lm[0].y + lm[9].y) / 2 });
+
+    function trackHands(now) {
+      if (!H.on || !H.landmarker || !H.video || H.video.readyState < 2) return;
+      // the stage's cover-fit, from the video's shape and the stage's
+      const vA = H.video.videoWidth / Math.max(1, H.video.videoHeight);
+      const sA = host.clientWidth / Math.max(1, host.clientHeight);
+      bgU.uFit.value.set(sA > vA ? 1 : sA / vA, sA > vA ? vA / sA : 1);
+      bgU.uOn.value = 1;
+      if (H.video.currentTime === H.last) return;
+      H.last = H.video.currentTime;
+      let r;
+      try {
+        r = H.landmarker.detectForVideo(H.video, now);
+      } catch {
+        return;
+      }
+      const t = S.t;
+      H.hands = (r.landmarks ?? []).map((lm, i) => ({
+        lm,
+        side: (r.handednesses?.[i]?.[0]?.categoryName ?? "").toLowerCase(),
+        pose: pose(lm),
+        c: center(lm),
+      }));
+      const hs = H.hands;
+      let label = hs.length
+        ? hs.map((h) => `${h.side || "hand"} · ${h.pose || "open"}`).join("   ")
+        : "";
+      if (t < H.coolUntil) return draw2d(label);
+
+      // two hands: explode (fists or palms parting), clap (palms meeting fast)
+      if (hs.length === 2) {
+        const d = dist(hs[0].c, hs[1].c);
+        H.apart.push([t, d, hs[0].pose, hs[1].pose]);
+        H.apart = H.apart.filter(([at]) => t - at < 0.6);
+        const first = H.apart[0];
+        const fists = hs.every((h) => h.pose === "fist");
+        const palms = hs.every((h) => h.pose === "open");
+        if (first && (fists || palms) && first[1] < 0.18 && d - first[1] > 0.22) {
+          S.dissolveTo = 1;
+          label = "explode";
+          H.coolUntil = t + 1.2;
+          H.apart = [];
+        } else if (first && palms && first[1] > 0.3 && d < 0.1) {
+          S.dissolveTo = 0;
+          S.morphTo = 1;
+          label = "clap · assemble";
+          H.coolUntil = t + 1.2;
+          H.apart = [];
+        }
+        H.fist = null;
+        return draw2d(label);
+      }
+      H.apart = [];
+      const h = hs[0];
+      if (!h) {
+        H.fist = null;
+        H.pinchAt = 0;
+        return draw2d("");
+      }
+      // her eyes follow the index finger
+      const [ix, iy] = toScreen(h.lm[8]);
+      S.lookTarget.yaw = clamp((ix / host.clientWidth) * 2 - 1, -1, 1) * 0.6;
+      S.lookTarget.pitch = clamp((iy / host.clientHeight) * 2 - 1, -1, 1) * 0.3;
+      S.pointerAt = S.t;
+      // pinch and hold: sphere and body
+      if (h.pose === "pinch") {
+        if (!H.pinchAt) H.pinchAt = t;
+        if (!H.pinchFired && t - H.pinchAt > 0.6) {
+          H.pinchFired = true;
+          S.morphTo = S.morphTo > 0.5 ? 0 : 1;
+          label = S.morphTo ? "pinch · body" : "pinch · sphere";
+          H.coolUntil = t + 0.8;
+        } else label = `pinch · ${Math.min(100, Math.round(((t - H.pinchAt) / 0.6) * 100))}%`;
+      } else {
+        H.pinchAt = 0;
+        H.pinchFired = false;
+      }
+      // fist: move her, from where the fist closed
+      if (h.pose === "fist") {
+        if (!H.fist) H.fist = { at: h.c, x: H.offsetTo.x, y: H.offsetTo.y };
+        const dx = (H.mirror ? -1 : 1) * (h.c.x - H.fist.at.x);
+        const dy = h.c.y - H.fist.at.y;
+        H.offsetTo.x = clamp(H.fist.x + dx * 2.2, -1.2, 1.2);
+        H.offsetTo.y = clamp(H.fist.y - dy * 1.6, -0.6, 0.8);
+        label = "fist · move";
+      } else H.fist = null;
+      // point and flick: spin her
+      if (h.pose === "point") {
+        const x = (H.mirror ? 1 - h.lm[8].x : h.lm[8].x) * host.clientWidth;
+        H.flick.push([t, x]);
+        H.flick = H.flick.filter(([at]) => t - at < 0.18);
+        const v = H.flick.length > 1 ? (x - H.flick[0][1]) / Math.max(0.03, t - H.flick[0][0]) : 0;
+        if (Math.abs(v) > 1400) {
+          S.turnV += v * 0.004;
+          S.lastDrag = performance.now();
+          label = "flick · spin";
+          H.flick = [];
+          H.coolUntil = t + 0.35;
+        } else label = "point";
+      } else H.flick = [];
+      draw2d(label);
+    }
+
+    // the hands, drawn in light over the stage
+    const BONES = [
+      [0, 1, 2, 3, 4],
+      [0, 5, 6, 7, 8],
+      [5, 9, 10, 11, 12],
+      [9, 13, 14, 15, 16],
+      [13, 17, 18, 19, 20],
+      [0, 17],
+    ];
+    function draw2d(label) {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      if (handsC.width !== w || handsC.height !== h) {
+        handsC.width = w;
+        handsC.height = h;
+      }
+      const g = handsC.getContext("2d");
+      g.clearRect(0, 0, w, h);
+      g.globalCompositeOperation = "lighter";
+      for (const hand of H.hands) {
+        const pts = hand.lm.map(toScreen);
+        g.strokeStyle = `rgba(${(tint.r * 255) | 0},${(tint.g * 255) | 0},${(tint.b * 255) | 0},0.75)`;
+        g.lineWidth = 2;
+        for (const chain of BONES) {
+          g.beginPath();
+          chain.forEach((i, k) => (k ? g.lineTo(...pts[i]) : g.moveTo(...pts[i])));
+          g.stroke();
+        }
+        for (const [i, [x, y]] of pts.entries()) {
+          g.fillStyle = i % 4 === 0 ? "rgba(235,248,255,0.95)" : "rgba(150,215,255,0.8)";
+          g.beginPath();
+          g.arc(x, y, i % 4 === 0 ? 4.5 : 2.5, 0, Math.PI * 2);
+          g.fill();
+        }
+        // a ring at the palm
+        const [cx, cy] = toScreen(hand.c);
+        g.strokeStyle = "rgba(170,225,255,0.5)";
+        g.beginPath();
+        g.arc(cx, cy, 26, 0, Math.PI * 2);
+        g.stroke();
+      }
+      g.globalCompositeOperation = "source-over";
+      if (H.label !== label) {
+        H.label = label;
+        gestureEl.textContent = label || "hands: show me one";
+      }
+    }
+
     // --- the frame ------------------------------------------------------------
 
     function frame(now) {
@@ -1512,6 +1826,10 @@
         if (now - S.lastDrag > 3500) S.turn = damp(S.turn, 0, 0.8, dt);
       }
       stage.rotation.y = S.turn;
+      if (H.on) trackHands(now);
+      spring(H.offset.x, H.on ? H.offsetTo.x : 0, 6, dt);
+      spring(H.offset.y, H.on ? H.offsetTo.y : 0, 6, dt);
+      stage.position.set(H.offset.x.x, H.offset.y.x, 0);
 
       // the colour: asking and failing keep theirs; otherwise a mood's, if any
       const moodTint = S.state !== "asking" && S.state !== "failed" ? MOOD_TINT[S.moodNow] : null;
@@ -1638,6 +1956,7 @@
       else if (b.dataset.act === "sphere") api.morph();
       else if (b.dataset.act === "auto") api.auto(!S.auto);
       else if (b.dataset.act === "close") api.closeUp();
+      else if (b.dataset.act === "hands") api.hands(!H.on);
     });
     /** Light the bar's buttons for what is on. */
     function markBar() {
@@ -1647,6 +1966,7 @@
           (b.dataset.mode && b.dataset.mode === S.mode) ||
           (b.dataset.act === "auto" && S.auto) ||
           (b.dataset.act === "close" && S.closeTo > 0.5) ||
+          (b.dataset.act === "hands" && H.on) ||
           (b.dataset.act === "sphere" && S.morphTo < 0.5);
         b.classList.toggle("on", Boolean(on));
         if (b.dataset.mood) b.classList.toggle("pinned", b.dataset.mood === S.moodPin);
@@ -1671,7 +1991,14 @@
       else if (k === "h") api.mode(S.mode === "hover" ? "idle" : "hover");
       else if (k === "a") api.auto(!S.auto);
       else if (k === "z") api.closeUp();
-      else return;
+      else if (k === "x") api.hands(!H.on);
+      else if (k === "b" && H.on) {
+        H.bw = !H.bw;
+        bgU.uBw.value = H.bw ? 1 : 0;
+      } else if (k === "f" && H.on) {
+        H.mirror = !H.mirror;
+        bgU.uMirror.value = H.mirror ? 1 : 0;
+      } else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
@@ -1708,6 +2035,7 @@
         if (!reduce) setTimeout(() => S.visible && api.gesture("wave"), 3600);
       },
       hide() {
+        if (H.on) handsOff();
         S.visible = false;
         cancelAnimationFrame(raf);
         host.hidden = true;
@@ -1821,6 +2149,11 @@
         markBar();
       },
       /** In on her face, with rings where her eyes look; again to step back. */
+      /** Holo-Explorer: the camera behind her, and hands to move her. */
+      hands(on) {
+        if (on) void handsOn();
+        else handsOff();
+      },
       closeUp(on) {
         S.closeTo = (on ?? !(S.closeTo > 0.5)) ? 1 : 0;
         markBar();

@@ -1717,3 +1717,39 @@ timers run only in the real app (`persistBoard`), never in a test.
     refused (`test/keys.test.ts`).
   - KIK sends `talk`: `daemon.onTalk` (main.ts) opens one sentence on the
     ear. In wake mode it acts as the wake word.
+
+## Holo-Explorer: hands over the camera (2026-10-13, KARA-PLAN phase 6)
+
+- **In the body view:** "hands" on the bar, or X. The webcam fills the
+  stage behind her (mirrored, dimmed to 62%; B for black and white, F to
+  mirror), and bloom drops to 0.28 so a lit room does not haze.
+- **MediaPipe's hand landmarker** (tasks-vision 1.1.0, Apache-2.0) reads up
+  to two hands at video rate, on the GPU or else the CPU. Nothing leaves
+  the machine.
+- **The gestures** (`trackHands` in body.js):
+  - pinch held 0.6 s: sphere ↔ body;
+  - fist: move her, from where the fist closed;
+  - point and flick (over 1400 px/s): spin;
+  - two fists, or two open palms, from close to 0.22 further apart within
+    0.6 s: explode (dissolve);
+  - open palms from apart to touching: clap, reassemble;
+  - her eyes follow the index finger;
+  - the hands are drawn as light, with a ring at the palm, and a label
+    names what each is doing.
+- **The files:**
+  - The API is bundled in the app: `vendor/mediapipe-vision.js`, 155 KB,
+    built by `node scripts/build-hands.mjs <dir with
+    @mediapipe/tasks-vision>`.
+  - The WebAssembly (13 MB) and the model (7.8 MB) are fetched once, on
+    first use (`fetchHands`, models.ts, from jsdelivr and Google's model
+    store), into `~/.kikoe/models/mediapipe`.
+  - The daemon serves them publicly at `/mediapipe/<file>` (a fixed
+    allow-list).
+  - The Room's CSP gained `script-src 'self' http://127.0.0.1:*
+    'wasm-unsafe-eval'`.
+  - The Room asks for them through `room.hands()` (IPC), which fetches if
+    needed and returns the base URL.
+- **Checked** with Electron's fake camera
+  (`--use-fake-device-for-media-stream`): the feed, the tracker loading and
+  running, 13 ms frames. **The gestures have not met real hands yet**; the
+  thresholds may want tuning against a webcam.

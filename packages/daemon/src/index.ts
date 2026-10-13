@@ -45,6 +45,8 @@ export {
   WHISPER_BASE,
   WHISPER_MULTI,
   KWS,
+  fetchHands,
+  handsInstalled,
 } from "./models.js";
 export type { ModelSpec, Progress } from "./models.js";
 export {

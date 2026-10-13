@@ -189,7 +189,7 @@ the board and "save" keeps the card in focus.
 **Acceptance:** the Room can be driven for ten minutes from the tablet
 alone.
 
-### Phase 6: Holo-Explorer (hand gestures over the camera)
+### Phase 6: Holo-Explorer (hand gestures over the camera) — built 2026-10-13; gestures not yet tried with real hands
 
 - **The tracking:** MediaPipe Tasks hand landmarker in the Room,
   WebGL/WASM, local, about 30 fps.

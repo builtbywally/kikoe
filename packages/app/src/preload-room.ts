@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld("room", {
   },
   state: () => ipcRenderer.invoke("room:state"),
   dashboard: () => ipcRenderer.invoke("room:dashboard"),
+  hands: () => ipcRenderer.invoke("room:hands"),
   whatsapp: (on: boolean) => ipcRenderer.invoke("room:whatsapp", Boolean(on)),
   answerPin: (id: string, answer: string) => ipcRenderer.invoke("room:answerPin", id, answer),
   answerWord: (word: string) => ipcRenderer.invoke("room:answerWord", word),
