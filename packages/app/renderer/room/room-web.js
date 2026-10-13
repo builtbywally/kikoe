@@ -59,6 +59,10 @@
       fetch(`${base}/state`, { headers })
         .then((r) => r.json())
         .catch(() => null),
+    dashboard: () =>
+      fetch(`${base}/dashboard`, { headers })
+        .then((r) => r.json())
+        .catch(() => null),
     answerPin: (id, answer) => post(`/pins/${encodeURIComponent(id)}/answer`, { answer }),
     answerWord: (word) => post("/answer", { word }),
     removePin: (id) =>

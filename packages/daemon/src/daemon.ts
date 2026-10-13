@@ -58,6 +58,7 @@ import {
   viewerToken,
   walkieToken,
 } from "./config.js";
+import { Dashboard } from "./dashboard.js";
 import { ensureDesk, trustDesk } from "./desk.js";
 import { Hands } from "./hands.js";
 import { claudeDir } from "./hooks.js";
@@ -499,6 +500,8 @@ export class Daemon {
   presence = { seen: 0, greeted: 0, briefed: "" };
   /** the calendar as the desk last read it; "" until it has */
   agenda = { text: "", at: 0 };
+  /** the desk's live data: the place, the day's weather and air (dashboard.ts) */
+  readonly dashboard = new Dashboard(() => this.settings.place);
   /** the user was heard first thing and is owed the morning brief in the reply */
   private morningDue = 0;
   private presenceTimer: NodeJS.Timeout | null = null;
@@ -4670,6 +4673,22 @@ export class Daemon {
     };
   }
 
+  /**
+   * Everything the desk draws, read in one go: the day's weather and air,
+   * the calendar Kik holds, the agents, the reminders and the limits. Real
+   * readings only; a part that cannot be read is null, and the desk says so.
+   */
+  async desk() {
+    return {
+      at: Date.now(),
+      weather: await this.dashboard.day().catch(() => null),
+      agenda: this.agenda.text ? this.agenda : null,
+      sessions: this.tracker.snapshot(),
+      reminders: this.reminders.list(),
+      usage: this.usage.list(),
+    };
+  }
+
   state() {
     return {
       ok: true,
@@ -4889,7 +4908,9 @@ export class Daemon {
     // A viewer may look and may not touch.
     const reading =
       req.method === "GET" &&
-      ["/state", "/sessions", "/stream", "/pins", "/backdrop", "/usage"].includes(url.pathname);
+      ["/state", "/sessions", "/stream", "/pins", "/backdrop", "/usage", "/dashboard"].includes(
+        url.pathname,
+      );
     if (grant === "viewer" && !reading)
       return this.json(res, 403, { error: "viewer token: read only" });
 
@@ -4948,6 +4969,8 @@ export class Daemon {
         return;
       case "GET /usage":
         return this.json(res, 200, { providers: this.usage.list() });
+      case "GET /dashboard":
+        return this.json(res, 200, await this.desk());
       case "POST /usage/refresh":
         await this.usage.poll();
         return this.json(res, 200, { providers: this.usage.list() });

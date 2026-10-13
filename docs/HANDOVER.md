@@ -1562,3 +1562,36 @@ The user asked for K.A.R.A's hologram (augmaimaginarium.com/kara) for Kik.
 - **`docs/KARA-PLAN.md`** is the plan for the whole K.A.R.A experience, in
   seven phases, with the decisions only the user can make. It draws on
   their maker's reel (@tonythetechie, 2026-10-07), as well as the site.
+
+## The desk: K.A.R.A's wall dashboard (2026-10-13, KARA-PLAN phase 2)
+
+- **"desk" in the title bar, or T,** opens `data-view="desk"` (`desk.js`,
+  `desk.css`, loaded with the Room; plain 2D canvas and SVG, no three.js).
+  A wall screen opens straight onto it with the viewer link plus `#desk`:
+  `http://<host>:4570/room/?token=<viewer token>#desk`.
+- **The layout:**
+  - a neuron sphere in the middle, our own after K.A.R.A's `engine.js`:
+    - five Fibonacci shells, each neuron linked to its two nearest;
+    - waves of firing, and only the firing is drawn;
+    - long arcs with a running pulse, tilted ribbons, rings carrying code;
+    - a breathing core, and data blocks arriving and leaving;
+    - it fires faster when Kik thinks and swells with the voice level;
+  - ribbons along the bottom;
+  - a dock of five tabs (home, life, comms, work, you);
+  - a topic card that slides in over the sphere while Kik speaks;
+  - neon (K.A.R.A's pink) or ember, from the ◐ button (localStorage).
+- **Real data only**, from `GET /dashboard` (`daemon.desk()`, which the
+  viewer token can read), re-read every 30 s while the desk is open:
+  - the weather and air come from `dashboard.ts`: Open-Meteo forecast and
+    air quality, no key, cached 15 minutes;
+  - the place is the `place` setting (Settings, next to the ntfy topic), or
+    an ip-api.com guess cached a day;
+  - plus the calendar Kik holds, the agents, the reminders and the limits.
+  - A part that cannot be read says so.
+  - Comms and You say "not connected yet" until phase 4.
+- **The map** ("around you") is Esri's World Dark Gray Base tiles at zoom 13:
+  - no key; CARTO's tiles now answer "access required";
+  - `img-src` in the Room's CSP allows `server.arcgisonline.com`;
+  - CSS makes the water black, the land dim and the roads bright
+    (brightness 1.7, contrast 6), and the theme's gradient is multiplied
+    over it.

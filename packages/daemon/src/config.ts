@@ -156,6 +156,11 @@ export interface Settings {
   mic_mode: "open" | "muted" | "push";
   /** the push-to-talk key, an Electron accelerator */
   ptt_key: string;
+  /**
+   * Where the user is, by name ("Bangkok"), for the desk's weather and air.
+   * Empty: guessed from the IP address once a day.
+   */
+  place: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -212,6 +217,7 @@ export const DEFAULTS: Settings = {
   // push to talk unless chosen otherwise (the user, 2026-09-26)
   mic_mode: "push",
   ptt_key: "CommandOrControl+Shift+Space",
+  place: "",
 };
 
 const FILE = () => path.join(HOME, "config.local.json");

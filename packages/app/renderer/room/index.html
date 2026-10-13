@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; frame-src 'self' data: about: http: https:; connect-src 'self' http://127.0.0.1:*;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: https://server.arcgisonline.com; frame-src 'self' data: about: http: https:; connect-src 'self' http://127.0.0.1:*;" />
   <!-- The canvas zooms itself; a browser zooming the whole page on a pinch
        outside it (the title bar, the talk button) fought it. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="room.css" />
   <link rel="stylesheet" href="settings.css" />
   <link rel="stylesheet" href="body.css" />
+  <link rel="stylesheet" href="desk.css" />
 </head>
 <body data-view="room" data-orb="idle">
   <div class="titlebar">
@@ -20,6 +21,7 @@
     <span class="tb-status" id="tb-status"></span>
     <div class="tb-actions">
       <button id="btn-mic" class="quiet mic-chip" title="how this computer hears you: click to change"></button>
+      <button id="btn-desk" class="quiet" title="T: the desk, for a wall screen">desk</button>
       <button id="btn-body" class="quiet" title="K: Kik, standing in the room">kik</button>
       <button id="btn-board" class="quiet" title="C">control room</button>
       <button id="btn-clear" class="quiet">clear the board</button>
@@ -43,6 +45,8 @@
 
   <!-- Kik's hologram body (body.js), loaded the first time it is opened -->
   <div id="holo" class="holo-host" hidden></div>
+  <!-- the desk (desk.js): Kik's life dashboard for a wall screen -->
+  <div id="desk" class="desk-host" hidden></div>
 
   <div id="agents" class="agents"></div>
 
@@ -145,6 +149,7 @@
         <label class="check"><input type="checkbox" id="morning-brief" /> Give me the day in brief the first time I'm heard in the morning.</label>
         <label class="check" title="Once an hour the desk reads today's and tomorrow's events from your calendar, so asking what's on is answered at once. Reading only."><input type="checkbox" id="agenda" /> Keep my calendar at hand, read by the desk each hour.</label>
         <div class="actions" title="Install the ntfy app on the phone and subscribe to the same topic. Reminders and questions waiting on you are pushed there, even when the phone is locked. Anyone who knows the topic can read it: make it long."><input type="text" id="push-topic" placeholder="ntfy topic for a locked phone (empty is off)" style="width: 300px" /> <span class="note">reminders and questions, pushed</span></div>
+        <div class="actions" title="The desk draws the weather, the air and the map for this place. Empty: a guess from your IP address, once a day."><input type="text" id="place" placeholder="where you are, for the desk (empty: guessed)" style="width: 300px" /> <span class="note">the desk's weather and map</span></div>
         <div class="row" style="margin-top: 10px">
           <label for="artifact-model">Pages and apps are designed by</label>
           <select id="artifact-model"><option value="claude-opus-5-5">Opus 5.5 · the designer</option><option value="claude-fable-5-1">Fable 5.1 · strongest, slowest</option><option value="claude-sonnet-5">Sonnet 5 · quicker</option><option value="claude-haiku-4-5-20251001">Haiku 4.5 · fastest sketches</option></select>
@@ -281,6 +286,7 @@
 
   <script src="vendor/thinking-orbs.js"></script>
   <script src="orbs.js"></script>
+  <script src="desk.js"></script>
   <script src="room-web.js"></script>
   <script src="board.js"></script>
   <script src="ambient.js"></script>

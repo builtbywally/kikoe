@@ -248,6 +248,7 @@
     $("morning-brief").checked = s.morning_brief !== false;
     $("agenda").checked = s.agenda !== false;
     $("push-topic").value = s.push_topic || "";
+    $("place").value = s.place || "";
     $("artifact-model").value = s.artifact_model || "claude-opus-5-5";
     $("anthropic-key").placeholder = info.hasAnthropicKey
       ? "key saved in the keychain (paste to replace)"
@@ -601,6 +602,7 @@
       morning_brief: $("morning-brief").checked,
       agenda: $("agenda").checked,
       push_topic: $("push-topic").value.trim(),
+      place: $("place").value.trim(),
       artifact_model: $("artifact-model").value,
     };
     if (key) patch.anthropicKey = key;

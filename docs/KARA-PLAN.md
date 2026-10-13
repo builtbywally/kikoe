@@ -79,7 +79,7 @@ Each phase ships on its own, with the usual loop (tests, lint, typecheck,
 screenshot, a spoken line, commit, installer). It is done when the
 acceptance line is true on this machine.
 
-### Phase 1: She looks and moves like K.A.R.A (the hologram, finished)
+### Phase 1: She looks and moves like K.A.R.A (the hologram, finished) — built 2026-10-13, except the new body (waiting on decision 1)
 
 1. **Her body.** The figure is the one thing code cannot fix.
    - **Recommended:** make her in **VRoid Studio** (free, about 20 minutes):
@@ -114,7 +114,7 @@ acceptance line is true on this machine.
 being. A visitor names her mood without being told. She is never still.
 No frame is over 17 ms on this machine.
 
-### Phase 2: The desk on the TV (K.A.R.A's pink dashboard)
+### Phase 2: The desk on the TV (K.A.R.A's pink dashboard) — built 2026-10-13
 
 1. **A desk view in the Room** (and full-screen on a second display, via
    the existing viewer link), sphere-centred:

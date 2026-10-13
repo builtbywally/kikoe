@@ -848,6 +848,7 @@ function daemonConfig() {
 ipcMain.handle("island:config", () => daemonConfig());
 ipcMain.on("island:openSettings", (_e, page?: string) => openSettings(page ?? ""));
 ipcMain.handle("room:state", () => daemon?.state() ?? null);
+ipcMain.handle("room:dashboard", () => daemon?.desk() ?? null);
 ipcMain.handle("room:answerPin", (_e, id: string, answer: string) => ({
   ok: daemon?.board.answer(String(id), String(answer)) ?? false,
 }));
@@ -1067,6 +1068,10 @@ ipcMain.handle(
     const s = saveSettings(rest);
     if ("start_at_login" in rest) applyLoginItem(Boolean(rest.start_at_login));
     if ("theme" in rest) applyTheme(String(rest.theme));
+    if ("place" in rest && daemon && daemon.settings.place !== String(rest.place ?? "")) {
+      daemon.settings.place = String(rest.place ?? "");
+      daemon.dashboard.forget();
+    }
     if ("mic" in rest || "mic_device" in rest || "stt_model" in rest) {
       stopEar();
       if (loadSettings().mic) void startEar();
@@ -1554,6 +1559,12 @@ if (!app.requestSingleInstanceLock()) {
       await new Promise((r) => setTimeout(r, 7000));
       const img4 = await roomWin?.webContents.capturePage();
       if (img4) writeFileSync(shotPath.replace(/\.png$/, "-body.png"), img4.toPNG());
+      roomWin?.webContents.send("room:view", { view: "room" });
+      // the desk, with whatever the dashboard could read
+      await roomWin?.webContents.executeJavaScript(`document.getElementById("btn-desk").click()`);
+      await new Promise((r) => setTimeout(r, 5000));
+      const img5 = await roomWin?.webContents.capturePage();
+      if (img5) writeFileSync(shotPath.replace(/\.png$/, "-desk.png"), img5.toPNG());
       roomWin?.webContents.send("room:view", { view: "room" });
       // The pill has its own window, so the Room's capture never showed it —
       // which meant the one surface that is looked at all day was the one

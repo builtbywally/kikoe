@@ -1,0 +1,361 @@
+/* The desk (desk.js): Kik's life dashboard for a wall screen. */
+
+.desk-host[hidden] {
+  display: none;
+}
+.desk {
+  position: absolute;
+  inset: 36px 0 0;
+  z-index: 4;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 45%, #14060f 0%, #07040a 55%, #030205 100%);
+  color: var(--dk-ink);
+  font: 13px var(--sans, system-ui, sans-serif);
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.25fr) minmax(280px, 1fr);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "top top top"
+    "left mid right"
+    "dock dock dock";
+}
+.desk[data-theme="ember"] {
+  background: radial-gradient(ellipse at 50% 45%, #1a0d07 0%, #0c0705 55%, #050302 100%);
+}
+.dk-sphere,
+.dk-ribbons {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.dk-top {
+  grid-area: top;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 18px 26px 0;
+  position: relative;
+}
+.dk-hello small,
+.dk-panel h3,
+.dk-tile span,
+.dk-dock button,
+.dk-fig i {
+  font: 10px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.dk-hello small {
+  display: block;
+  color: var(--dk-a);
+  opacity: 0.9;
+}
+.dk-hello b {
+  display: block;
+  font: 300 34px / 1.15 var(--sans, system-ui, sans-serif);
+  margin-top: 6px;
+}
+.dk-hello span,
+.dk-clock span {
+  opacity: 0.6;
+  font-size: 13px;
+}
+.dk-clock {
+  text-align: right;
+}
+.dk-clock b {
+  display: block;
+  font: 200 40px / 1 var(--sans, system-ui, sans-serif);
+  letter-spacing: 0.02em;
+}
+.dk-theme {
+  margin-left: 10px;
+  background: none;
+  border: 1px solid rgba(var(--dk-a-rgb), 0.4);
+  color: var(--dk-ink);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+}
+.dk-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 22px 12px;
+  overflow: auto;
+  scrollbar-width: none;
+}
+.dk-left {
+  grid-area: left;
+}
+.dk-right {
+  grid-area: right;
+}
+.dk-panel {
+  background: linear-gradient(180deg, rgba(var(--dk-a-rgb), 0.07), rgba(255, 255, 255, 0.015));
+  border: 1px solid rgba(var(--dk-a-rgb), 0.28);
+  border-radius: 14px;
+  padding: 12px 14px 12px;
+  box-shadow: 0 0 24px rgba(var(--dk-a-rgb), 0.08), inset 0 0 18px rgba(var(--dk-a-rgb), 0.05);
+  backdrop-filter: blur(6px);
+  animation: dk-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes dk-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.dk-panel h3 {
+  margin: 0 0 9px;
+  font-weight: 400;
+  color: var(--dk-a);
+}
+.dk-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.dk-tile {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(var(--dk-a-rgb), 0.16);
+  border-radius: 9px;
+  padding: 8px 9px;
+}
+.dk-tile b {
+  display: block;
+  font: 300 22px / 1.1 var(--sans, system-ui, sans-serif);
+}
+.dk-tile span {
+  display: block;
+  opacity: 0.6;
+  font-size: 8.5px;
+  margin-top: 3px;
+}
+.dk-tile i {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+.dk-chart {
+  width: 100%;
+  height: 86px;
+  overflow: visible;
+}
+.dk-panel.wide .dk-chart {
+  height: 110px;
+}
+.dk-chart text {
+  fill: var(--dk-ink);
+  opacity: 0.45;
+  font: 9px var(--mono, ui-monospace, monospace);
+}
+.dk-chart .dk-now {
+  fill: var(--dk-ink);
+  filter: drop-shadow(0 0 4px var(--dk-a));
+}
+.dk-empty {
+  opacity: 0.45;
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+.dk-text {
+  margin: 0;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+.dk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dk-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(var(--dk-a-rgb), 0.1);
+}
+.dk-list li i {
+  font: 11px var(--mono, ui-monospace, monospace);
+  font-style: normal;
+  opacity: 0.6;
+}
+.dk-list li[data-status="working"] i {
+  color: var(--dk-c);
+  opacity: 1;
+}
+.dk-list li[data-status="waiting"] i,
+.dk-list li[data-status="failed"] i {
+  color: var(--dk-a);
+  opacity: 1;
+}
+.dk-usage + .dk-usage {
+  margin-top: 10px;
+}
+.dk-bar {
+  display: grid;
+  grid-template-columns: 70px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 11px;
+}
+.dk-bar i {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--dk-c), var(--dk-a));
+  box-shadow: 0 0 6px var(--dk-a);
+}
+.dk-bar em {
+  font-style: normal;
+  opacity: 0.7;
+  text-align: right;
+}
+
+/* the city around the user: tiles tinted to the theme, centred on the place */
+.dk-map {
+  position: relative;
+  height: 180px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0a0508;
+}
+.dk-tiles-map {
+  position: absolute;
+  width: 768px;
+  height: 768px;
+  left: 50%;
+  top: 50%;
+  transform: translate(calc(var(--px) * -768px), calc(var(--py) * -768px));
+  /* Esri dark grey: water ~38, land ~70, roads 75-100 of 255; this makes
+     water black, land dim and roads bright, then the theme multiplies in */
+  filter: grayscale(1) brightness(1.7) contrast(6);
+}
+.dk-map::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--dk-c), var(--dk-a) 45%, var(--dk-b));
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.dk-tiles-map img {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+}
+.dk-pin {
+  position: absolute;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--dk-ink);
+  box-shadow: 0 0 0 0 rgba(var(--dk-a-rgb), 0.7);
+  animation: dk-pulse 2s ease-out infinite;
+}
+@keyframes dk-pulse {
+  to {
+    box-shadow: 0 0 0 26px rgba(var(--dk-a-rgb), 0);
+  }
+}
+.dk-map small {
+  position: absolute;
+  z-index: 1;
+  right: 6px;
+  bottom: 4px;
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+/* a topic card, sliding in over the sphere as Kik speaks */
+.dk-topic {
+  grid-area: mid;
+  align-self: start;
+  justify-self: center;
+  margin-top: 14px;
+  max-width: 440px;
+  padding: 14px 18px;
+  border: 1px solid rgba(var(--dk-a-rgb), 0.5);
+  border-radius: 16px;
+  background: rgba(10, 4, 10, 0.55);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 40px rgba(var(--dk-a-rgb), 0.25);
+  position: relative;
+  opacity: 0;
+  transform: translateY(-12px) scale(0.97);
+  transition: opacity 0.45s, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dk-topic.in {
+  opacity: 1;
+  transform: none;
+}
+.dk-topic p {
+  margin: 0;
+  font: 400 17px / 1.45 var(--serif, Georgia, serif);
+}
+.dk-fig {
+  font: 200 44px / 1 var(--sans, system-ui, sans-serif);
+  margin-bottom: 6px;
+}
+.dk-fig small {
+  font-size: 15px;
+  margin-left: 8px;
+  opacity: 0.8;
+}
+.dk-fig i {
+  display: block;
+  font-style: normal;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+/* the dock */
+.dk-dock {
+  grid-area: dock;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 0 22px;
+}
+.dk-dock button {
+  color: var(--dk-ink);
+  background: rgba(var(--dk-a-rgb), 0.08);
+  border: 1px solid rgba(var(--dk-a-rgb), 0.3);
+  border-radius: 999px;
+  padding: 9px 16px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.dk-dock button.on {
+  background: rgba(var(--dk-a-rgb), 0.3);
+  box-shadow: 0 0 18px rgba(var(--dk-a-rgb), 0.45);
+}
+body[data-view="desk"] .history,
+body[data-view="desk"] .line,
+body[data-view="desk"] .orb-wrap,
+body[data-view="desk"] .board,
+body[data-view="desk"] .agents,
+body[data-view="desk"] .corner {
+  display: none;
+}
+body[data-view="desk"] #btn-desk {
+  color: var(--fg);
+}
+@media (max-width: 900px) {
+  .desk {
+    grid-template-columns: 1fr;
+    grid-template-areas: "top" "mid" "left" "right" "dock";
+    overflow: auto;
+  }
+}

@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld("room", {
     });
   },
   state: () => ipcRenderer.invoke("room:state"),
+  dashboard: () => ipcRenderer.invoke("room:dashboard"),
   answerPin: (id: string, answer: string) => ipcRenderer.invoke("room:answerPin", id, answer),
   answerWord: (word: string) => ipcRenderer.invoke("room:answerWord", word),
   removePin: (id: string) => ipcRenderer.invoke("room:removePin", id),

@@ -191,6 +191,7 @@ function setOrb(state, label) {
   bigOrb?.set(kikVerb);
   cardOrbs.conversation?.set(kikVerb);
   holo?.state(state, label);
+  desk?.state(state, label);
   window.dispatchEvent(new CustomEvent("kik-orb", { detail: kikVerb }));
 }
 
@@ -1811,6 +1812,7 @@ async function showControl() {
   sessions = state?.sessions ?? sessions;
   renderControl(state);
   holo?.hide();
+  desk?.hide();
   el.control.hidden = false;
   el.body.dataset.view = "control";
 }
@@ -1818,6 +1820,7 @@ async function showControl() {
 function showRoom() {
   el.control.hidden = true;
   holo?.hide();
+  desk?.hide();
   el.body.dataset.view = "room";
 }
 
@@ -1870,7 +1873,20 @@ function loadScript(src) {
     document.body.appendChild(s);
   });
 }
+/** The desk: Kik's life on a wall screen (desk.js). Light, so it loads with the Room. */
+let desk = null;
+function showDesk() {
+  desk ??= window.KikDesk?.mount(document.getElementById("desk")) ?? null;
+  if (!desk) return;
+  holo?.hide();
+  el.control.hidden = true;
+  el.body.dataset.view = "desk";
+  desk.state(el.body.dataset.orb, el.orbLabel.textContent);
+  desk.show();
+}
+
 async function showBody() {
+  desk?.hide();
   holoLoading ??= (async () => {
     for (const src of ["vendor/three-body.js", "vendor/kik-body.js", "body.js"])
       await loadScript(src);
@@ -2019,12 +2035,14 @@ const handlers = {
       holoLine = text;
       holo?.say(text);
       const panel = holoPanel(text, repo);
+      desk?.say(text, panel?.figure != null ? panel : null);
       clearTimeout(holoPanelTimer);
       if (panel) holo?.panel(panel);
       return;
     }
     speaking = false;
     holo?.quiet();
+    desk?.quiet();
     clearTimeout(holoPanelTimer);
     holoPanelTimer = setTimeout(() => {
       if (!speaking && !pendingPermission) holo?.panel(null);
@@ -2037,6 +2055,7 @@ const handlers = {
   /** How loud Kik's voice is as it is heard: the hologram's mouth and hands. */
   voice(f) {
     holo?.level(f.level);
+    desk?.level(f.level);
   },
   mic(f) {
     if (f.mode) micMode = f.mode;
@@ -2175,6 +2194,11 @@ setInterval(() => {
 // --- controls ----------------------------------------------------------------------
 
 $("btn-board").addEventListener("click", showControl);
+$("btn-desk").addEventListener("click", () =>
+  el.body.dataset.view === "desk" ? showRoom() : showDesk(),
+);
+// a wall screen opens straight onto the desk: …/room/?token=…#desk
+if (location.hash === "#desk") setTimeout(showDesk, 0);
 $("btn-body").addEventListener("click", () =>
   el.body.dataset.view === "body" ? showRoom() : showBody(),
 );
@@ -2194,6 +2218,7 @@ document.addEventListener("keydown", (e) => {
   if (e.target && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (e.key === "c" || e.key === "C")
     el.body.dataset.view === "control" ? showRoom() : showControl();
+  if (e.key === "t" || e.key === "T") el.body.dataset.view === "desk" ? showRoom() : showDesk();
   if (e.key === "k" || e.key === "K") el.body.dataset.view === "body" ? showRoom() : showBody();
   if (e.key === "Escape") {
     if (el.body.dataset.view === "settings") window.settingsPanel.close();
