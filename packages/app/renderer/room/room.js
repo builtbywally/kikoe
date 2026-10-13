@@ -43,6 +43,10 @@ let asking = null;
 let pendingPermission = null;
 let mode = "normal";
 let speaking = false;
+/** Kik's hologram body once opened (showBody), the line it is saying, and its load. */
+let holo = null;
+let holoLine = "";
+let holoLoading = null;
 let history = [];
 let lastLine = null;
 let idleTimer = null;
@@ -186,6 +190,7 @@ function setOrb(state, label) {
   kikVerb = window.KikOrb?.forKik(label === "thinking" ? "thinking" : state) ?? "breathing";
   bigOrb?.set(kikVerb);
   cardOrbs.conversation?.set(kikVerb);
+  holo?.state(state, label);
   window.dispatchEvent(new CustomEvent("kik-orb", { detail: kikVerb }));
 }
 
@@ -1805,13 +1810,50 @@ async function showControl() {
   const state = await window.room.state();
   sessions = state?.sessions ?? sessions;
   renderControl(state);
+  holo?.hide();
   el.control.hidden = false;
   el.body.dataset.view = "control";
 }
 
 function showRoom() {
   el.control.hidden = true;
+  holo?.hide();
   el.body.dataset.view = "room";
+}
+
+// --- Kik's body ------------------------------------------------------------------
+// The hologram (body.js) is three.js and a packed body, about 7 MB of script,
+// so it loads the first time it is opened, not with the Room.
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`could not load ${src}`));
+    document.body.appendChild(s);
+  });
+}
+async function showBody() {
+  holoLoading ??= (async () => {
+    for (const src of ["vendor/three-body.js", "vendor/kik-body.js", "body.js"])
+      await loadScript(src);
+    holo = window.KikBody?.mount(document.getElementById("holo")) ?? null;
+  })();
+  el.control.hidden = true;
+  el.body.dataset.view = "body";
+  try {
+    await holoLoading;
+  } catch (err) {
+    console.error(err);
+    holoLoading = null;
+    showRoom();
+    return;
+  }
+  if (el.body.dataset.view !== "body" || !holo) return;
+  holo.state(el.body.dataset.orb, el.orbLabel.textContent);
+  await holo.show();
+  if (speaking && holoLine) holo.say(holoLine);
 }
 
 // --- frames --------------------------------------------------------------------
@@ -1933,9 +1975,12 @@ const handlers = {
         : (f.text ?? "");
       setLine(text, { repo, ask: isAsk, hint: isAsk ? ["say *yes*", "say *no*"] : [] });
       setOrb("speaking", "speaking");
+      holoLine = text;
+      holo?.say(text);
       return;
     }
     speaking = false;
+    holo?.quiet();
     glowSpoken(null);
     if (pendingPermission) return showPermission();
     if (asking) return showAsking();
@@ -2078,6 +2123,9 @@ setInterval(() => {
 // --- controls ----------------------------------------------------------------------
 
 $("btn-board").addEventListener("click", showControl);
+$("btn-body").addEventListener("click", () =>
+  el.body.dataset.view === "body" ? showRoom() : showBody(),
+);
 $("btn-room").addEventListener("click", showRoom);
 $("btn-clear").addEventListener("click", () => window.room.clearBoard());
 $("btn-settings").addEventListener("click", () => window.settingsPanel.open());
@@ -2094,6 +2142,7 @@ document.addEventListener("keydown", (e) => {
   if (e.target && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (e.key === "c" || e.key === "C")
     el.body.dataset.view === "control" ? showRoom() : showControl();
+  if (e.key === "k" || e.key === "K") el.body.dataset.view === "body" ? showRoom() : showBody();
   if (e.key === "Escape") {
     if (el.body.dataset.view === "settings") window.settingsPanel.close();
     else showRoom();

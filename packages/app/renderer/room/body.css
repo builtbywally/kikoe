@@ -1,0 +1,199 @@
+/* Kik's hologram body (body.js): the stage, and the HUD drawn over it. */
+
+/* in the Room: the view below the title bar, in place of the board */
+.holo-host.holo {
+  top: 36px;
+  z-index: 4;
+}
+.holo-host[hidden] {
+  display: none;
+}
+body[data-view="body"] .history,
+body[data-view="body"] .line,
+body[data-view="body"] .orb-wrap,
+body[data-view="body"] .board,
+body[data-view="body"] .agents,
+body[data-view="body"] .corner {
+  display: none;
+}
+body[data-view="body"] #btn-body {
+  color: var(--fg);
+}
+
+.holo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #050608;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.holo:active {
+  cursor: grabbing;
+}
+.holo-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.holo-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font: 11px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.12em;
+  color: rgba(150, 205, 255, 0.62);
+  text-transform: uppercase;
+}
+.holo-tag {
+  position: absolute;
+  left: 18px;
+  bottom: 16px;
+}
+.holo-tag b {
+  font-weight: 600;
+  color: rgba(190, 228, 255, 0.9);
+}
+.holo-keys {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  opacity: 0.55;
+  text-transform: none;
+  letter-spacing: 0.06em;
+}
+.holo-loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  animation: holo-blink 1.4s ease-in-out infinite;
+}
+@keyframes holo-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* the line Kik is saying, written as it is said */
+.holo-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 54px;
+  width: min(760px, 86%);
+  transform: translateX(-50%);
+  text-align: center;
+  font: 400 clamp(17px, 1.9vw, 24px) / 1.4 var(--serif, Georgia, serif);
+  letter-spacing: 0;
+  text-transform: none;
+  color: #dff1ff;
+  text-shadow: 0 0 18px rgba(90, 180, 255, 0.55);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+.holo-caption.on {
+  opacity: 1;
+}
+.holo-caption span {
+  opacity: 0.12;
+  transition: opacity 0.25s;
+}
+.holo-caption span.on {
+  opacity: 1;
+}
+
+/* the panel she holds up, tied to her hand by three lines */
+.holo-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.holo-wires line {
+  stroke: rgba(140, 205, 255, 0.8);
+  stroke-width: 0.7;
+}
+.holo-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
+  padding: 12px 14px 14px;
+  border: 1px solid rgba(140, 205, 255, 0.45);
+  background: linear-gradient(180deg, rgba(40, 110, 180, 0.16), rgba(20, 60, 110, 0.08)),
+    repeating-linear-gradient(0deg, rgba(140, 205, 255, 0.04) 0 1px, transparent 1px 3px);
+  box-shadow: 0 0 30px rgba(60, 150, 255, 0.18), inset 0 0 24px rgba(60, 150, 255, 0.08);
+  color: #cfe9ff;
+  animation: holo-panel-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+.holo-panel[hidden] {
+  display: none;
+}
+@keyframes holo-panel-in {
+  from {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+.hp-k {
+  font-size: 9.5px;
+  opacity: 0.7;
+}
+.hp-fig {
+  font: 300 46px / 1.05 var(--sans, system-ui, sans-serif);
+  letter-spacing: -0.01em;
+  margin: 6px 0 4px;
+  text-transform: none;
+}
+.hp-fig small {
+  font-size: 15px;
+  margin-left: 8px;
+  opacity: 0.8;
+}
+.hp-text {
+  font: 400 15px / 1.4 var(--sans, system-ui, sans-serif);
+  letter-spacing: 0;
+  text-transform: none;
+  margin: 6px 0 2px;
+}
+.hp-spark {
+  width: 100%;
+  height: 54px;
+  margin: 4px 0 8px;
+}
+.hp-spark polyline {
+  fill: none;
+  stroke: rgba(170, 220, 255, 0.95);
+  stroke-width: 1.2;
+}
+.hp-spark polygon {
+  fill: rgba(90, 170, 255, 0.16);
+}
+.hp-row {
+  display: grid;
+  grid-template-columns: 1fr 70px auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  margin-top: 5px;
+}
+.hp-row i {
+  height: 2px;
+  background: rgba(150, 210, 255, 0.75);
+  justify-self: start;
+}
+.hp-row b {
+  font-weight: 400;
+  opacity: 0.85;
+}

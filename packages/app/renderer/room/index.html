@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="../fonts/fonts.css" />
   <link rel="stylesheet" href="room.css" />
   <link rel="stylesheet" href="settings.css" />
+  <link rel="stylesheet" href="body.css" />
 </head>
 <body data-view="room" data-orb="idle">
   <div class="titlebar">
@@ -19,6 +20,7 @@
     <span class="tb-status" id="tb-status"></span>
     <div class="tb-actions">
       <button id="btn-mic" class="quiet mic-chip" title="how this computer hears you: click to change"></button>
+      <button id="btn-body" class="quiet" title="K: Kik, standing in the room">kik</button>
       <button id="btn-board" class="quiet" title="C">control room</button>
       <button id="btn-clear" class="quiet">clear the board</button>
       <button id="btn-settings" class="quiet">settings</button>
@@ -38,6 +40,9 @@
   </div>
 
   <div id="board" class="board"></div>
+
+  <!-- Kik's hologram body (body.js), loaded the first time it is opened -->
+  <div id="holo" class="holo-host" hidden></div>
 
   <div id="agents" class="agents"></div>
 

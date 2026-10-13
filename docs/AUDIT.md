@@ -213,6 +213,26 @@ Gaps:
 - The contract is documented in ROOM-PLAN, not in a public page. **later**
   (M5).
 
+## 12. Kik's body (added 2026-10-13)
+
+Works:
+- "kik" in the title bar, or K, opens a hologram of Kik
+  (`docs/HOLOGRAM.md`).
+- She forms out of a sphere and waves.
+- She follows Kik's state: she listens toward you, holds a hand to her chin
+  while thinking, and turns amber and presents while asking.
+- She speaks the line with the face's own vowel shapes and a caption.
+- She nods at "heard you" and shrugs at "not for me".
+
+Gaps:
+- Nothing opens the data panel above her hand yet. **next**: an agent's
+  status or test counts when Kik speaks about them.
+- The mouth follows the text, not the audio. **next**: a level from the
+  TTS player.
+- The phone does not have her. **later**.
+- She has three poses and three gestures; K.A.R.A has dozens with an auto
+  mode. **later**.
+
 ## Closed since this was written (2026-09-07)
 
 - **The agent's work is on the canvas.** Diffs per edited file, run cards,

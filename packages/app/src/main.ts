@@ -1547,6 +1547,14 @@ if (!app.requestSingleInstanceLock()) {
       await new Promise((r) => setTimeout(r, 1200));
       const img2 = await roomWin?.webContents.capturePage();
       if (img2) writeFileSync(shotPath.replace(/\.png$/, "-settings.png"), img2.toPNG());
+      // Kik's body: opened as the button opens it, given time to load,
+      // gather out of the sphere and wave
+      roomWin?.webContents.send("room:view", { view: "room" });
+      await roomWin?.webContents.executeJavaScript(`document.getElementById("btn-body").click()`);
+      await new Promise((r) => setTimeout(r, 7000));
+      const img4 = await roomWin?.webContents.capturePage();
+      if (img4) writeFileSync(shotPath.replace(/\.png$/, "-body.png"), img4.toPNG());
+      roomWin?.webContents.send("room:view", { view: "room" });
       // The pill has its own window, so the Room's capture never showed it —
       // which meant the one surface that is looked at all day was the one
       // surface no screenshot could check. Transparent, so it comes out on

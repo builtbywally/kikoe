@@ -1515,3 +1515,32 @@ with a real voice, the phone path, and a project that needs an install.
   agent's first line when a job Kik started took over a minute (not the
   desk, not plan runs). ntfy titles are ASCII only: the Title header
   strips anything else, so use ":" rather than "·".
+
+## Kik's body: the hologram (2026-10-13)
+
+The user asked for K.A.R.A's hologram (augmaimaginarium.com/kara) for Kik.
+**`docs/HOLOGRAM.md`** has K.A.R.A taken apart and how ours works.
+
+- **"kik" in the title bar, or K**, opens the body view (`data-view="body"`).
+  `showBody()` in room.js loads `vendor/three-body.js`,
+  `vendor/kik-body.js` (about 6 MB) and `body.js` the first time, then
+  mounts on `#holo`.
+- **What drives her:** `setOrb()` passes Kik's state (`holo.state`), and
+  `speech` frames pass the line (`holo.say` / `holo.quiet`).
+- **Rebuild** the vendor files with `node scripts/build-body.mjs <models dir>
+  <dir with node_modules/three>`. The models dir holds `body.vrm` (pixiv's
+  VRM1_Constraint_Twist_Sample, from the three-vrm repository's
+  `packages/three-vrm/examples/models`) and `Xbot.glb` (three.js
+  `examples/models/gltf`). three is not a dependency of the repo:
+  `npm i three` into any folder and pass that folder.
+- **The app's `--screenshot`** now also writes `out-body.png`: the view
+  opened by its button, 7 s in.
+- **Checking it outside the app:** serve `packages/app/renderer` over http
+  and load the four files in a page; `KikBody.mount(el).show()`.
+  `api.debug` exposes the renderer, scene, bloom, beam, dust, floor and
+  uniforms for tuning.
+- **Two gotchas:**
+  - the composer lost the clear colour, so the background is
+    `scene.background`;
+  - Electron exits 127 when an `http://` URL is a command-line argument to a
+    script, so pass arguments in a file.
