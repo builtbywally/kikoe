@@ -107,7 +107,7 @@
       165,
       15,
       [
-        ["room", "key:view:room"],
+        ["control", "key:view:control"],
         ["desk", "key:view:desk"],
         ["body", "key:view:body"],
         ["brief", "say:give me the day in brief"],

@@ -8,14 +8,6 @@
 .holo-host[hidden] {
   display: none;
 }
-body[data-view="body"] .history,
-body[data-view="body"] .line,
-body[data-view="body"] .orb-wrap,
-body[data-view="body"] .board,
-body[data-view="body"] .agents,
-body[data-view="body"] .corner {
-  display: none;
-}
 body[data-view="body"] #btn-body {
   color: var(--fg);
 }

@@ -22,26 +22,42 @@
 // change are not rebuilt, not even to read their age; pan and zoom are
 // painted once per frame however many events arrive.
 //
-// Exposes window.board = { render(pins, build, fresh), fit(), focus(id), reset(), zoomTo(k), zoom }.
+// The desk (2026-10-14): this is no longer a screen of its own. It is the
+// desk's camera: the world holds the desk's layers (the neuron sphere at
+// 0,0, the five areas, from desk.js) and, at the Work origin, the work layer
+// with Kik's cards in their repo columns. A card's saved x/y is relative to
+// that origin, so every board saved before the desk opens as it was.
+//
+// Exposes window.board = { render(pins, build, fresh), fit(), focus(id),
+// reset(), zoomTo(k), zoom, layer(name), flyTo(x, y, w, h), camera(), WORK }.
 
 (() => {
   const FRAME_W = 560;
   const FRAME_GAP = 80;
   const PIN_GAP = 18;
   const PAD = 24;
-  const MIN_ZOOM = 0.2;
+  // the whole desk, from far enough out to see every area at once
+  const MIN_ZOOM = 0.08;
   const MAX_ZOOM = 2.5;
-  /** fit never shrinks below this: a board you cannot read is not a board */
-  const FIT_FLOOR = 0.85;
-  const TOP = 96;
   const LEFT = 72;
   /** the easing every glide shares: quick to start, soft to land */
   const EASE = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+  /** where Kik's cards begin on the desk: the Work area, below the sphere */
+  const WORK = { x: -1300, y: 1380 };
+  /** the room the desk's HUD takes: the header above, the dock and the line below */
+  const HUD_TOP = 120;
+  const HUD_BOTTOM = 190;
 
   const canvas = document.getElementById("board");
   const world = document.createElement("div");
   world.className = "world";
   canvas.append(world);
+  // Kik's cards and their repo frames, offset to the Work area
+  const work = document.createElement("div");
+  work.className = "work-layer";
+  work.style.left = `${WORK.x}px`;
+  work.style.top = `${WORK.y}px`;
+  world.append(work);
 
   const hud = document.createElement("div");
   hud.className = "zoom-hud";
@@ -81,20 +97,8 @@
   // --- the camera -------------------------------------------------------------------
 
   let lastZoomLabel = "";
-  let lastGrid = 0;
   function paint() {
     world.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${zoom})`;
-    // The dot grid only exists on the plain grid; a backdrop overrides it with
-    // !important, and writing it there anyway is a style pass per frame for nothing.
-    const bd = canvas.dataset.backdrop;
-    if (!bd || bd === "grid") {
-      canvas.style.backgroundPosition = `${panX}px ${panY}px`;
-      const grid = Math.max(12, Math.round(28 * zoom));
-      if (grid !== lastGrid) {
-        lastGrid = grid;
-        canvas.style.backgroundSize = `${grid}px ${grid}px`;
-      }
-    }
     const label = `${Math.round(zoom * 100)}%`;
     if (label !== lastZoomLabel) {
       lastZoomLabel = label;
@@ -212,42 +216,60 @@
     coast = requestAnimationFrame(step);
   }
 
-  /** Where the camera would be to show the whole board (or, on a phone, its first column). */
-  function fitView() {
+  /** A world rectangle for anything on the desk: an area, the sphere, a card's frame. */
+  function worldRect(el) {
+    const inWork = work.contains(el);
+    return {
+      x: Number.parseFloat(el.style.left) + (inWork ? WORK.x : 0),
+      y: Number.parseFloat(el.style.top) + (inWork ? WORK.y : 0),
+      w: el.offsetWidth,
+      h: el.offsetHeight,
+    };
+  }
+  /** The camera that shows a world rectangle between the HUD's header and its dock. */
+  function viewOf(x, y, w, h, maxK = 1) {
     const rect = canvas.getBoundingClientRect();
-    const frames = [...world.querySelectorAll(".frame")];
-    if (!frames.length) return { k: 1, x: PAD, y: PAD };
+    const phone = document.documentElement.dataset.phone === "true";
+    const top = phone ? 150 : HUD_TOP;
+    const bottom = phone ? 230 : HUD_BOTTOM;
+    const side = phone ? 12 : LEFT;
+    const k = Math.max(
+      MIN_ZOOM,
+      Math.min(maxK, (rect.width - side * 2) / w, (rect.height - top - bottom) / h),
+    );
+    return {
+      k,
+      x: rect.width / 2 - (x + w / 2) * k,
+      y: top + (rect.height - top - bottom) / 2 - (y + h / 2) * k,
+    };
+  }
+  /**
+   * Where the camera would be to show the whole desk: the sphere, the five
+   * areas and Kik's cards. On a phone, the Home area, read at full width;
+   * the rest is a swipe or the dock away.
+   */
+  function fitView() {
+    const parts = [...world.querySelectorAll(".area, .dk-world-sphere, .work-layer .frame")];
+    if (document.documentElement.dataset.phone === "true") {
+      const home = world.querySelector('.area[data-area="home"]');
+      if (home) {
+        const r = worldRect(home);
+        return viewOf(r.x, r.y - 30, r.w, r.h + 30);
+      }
+    }
+    if (!parts.length) return { k: 1, x: PAD, y: PAD };
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
-    for (const f of frames) {
-      const x = Number.parseFloat(f.style.left);
-      const y = Number.parseFloat(f.style.top);
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y - 28);
-      maxX = Math.max(maxX, x + f.offsetWidth);
-      maxY = Math.max(maxY, y + f.offsetHeight);
+    for (const f of parts) {
+      const r = worldRect(f);
+      minX = Math.min(minX, r.x);
+      minY = Math.min(minY, r.y - 30);
+      maxX = Math.max(maxX, r.x + r.w);
+      maxY = Math.max(maxY, r.y + r.h);
     }
-    // A phone cannot show a whole board at a size anyone can read, so it fits
-    // the first column to the width of the screen and the rest is a swipe
-    // away (or a pinch).
-    if (document.documentElement.dataset.phone === "true") {
-      const first = frames.reduce((a, b) =>
-        Number.parseFloat(a.style.left) <= Number.parseFloat(b.style.left) ? a : b,
-      );
-      const x = Number.parseFloat(first.style.left);
-      const y = Number.parseFloat(first.style.top);
-      const k = Math.max(MIN_ZOOM, Math.min(1, (rect.width - 24) / first.offsetWidth));
-      return { k, x: 12 - x * k, y: 56 - (y - 28) * k };
-    }
-    const w = maxX - minX + PAD * 2;
-    const h = maxY - minY + PAD * 2;
-    const k = Math.max(
-      FIT_FLOOR,
-      Math.min(1, (rect.width - LEFT * 2) / w, (rect.height - 300) / h),
-    );
-    return { k, x: LEFT - minX * k, y: TOP - minY * k };
+    return viewOf(minX - PAD, minY - PAD, maxX - minX + PAD * 2, maxY - minY + PAD * 2);
   }
   /** Show the board. Gliding when asked for; at once when a board first appears. */
   function fit(animate = true) {
@@ -471,9 +493,7 @@
   window.addEventListener("resize", () => {
     // a window being dragged wider fires this dozens of times; fit once it rests
     clearTimeout(resizing);
-    resizing = setTimeout(() => {
-      if (lastPins.length) fit(false);
-    }, 120);
+    resizing = setTimeout(() => fit(false), 120);
   });
 
   // --- layout ---------------------------------------------------------------------
@@ -568,7 +588,7 @@
       b.y1 = Math.max(b.y1, p.y + s.h);
       bounds.set(repo, b);
     }
-    for (const frame of world.querySelectorAll(".frame")) {
+    for (const frame of work.querySelectorAll(".frame")) {
       const repo = frame.dataset.repo;
       if (only !== undefined && repo !== only) continue;
       const b = bounds.get(repo);
@@ -663,7 +683,7 @@
     for (const id of [...positions.keys()]) if (!byId.has(id)) positions.delete(id);
     for (const id of [...built.keys()]) if (!byId.has(id)) built.delete(id);
     const repos = new Set(pins.map((p) => p.repo || ""));
-    const haveFrames = new Set([...world.querySelectorAll(".frame")].map((f) => f.dataset.repo));
+    const haveFrames = new Set([...work.querySelectorAll(".frame")].map((f) => f.dataset.repo));
     for (const repo of repos) {
       if (haveFrames.has(repo)) continue;
       const frame = document.createElement("div");
@@ -673,7 +693,7 @@
       label.className = "frame-label";
       label.textContent = repo || "board";
       frame.append(label);
-      world.append(frame);
+      work.append(frame);
     }
 
     // Where every card was, to slide the ones the layout moves.
@@ -719,7 +739,7 @@
         el.replaceWith(next);
       } else {
         scrolled = [];
-        world.append(next);
+        work.append(next);
         arrived.push(next);
       }
       els.set(pin.id, next);
@@ -742,8 +762,7 @@
       if (el.style.top !== top) el.style.top = top;
     }
     layoutFrames();
-    if (first) fit(false);
-    else apply();
+    apply();
     // the card in use stays in use through a rebuild, and is let go if it went
     if (liveId && !els.has(liveId)) liveId = "";
     els.get(liveId)?.classList.add("live");
@@ -755,15 +774,6 @@
         duration: 360,
         easing: EASE,
       });
-    }
-    // and the backdrop lights up where each one landed (ambient.js)
-    for (const el of arrived.slice(0, 3)) {
-      const r = el.getBoundingClientRect();
-      window.dispatchEvent(
-        new CustomEvent("board:arrive", {
-          detail: { x: r.left + r.width / 2, y: r.top + Math.min(r.height, 200) / 2 },
-        }),
-      );
     }
     for (const [id, el] of els) {
       if (arrived.includes(el) || dragging?.id === id) continue;
@@ -887,10 +897,11 @@
     const rect = canvas.getBoundingClientRect();
     const p = positions.get(id) ?? { x: 0, y: 0 };
     const s = sizeOf(id).w ? sizeOf(id) : { w: el.offsetWidth, h: el.offsetHeight };
+    // a card's place is in the Work area's frame of reference
     glideTo(
       k,
-      rect.width / 2 - (p.x + s.w / 2) * k,
-      rect.height / 2 - (p.y + Math.min(s.h, 300) / 2) * k,
+      rect.width / 2 - (WORK.x + p.x + s.w / 2) * k,
+      rect.height / 2 - (WORK.y + p.y + Math.min(s.h, 300) / 2) * k,
     );
     el.classList.remove("spot");
     void el.offsetWidth;
@@ -921,8 +932,19 @@
     panX = 0;
     panY = 0;
     zoom = 1;
-    for (const el of world.querySelectorAll(".pin, .frame")) el.remove();
-    applyNow();
+    for (const el of work.querySelectorAll(".pin, .frame")) el.remove();
+    fit(false);
+  }
+
+  /** A layer of the world for the desk (the sphere, the areas), under the cards. */
+  function layer(name) {
+    let el = world.querySelector(`:scope > .layer-${name}`);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = `layer layer-${name}`;
+      world.insertBefore(el, work);
+    }
+    return el;
   }
 
   window.board = {
@@ -930,7 +952,17 @@
     fit,
     focus,
     reset,
+    layer,
+    WORK,
     zoomTo: (k) => glideZoomAt(k, ...centre()),
+    /** Fly the camera to a world rectangle, framed between the HUD's header and dock. */
+    flyTo(x, y, w, h, maxK = 1) {
+      const v = viewOf(x, y, w, h, maxK);
+      glideTo(v.k, v.x, v.y, 520);
+    },
+    /** The camera, for anything drawn in world space (the sphere). */
+    camera: () => ({ x: panX, y: panY, zoom, w: canvas.clientWidth, h: canvas.clientHeight }),
+    worldRect,
     get zoom() {
       return zoom;
     },

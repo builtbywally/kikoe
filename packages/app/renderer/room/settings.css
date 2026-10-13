@@ -12,14 +12,6 @@
 .settingsview[hidden] {
   display: none;
 }
-body[data-view="settings"] .history,
-body[data-view="settings"] .line,
-body[data-view="settings"] .orb-wrap,
-body[data-view="settings"] .board,
-body[data-view="settings"] .agents,
-body[data-view="settings"] .corner {
-  display: none;
-}
 .snav {
   border-right: 1px solid rgba(var(--fg-rgb), 0.1);
   padding: 18px 12px;

@@ -1,4 +1,6 @@
-/* The desk (desk.js): Kik's life dashboard for a wall screen. */
+/* The desk (desk.js, board.js): Kikoe's home. One infinite canvas, the neuron
+   sphere at its centre and five areas around it, Kik's cards in Work, under
+   a HUD fixed to the screen. */
 
 .desk-host[hidden] {
   display: none;
@@ -6,23 +8,30 @@
 .desk {
   position: absolute;
   inset: 36px 0 0;
-  z-index: 4;
   overflow: hidden;
   background: radial-gradient(ellipse at 50% 45%, #14060f 0%, #07040a 55%, #030205 100%);
   color: var(--dk-ink);
   font: 13px var(--sans, system-ui, sans-serif);
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.25fr) minmax(280px, 1fr);
-  grid-template-rows: auto 1fr auto;
-  grid-template-areas:
-    "top top top"
-    "left mid right"
-    "dock dock dock";
 }
 .desk[data-theme="ember"] {
   background: radial-gradient(ellipse at 50% 45%, #1a0d07 0%, #0c0705 55%, #050302 100%);
 }
-.dk-sphere,
+/* the canvas fills the desk; the HUD floats over it and lets the canvas be touched */
+.desk .board {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: none;
+}
+.dk-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.dk-hud button,
+.dk-hud .dk-topic {
+  pointer-events: auto;
+}
 .dk-ribbons {
   position: absolute;
   inset: 0;
@@ -30,13 +39,64 @@
   height: 100%;
   pointer-events: none;
 }
+
+/* the world */
+.layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.dk-world-sphere {
+  position: absolute;
+  pointer-events: none;
+}
+.work-layer {
+  position: absolute;
+}
+.area {
+  position: absolute;
+  padding: 18px;
+  border: 1px solid rgba(var(--dk-a-rgb), 0.14);
+  border-radius: 26px;
+  background: rgba(var(--dk-a-rgb), 0.025);
+}
+.area-label {
+  position: absolute;
+  left: 22px;
+  top: -40px;
+  margin: 0;
+  font: 400 22px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--dk-a);
+  opacity: 0.75;
+}
+.area-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.area-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* while the canvas moves, the frosted glass comes off: it re-blurs every frame */
+.board.moving .dk-panel {
+  backdrop-filter: none;
+}
+
+/* the HUD: the greeting and the clock */
 .dk-top {
-  grid-area: top;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   padding: 18px 26px 0;
-  position: relative;
 }
 .dk-hello small,
 .dk-panel h3,
@@ -79,21 +139,6 @@
   width: 22px;
   height: 22px;
   cursor: pointer;
-}
-.dk-col {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 22px 12px;
-  overflow: auto;
-  scrollbar-width: none;
-}
-.dk-left {
-  grid-area: left;
-}
-.dk-right {
-  grid-area: right;
 }
 .dk-panel {
   background: linear-gradient(180deg, rgba(var(--dk-a-rgb), 0.07), rgba(255, 255, 255, 0.015));
@@ -316,27 +361,28 @@
   opacity: 0.85;
 }
 
-/* a topic card, sliding in over the sphere as Kik speaks */
+/* a topic card, under the header, when Kik's line carries a figure */
 .dk-topic {
-  grid-area: mid;
-  align-self: start;
-  justify-self: center;
-  margin-top: 14px;
+  position: absolute;
+  top: 18px;
+  left: 50%;
   max-width: 440px;
   padding: 14px 18px;
   border: 1px solid rgba(var(--dk-a-rgb), 0.5);
   border-radius: 16px;
-  background: rgba(10, 4, 10, 0.55);
+  background: rgba(10, 4, 10, 0.6);
   backdrop-filter: blur(10px);
   box-shadow: 0 0 40px rgba(var(--dk-a-rgb), 0.25);
-  position: relative;
   opacity: 0;
-  transform: translateY(-12px) scale(0.97);
+  transform: translate(-50%, -12px) scale(0.97);
   transition: opacity 0.45s, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dk-topic[hidden] {
+  display: none;
 }
 .dk-topic.in {
   opacity: 1;
-  transform: none;
+  transform: translate(-50%, 0);
 }
 .dk-topic p {
   margin: 0;
@@ -358,14 +404,15 @@
   margin-top: 4px;
 }
 
-/* the dock */
+/* the dock: the camera's buttons */
 .dk-dock {
-  grid-area: dock;
-  position: relative;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;
   display: flex;
   justify-content: center;
   gap: 10px;
-  padding: 0 0 22px;
 }
 .dk-dock button {
   color: var(--dk-ink);
@@ -381,50 +428,173 @@
   background: rgba(var(--dk-a-rgb), 0.3);
   box-shadow: 0 0 18px rgba(var(--dk-a-rgb), 0.45);
 }
-body[data-view="desk"] .history,
-body[data-view="desk"] .line,
-body[data-view="desk"] .orb-wrap,
-body[data-view="desk"] .board,
-body[data-view="desk"] .agents,
-body[data-view="desk"] .corner {
-  display: none;
+
+/* Kik's line: the caption above the dock (setLine, room.js) */
+.desk .line {
+  position: absolute;
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: 78px;
+  width: min(900px, 80%);
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
 }
-body[data-view="desk"] #btn-desk {
-  color: var(--fg);
+.desk .line-repo {
+  font: 10px var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dk-a);
 }
-@media (max-width: 900px) {
-  .desk {
-    grid-template-columns: 1fr;
-    grid-template-areas: "top" "mid" "left" "right" "dock";
-    overflow: auto;
-  }
+.desk .line-text {
+  font: 400 clamp(20px, 2.1vw, 30px) / 1.3 var(--serif, Georgia, serif);
+  color: var(--dk-ink);
+  text-shadow: 0 0 22px rgba(var(--dk-a-rgb), 0.45);
+}
+.desk .line-text em {
+  color: var(--dk-a);
+}
+body[data-idle="true"] .desk .line-text {
+  font-size: clamp(16px, 1.5vw, 20px);
+  opacity: 0.5;
+}
+.desk .line-hint {
+  pointer-events: auto;
+  color: var(--dk-ink);
+  opacity: 0.8;
+}
+.desk .line-hint b {
+  color: var(--dk-a);
 }
 
-/* on the phone: the dock under the greeting, one column, room for the talk button */
+/* Kik's state: the orb, small, under the clock */
+.desk .orb-wrap {
+  position: absolute;
+  top: 96px;
+  right: 26px;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  flex-direction: row;
+  gap: 10px;
+  z-index: 2;
+}
+.desk .orb {
+  width: 30px;
+  height: 30px;
+  background: radial-gradient(
+    circle at 36% 30%,
+    #fff 0%,
+    var(--dk-c) 18%,
+    var(--dk-a) 46%,
+    var(--dk-b) 74%,
+    #0a0410 100%
+  );
+  box-shadow: 0 0 18px rgba(var(--dk-a-rgb), 0.55);
+}
+.desk .orb-label {
+  color: var(--dk-ink);
+  opacity: 0.75;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+/* which project's cards are in Work, and the mode, under the greeting */
+.desk .corner.left {
+  position: absolute;
+  top: 112px;
+  left: 26px;
+  bottom: auto;
+  display: flex;
+  gap: 12px;
+  color: var(--dk-ink);
+  opacity: 0.6;
+  font: 11px var(--mono, ui-monospace, monospace);
+  z-index: 2;
+}
+.desk .corner.left .project {
+  color: var(--dk-a);
+  opacity: 1;
+}
+/* the zoom controls, beside the dock */
+.desk .zoom-hud {
+  top: auto;
+  bottom: 24px;
+  right: 22px;
+  background: rgba(10, 4, 10, 0.6);
+  border-color: rgba(var(--dk-a-rgb), 0.3);
+}
+.desk .zoom-hud button {
+  color: var(--dk-ink);
+}
+
+/* Kik's cards on the neon desk: glass and a neon edge, the way the panels are */
+.desk[data-theme="neon"] .pin {
+  background: rgba(14, 6, 16, 0.9);
+  border-color: rgba(var(--dk-a-rgb), 0.3);
+  color: #f3e6ef;
+  box-shadow: 0 0 26px rgba(var(--dk-a-rgb), 0.12), 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.desk[data-theme="neon"] .pin-head {
+  border-color: rgba(var(--dk-a-rgb), 0.18);
+}
+.desk[data-theme="neon"] .pin-head .title {
+  color: var(--dk-a);
+}
+.desk[data-theme="neon"] .frame-label {
+  color: var(--dk-a);
+  opacity: 0.7;
+}
+.desk[data-theme="neon"] .frame:hover {
+  border-color: rgba(var(--dk-a-rgb), 0.18);
+}
+
+/* the other views cover the desk */
+body:not([data-view="desk"]) .desk-host {
+  display: none;
+}
+
+/* on the phone: the HUD smaller, clear of the talk orb */
 html[data-phone="true"] .desk {
   inset: 0;
-  grid-template-columns: 1fr;
-  grid-template-areas: "top" "dock" "left" "right";
-  grid-template-rows: auto auto auto auto;
-  overflow: auto;
-  padding-bottom: 210px;
 }
 html[data-phone="true"] .dk-dock {
-  padding: 12px 0 0;
+  bottom: auto;
+  top: 96px;
   flex-wrap: wrap;
+  gap: 6px;
 }
-html[data-phone="true"] .dk-topic {
+html[data-phone="true"] .dk-dock button {
+  padding: 7px 11px;
+}
+html[data-phone="true"] .dk-topic,
+html[data-phone="true"] .desk .orb-wrap,
+html[data-phone="true"] .desk .corner.left,
+html[data-phone="true"] .desk .zoom-hud {
   display: none;
+}
+html[data-phone="true"] .desk .line {
+  bottom: 200px;
+  width: 92%;
 }
 html[data-phone="true"] .dk-tiles {
   grid-template-columns: repeat(2, 1fr);
-}
-html[data-phone="true"] .dk-col {
-  overflow: visible;
 }
 html[data-phone="true"] .dk-clock b {
   font-size: 28px;
 }
 html[data-phone="true"] .dk-hello b {
   font-size: 26px;
+}
+
+/* Kik's caption reads over whatever drifts under it: a soft veil behind the words */
+.desk .line::before {
+  content: "";
+  position: absolute;
+  inset: -26px -60px;
+  background: radial-gradient(ellipse at center, rgba(4, 2, 8, 0.82) 0%, rgba(4, 2, 8, 0) 70%);
+  z-index: -1;
+  pointer-events: none;
 }

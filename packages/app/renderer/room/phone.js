@@ -21,8 +21,6 @@
     '<button type="button" id="phone-talk" aria-label="hold to talk to Kik">' +
     '<canvas id="phone-orb" class="phone-orb" aria-hidden="true"></canvas></button>' +
     '<button type="button" id="phone-gear" aria-expanded="false" title="Kik\'s voice, and the open mic">voice</button>' +
-    // the day: the desk, laid out for a phone (KARA-PLAN phase 7)
-    '<button type="button" id="phone-day" aria-pressed="false" title="your day: weather, inbox, to-dos">day</button>' +
     "</div>" +
     '<div class="phone-hint" id="phone-hint">hold to talk</div>' +
     // Kik's voice from the phone, and the open mic (asked for 2026-09-24).
@@ -49,13 +47,6 @@
     if (!recording) orb?.set(deskVerb);
   });
   const said = wrap.querySelector("#phone-said");
-  const day = wrap.querySelector("#phone-day");
-  day.addEventListener("click", () => {
-    const on = document.body.dataset.view !== "desk";
-    if (on) window.kikView?.desk();
-    else window.kikView?.room();
-    day.setAttribute("aria-pressed", String(on));
-  });
   const sound = wrap.querySelector("#phone-sound");
 
   // --- hearing Kik here ------------------------------------------------------

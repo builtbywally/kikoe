@@ -64,29 +64,7 @@ button.quiet:hover {
   color: var(--paper);
 }
 
-/* the spoken line */
-.history {
-  position: absolute;
-  left: 50%;
-  top: 84px;
-  transform: translateX(-50%);
-  width: min(760px, 80vw);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-  text-align: center;
-  font-family: var(--serif);
-  font-size: 21px;
-  line-height: 1.3;
-  pointer-events: none;
-}
-.history div {
-  color: rgba(var(--fg-rgb), 0.32);
-}
-.history div:first-child {
-  color: rgba(var(--fg-rgb), 0.16);
-}
+/* the spoken line (the desk's caption, restyled in desk.css) */
 .line {
   position: absolute;
   left: 50%;
@@ -254,75 +232,6 @@ body[data-idle="true"] .line-text {
   }
 }
 
-/* the agents */
-.agents {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 56px;
-  display: flex;
-  justify-content: center;
-  gap: 48px;
-  font: 13px var(--mono);
-}
-.agent {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: var(--dim);
-}
-.agent .dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1.5px solid var(--dim);
-}
-.agent small {
-  font-size: 11px;
-  color: var(--dimmer);
-}
-.agent[data-status="waiting"] {
-  color: var(--ember);
-}
-.agent[data-status="waiting"] .dot {
-  background: var(--ember);
-  border-color: var(--ember);
-  box-shadow: 0 0 0 6px rgba(210, 104, 63, 0.18);
-}
-.agent[data-status="working"] .dot {
-  border-color: var(--paper);
-}
-.agent[data-status="idle"] {
-  color: var(--dimmer);
-}
-.agent[data-status="idle"] .dot {
-  border-color: var(--faint);
-}
-.agent[data-status="failed"] .dot {
-  border-color: var(--del);
-  background: var(--del-bg);
-}
-.corner {
-  position: absolute;
-  bottom: 20px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font: 12px var(--mono);
-  color: var(--dimmer);
-}
-.corner.left {
-  left: 28px;
-  gap: 18px;
-}
-/* Which board you are on. Brighter than the mode beside it, because with
-   thirteen projects this is the answer to "why is my canvas empty". */
-.corner.left .project {
-  color: rgba(var(--fg-rgb), 0.72);
-  letter-spacing: 0.04em;
-}
-
 /* The thread: you, Kik and the agent in order. The agent's moves are quiet
    lines you can click through to the card that has the detail — the thread
    is the index, the cards are the thing itself. */
@@ -361,42 +270,12 @@ body[data-idle="true"] .line-text {
   padding: 2px 8px;
 }
 
-/* the board: E on the canvas. A dot-grid surface you pan and zoom, region
-   labels faint at the top-left of each repo's frame, cards floating where
-   the agent put them and where you dragged them. */
+/* the board: the desk's canvas (board.js), filled by desk.css */
 .board {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background-image: radial-gradient(rgba(var(--fg-rgb), 0.07) 1px, transparent 1px);
-  background-size: 28px 28px;
   cursor: grab;
-  display: none;
-}
-body[data-has-pins="true"] .board {
-  display: block;
-}
-/* the backdrop: fixed to the window, not to the sheet; dimmed to taste */
-/* The image and its dimming live on a layer of their own, drawn once. As the
-   board's own background they were repainted with every card that changed
-   (a thought-orb changes every frame), and on a phone the 4K image torn and
-   vanished under that. */
-.board[data-backdrop]:not([data-backdrop="grid"]) {
-  background-image: none !important;
-}
-.board[data-backdrop="plain"] {
-  background-image: none;
-}
-.board[data-backdrop]:not([data-backdrop="grid"]):not([data-backdrop="plain"])::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35)),
-      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35))
-    ), var(--backdrop-url, none) center / cover no-repeat;
-  pointer-events: none;
-  will-change: transform;
 }
 body[data-frosted="1"] .pin {
   backdrop-filter: blur(14px) saturate(1.1);
@@ -932,74 +811,6 @@ body[data-frosted="1"] .pin[data-kind="note"] {
   color: var(--dimmer);
 }
 
-/* with pins on the board, the room arranges itself the way E drew it */
-body[data-has-pins="true"] .line {
-  top: auto;
-  bottom: 128px;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-body[data-has-pins="true"] .line-text {
-  font-size: clamp(24px, 2.9vw, 40px);
-}
-body[data-has-pins="true"] .line-hint {
-  font-size: 13px;
-}
-body[data-has-pins="true"] .orb-wrap {
-  top: auto;
-  bottom: 30px;
-  right: 40px;
-  left: auto;
-  transform: none;
-  flex-direction: row;
-  gap: 14px;
-}
-body[data-has-pins="true"] .orb {
-  width: 56px;
-  height: 56px;
-}
-body[data-has-pins="true"] .history {
-  display: none;
-}
-body[data-has-pins="true"] .agents {
-  bottom: 34px;
-  left: 40px;
-  right: auto;
-  gap: 28px;
-  font-size: 12px;
-}
-body[data-has-pins="true"] .agent {
-  flex-direction: row;
-  gap: 8px;
-}
-body[data-has-pins="true"] .agent small {
-  display: none;
-}
-body[data-has-pins="true"] .agent .dot {
-  width: 8px;
-  height: 8px;
-  box-shadow: none;
-}
-body[data-has-pins="true"] .corner.left {
-  display: none;
-}
-.agent[data-status="hint"] {
-  color: var(--dimmer);
-  margin-left: 12px;
-}
-.agent[data-status="hint"] .dot {
-  display: none;
-}
-.corner.top-right {
-  top: 14px;
-  right: 20px;
-  bottom: auto;
-  opacity: 0.55;
-}
-.corner.top-right:hover {
-  opacity: 1;
-}
-
 /* the control room */
 .control[hidden] {
   display: none;
@@ -1193,14 +1004,6 @@ body[data-has-pins="true"] .corner.left {
   font: 11px var(--mono);
   color: var(--dimmer);
 }
-body[data-view="control"] .history,
-body[data-view="control"] .line,
-body[data-view="control"] .orb-wrap,
-body[data-view="control"] .board,
-body[data-view="control"] .agents,
-body[data-view="control"] .corner {
-  display: none;
-}
 .disconnected .line-text {
   color: var(--dimmer);
 }
@@ -1246,9 +1049,6 @@ body[data-view="control"] .corner {
 .orb::after {
   will-change: transform;
   contain: paint;
-}
-body[data-has-pins="true"] .orb::before {
-  filter: blur(4px);
 }
 body.paused .orb,
 body.paused .orb::before,
@@ -1455,34 +1255,6 @@ html[data-readonly="true"] .needs-a {
   color: var(--ember);
 }
 
-/* the spoken line reads over anything: a veil rises from the bottom, like a
-   subtitle over a picture, and dims whatever card drifted under it */
-body[data-has-pins="true"] .line::before {
-  /* the line is centred with a transform, so "fixed" would box in; span the
-     window from the line's own frame instead */
-  content: "";
-  position: absolute;
-  left: 50%;
-  width: 100vw;
-  margin-left: -50vw;
-  bottom: -140px;
-  height: 320px;
-  background: linear-gradient(
-    to top,
-    var(--ink) 0%,
-    rgba(var(--bg-rgb), 0.92) 45%,
-    rgba(var(--bg-rgb), 0) 100%
-  );
-  pointer-events: none;
-  z-index: -1;
-}
-body[data-has-pins="true"] .line {
-  z-index: 3;
-}
-.line-veil {
-  display: none;
-}
-
 /* the Room on a phone ----------------------------------------------------- */
 /* The same canvas as the desk, read by touch, with one button to talk. */
 html[data-phone="true"] .board {
@@ -1505,9 +1277,6 @@ html[data-phone="true"] .pin.live {
    the phone, short of GPU memory, dropped tiles of it: the backdrop showed
    in its top third and went black below a straight line. In the page's own
    layer it is always painted whole. */
-html[data-phone="true"] .board[data-backdrop]::before {
-  will-change: auto;
-}
 /* Frosted glass re-blurs the backdrop behind every card on every frame, the
    heaviest thing a phone's GPU does; the phone gets the same card, solid. */
 html[data-phone="true"] body[data-frosted="1"] .pin,
@@ -1687,142 +1456,8 @@ html[data-phone="true"] .zoom-hud {
   border: 1px solid rgba(var(--fg-rgb), 0.18);
 }
 
-/* The living backdrop (ambient.js): pools of light behind frosted glass,
-   coloured by Kik's state, answering the canvas. Only with backdrop "live". */
-@property --c {
-  syntax: "<color>";
-  inherits: false;
-  initial-value: rgb(58 46 150);
-}
-.ambient {
-  display: none;
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  background: rgb(var(--bg-rgb));
-}
-.board[data-backdrop="live"] .ambient {
-  display: block;
-}
-/* the live backdrop draws itself; the image rule's ::before is not wanted */
-.board[data-backdrop="live"]::before {
-  display: none;
-}
-.ambient-pool {
-  --c: rgb(58 46 150);
-  position: absolute;
-  width: 72vmax;
-  height: 72vmax;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--c) 0%, transparent 68%);
-  filter: blur(40px);
-  opacity: 0.62;
-  mix-blend-mode: screen;
-  transition: --c 1.8s ease;
-  will-change: transform;
-  animation: ambient-drift 44s ease-in-out infinite alternate;
-}
-.ambient-pool:nth-child(1) {
-  left: -22vmax;
-  top: -26vmax;
-  --dx: 18vmax;
-  --dy: 14vmax;
-}
-.ambient-pool:nth-child(2) {
-  right: -26vmax;
-  top: -10vmax;
-  --dx: -16vmax;
-  --dy: 20vmax;
-  animation-duration: 52s;
-  animation-delay: -11s;
-}
-.ambient-pool:nth-child(3) {
-  left: 8vmax;
-  bottom: -34vmax;
-  --dx: 14vmax;
-  --dy: -18vmax;
-  animation-duration: 61s;
-  animation-delay: -23s;
-}
-.ambient-pool:nth-child(4) {
-  right: -12vmax;
-  bottom: -30vmax;
-  --dx: -20vmax;
-  --dy: -12vmax;
-  opacity: 0.4;
-  animation-duration: 69s;
-  animation-delay: -37s;
-}
-@keyframes ambient-drift {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(calc(var(--dx) * 0.6), calc(var(--dy) * -0.4), 0) scale(1.12);
-  }
-  100% {
-    transform: translate3d(var(--dx), var(--dy), 0) scale(0.94);
-  }
-}
-/* The glass: a dim to the backdrop setting, a faint sheen, and grain, the
-   same frosted finish as the aurora image. */
-.ambient::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), transparent 40%),
-    linear-gradient(
-      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35)),
-      rgba(var(--bg-rgb), var(--backdrop-dim, 0.35))
-    ),
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.09 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
-}
-.ambient-flashes {
-  position: absolute;
-  inset: 0;
-}
-/* a card arriving sends a soft light out from where it landed */
-.ambient-flash {
-  position: absolute;
-  width: 64vmax;
-  height: 64vmax;
-  margin: -32vmax 0 0 -32vmax;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(210, 104, 63, 0.38) 0%, transparent 60%);
-  mix-blend-mode: screen;
-  animation: ambient-flash 1.6s ease-out forwards;
-}
-.ambient-flash.error {
-  background: radial-gradient(circle, rgba(220, 60, 60, 0.45) 0%, transparent 60%);
-}
-@keyframes ambient-flash {
-  from {
-    transform: scale(0.15);
-    opacity: 1;
-  }
-  to {
-    transform: scale(1);
-    opacity: 0;
-  }
-}
-/* a phone: fewer, softer pools, no blending (ambient.js makes three) */
-html[data-phone="true"] .ambient-pool,
-html[data-phone="true"] .ambient-flash {
-  mix-blend-mode: normal;
-  filter: blur(28px);
-  opacity: 0.5;
-  animation-duration: 80s;
-}
-@media (prefers-reduced-motion: reduce) {
-  .ambient-pool {
-    animation: none;
-  }
-}
-
 /* The phone's voice panel and open mic (phone.js). */
-#phone-gear,
-#phone-day {
+#phone-gear {
   pointer-events: auto;
   width: 52px;
   height: 52px;
@@ -1832,8 +1467,7 @@ html[data-phone="true"] .ambient-flash {
   color: var(--dim);
   font: 600 10px / 1.15 var(--mono);
 }
-#phone-gear[aria-expanded="true"],
-#phone-day[aria-pressed="true"] {
+#phone-gear[aria-expanded="true"] {
   color: var(--fg);
   border-color: rgba(var(--fg-rgb), 0.4);
 }

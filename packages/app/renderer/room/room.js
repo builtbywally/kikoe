@@ -5,14 +5,12 @@
 const $ = (id) => document.getElementById(id);
 const el = {
   body: document.body,
-  history: $("history"),
   lineRepo: $("line-repo"),
   lineText: $("line-text"),
   lineHint: $("line-hint"),
   orb: $("orb"),
   orbLabel: $("orb-label"),
   board: $("board"),
-  agents: $("agents"),
   cornerLeft: $("corner-left"),
   control: $("control"),
   lanes: $("lanes"),
@@ -47,7 +45,6 @@ let speaking = false;
 let holo = null;
 let holoLine = "";
 let holoLoading = null;
-let history = [];
 let lastLine = null;
 let idleTimer = null;
 
@@ -79,20 +76,8 @@ function setLine(text, { repo = "", hint = [], ask = false } = {}) {
     });
     el.lineHint.append(s);
   }
-  if (lastLine && lastLine !== text) pushHistory(lastLine);
   lastLine = text;
   if (!ask) idleTimer = setTimeout(rest, 45000);
-}
-
-function pushHistory(text) {
-  history.push(text);
-  history = history.slice(-2);
-  el.history.textContent = "";
-  for (const t of history) {
-    const d = document.createElement("div");
-    d.textContent = t;
-    el.history.append(d);
-  }
 }
 
 function rest() {
@@ -151,29 +136,11 @@ let micWatchdog = null;
 let overheardUntil = 0;
 let attendingUntil = 0;
 let attendingTimer = null;
-/** The backdrop: bundled by name and theme, or the user's own image. */
+/** The look: frosted cards or not (the desk draws its own ground). */
 function applyLook(look) {
   if (!look) return;
-  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const board = document.getElementById("board");
-  board.dataset.backdrop = look.backdrop || "grid";
-  let url = "";
-  // A phone gets the 1920 copy: the 4K one decodes to ~33 MB of pixels, which
-  // a phone's GPU evicts under pressure, and the background tore and vanished.
-  const small = document.documentElement.dataset.phone === "true" ? "-small" : "";
-  if (["paper", "ink", "aurora", "nebula"].includes(look.backdrop))
-    url = `url(../backdrops/${look.backdrop}-${dark ? "dark" : "light"}${small}.jpg)`;
-  else if (look.backdrop === "custom" && look.image)
-    url = window.room.native
-      ? `url(file:///${String(look.image).replace(/\\/g, "/")})`
-      : `url(${window.room.backdropUrl ? window.room.backdropUrl() : ""})`;
-  board.style.setProperty("--backdrop-url", url || "none");
-  board.style.setProperty("--backdrop-dim", String(look.dim ?? 0.35));
   document.body.dataset.frosted = look.blur === false ? "0" : "1";
 }
-window
-  .matchMedia("(prefers-color-scheme: dark)")
-  .addEventListener("change", () => applyLook(state?.look));
 
 // The dotted thought-orb (Thinking Orbs): what Kik is doing, as one of its
 // nine verbs. The big orb, the talking card's orb and the phone's all follow
@@ -184,8 +151,6 @@ function setOrb(state, label) {
   el.orb.className = `orb ${state}`;
   el.orbLabel.textContent = label;
   el.body.dataset.orb = state;
-  // the living backdrop takes its colour from the same state
-  window.ambient?.mood(state, label);
   // "speaking" with the label "thinking" is the model working, not talking
   kikVerb = window.KikOrb?.forKik(label === "thinking" ? "thinking" : state) ?? "breathing";
   bigOrb?.set(kikVerb);
@@ -227,39 +192,9 @@ function ago(s) {
   return `${Math.round(s / 3600)}h`;
 }
 
+/** The agents are a card in Work and a panel on the desk; here, the corner's count. */
 function renderAgents() {
-  el.agents.textContent = "";
-  const rows = Object.values(sessions);
-  const rank = (s) =>
-    s.status === "waiting" ? 0 : s.status === "working" ? 1 : s.status === "failed" ? 2 : 3;
-  for (const s of rows.sort((a, b) => rank(a) - rank(b))) {
-    const d = document.createElement("div");
-    d.className = "agent";
-    d.dataset.status = s.status;
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    const name = document.createElement("span");
-    name.textContent = s.label;
-    const small = document.createElement("small");
-    small.textContent =
-      s.status === "waiting"
-        ? "waiting on you"
-        : s.status === "working"
-          ? `${s.current_tool ? s.current_tool.toLowerCase() : "working"} · ${ago(s.running_for_s)}`
-          : s.status === "failed"
-            ? "failed"
-            : `idle · ${ago(s.quiet_for_s)}`;
-    d.append(dot, name, small);
-    el.agents.append(d);
-  }
-  if (pins.length) {
-    const hint = document.createElement("span");
-    hint.className = "agent";
-    hint.dataset.status = "hint";
-    hint.textContent = `${pins.length} pin${pins.length === 1 ? "" : "s"} · drag to look around`;
-    el.agents.append(hint);
-  }
-  renderProject(rows.length);
+  renderProject(Object.values(sessions).length);
 }
 
 /**
@@ -1495,11 +1430,6 @@ function glowSpoken(f) {
     if (byRepo || byName) hits.push(c);
   }
   for (const c of hits.slice(0, 3)) c.classList.add("spoken");
-  const first = hits[0];
-  if (first && window.ambient?.flash) {
-    const r = first.getBoundingClientRect();
-    window.ambient.flash(r.left + r.width / 2, r.top + r.height / 2, "arrive");
-  }
 }
 
 /** A clock that counts on by itself, from a moment (ms). */
@@ -1829,11 +1759,9 @@ async function showControl() {
   el.body.dataset.view = "control";
 }
 
+/** Home is the desk: every way back to "the room" lands here. */
 function showRoom() {
-  el.control.hidden = true;
-  holo?.hide();
-  desk?.hide();
-  el.body.dataset.view = "room";
+  showDesk();
 }
 
 // --- Kik's body ------------------------------------------------------------------
@@ -1885,7 +1813,10 @@ function loadScript(src) {
     document.body.appendChild(s);
   });
 }
-/** The desk: Kik's life on a wall screen (desk.js). Light, so it loads with the Room. */
+/**
+ * The desk: Kikoe's home, one infinite canvas (desk.js draws the sphere and
+ * the areas, board.js is the camera, Kik's cards land in Work).
+ */
 let desk = null;
 function showDesk() {
   desk ??= window.KikDesk?.mount(document.getElementById("desk")) ?? null;
@@ -1946,7 +1877,6 @@ const handlers = {
       pins = s.pins ?? [];
       asking = s.asking ?? null;
       pendingPermission = s.pending_permission ? { ...s.pending_permission, text: "" } : null;
-      for (const h of [...(s.history ?? [])].reverse().slice(-2)) pushHistory(h.text);
       renderBoard();
       renderAgents();
       rest();
@@ -1996,14 +1926,6 @@ const handlers = {
       recentEvents.set(f.repo, list.slice(0, 5));
       renderBoard();
     }
-    // the living backdrop answers the agents too: a fault flushes it red, a
-    // turn that ends lights it from the middle
-    if (f.kind === "error" || f.kind === "turn_end")
-      window.ambient?.flash(
-        window.innerWidth / 2,
-        window.innerHeight / 2,
-        f.kind === "error" ? "error" : "arrive",
-      );
     if (f.kind === "permission") {
       const args = f.args ?? {};
       pendingPermission = {
@@ -2150,9 +2072,8 @@ const handlers = {
   view(f) {
     // the holo keyboard switches to the desk and the body too
     if (f.view === "control") showControl();
-    else if (f.view === "desk") showDesk();
     else if (f.view === "body") void showBody();
-    else showRoom();
+    else showDesk();
   },
   heard(f) {
     liveYou = "";
@@ -2219,17 +2140,12 @@ setInterval(() => {
 // --- controls ----------------------------------------------------------------------
 
 $("btn-board").addEventListener("click", showControl);
-$("btn-desk").addEventListener("click", () =>
-  el.body.dataset.view === "desk" ? showRoom() : showDesk(),
-);
-// the phone's "day" button opens the desk and closes it (phone.js)
-window.kikView = { desk: showDesk, room: showRoom };
-// a wall screen opens straight onto the desk: …/room/?token=…#desk
-if (location.hash === "#desk") setTimeout(showDesk, 0);
 $("btn-body").addEventListener("click", () =>
-  el.body.dataset.view === "body" ? showRoom() : showBody(),
+  el.body.dataset.view === "body" ? showDesk() : showBody(),
 );
-$("btn-room").addEventListener("click", showRoom);
+$("btn-room").addEventListener("click", showDesk);
+// the desk is home: open on it
+showDesk();
 $("btn-clear").addEventListener("click", () => window.room.clearBoard());
 $("btn-settings").addEventListener("click", () => window.settingsPanel.open());
 if (window.room.onView)
@@ -2238,18 +2154,17 @@ if (window.room.onView)
     else if (v.view === "control") showControl();
     else {
       window.settingsPanel.close();
-      showRoom();
+      showDesk();
     }
   });
 document.addEventListener("keydown", (e) => {
   if (e.target && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (e.key === "c" || e.key === "C")
-    el.body.dataset.view === "control" ? showRoom() : showControl();
-  if (e.key === "t" || e.key === "T") el.body.dataset.view === "desk" ? showRoom() : showDesk();
-  if (e.key === "k" || e.key === "K") el.body.dataset.view === "body" ? showRoom() : showBody();
+    el.body.dataset.view === "control" ? showDesk() : showControl();
+  if (e.key === "k" || e.key === "K") el.body.dataset.view === "body" ? showDesk() : showBody();
   if (e.key === "Escape") {
     if (el.body.dataset.view === "settings") window.settingsPanel.close();
-    else showRoom();
+    else showDesk();
   }
   if (e.key === "y" || e.key === "Y") window.room.answerWord("yes");
   if (e.key === "n" || e.key === "N") window.room.answerWord("no");

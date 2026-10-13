@@ -152,10 +152,10 @@
     };
   }
 
-  function drawSphere(g, sph, w, h, t, theme, mood) {
-    const cx = w / 2;
-    const cy = h * 0.47;
-    const R = Math.min(w, h) * 0.27 * (1 + mood.level * 0.04);
+  function drawSphere(g, sph, w, h, t, theme, mood, geo) {
+    const cx = geo?.cx ?? w / 2;
+    const cy = geo?.cy ?? h * 0.47;
+    const R = (geo?.R ?? Math.min(w, h) * 0.27) * (1 + mood.level * 0.04);
     const ry = t * 0.08;
     const rx = 0.32 + Math.sin(t * 0.05) * 0.08;
     const cyR = Math.cos(ry);
@@ -700,35 +700,74 @@
     },
   };
 
+  // --- the world: where everything sits on the desk's canvas ---------------------------
+  // World pixels, the sphere at 0,0. Kik's cards begin at board.WORK (the
+  // Work area's card layer), below the Work area's own panels.
+  const SPHERE = 1400;
+  const AREAS = {
+    life: { x: -1240, y: -1760, w: 1180, label: "life" },
+    you: { x: 60, y: -1760, w: 1180, label: "you" },
+    home: { x: -2560, y: -560, w: 1180, label: "home" },
+    comms: { x: 1380, y: -560, w: 1180, label: "comms" },
+    work: { x: -1300, y: 860, w: 2600, label: "work" },
+  };
+
   // --- mount ---------------------------------------------------------------------------
 
+  /**
+   * The desk is Kikoe's home: one infinite canvas (board.js is its camera).
+   * The neuron sphere is drawn in world space at the centre, the five areas
+   * sit around it, Kik's cards land in Work. The HUD (the header, Kik's line,
+   * the orb, the ribbons, the topic card, the dock) is fixed on the screen.
+   */
   function mount(host) {
+    const B = window.board;
     host.classList.add("desk");
-    host.innerHTML = `
-      <canvas class="dk-sphere"></canvas>
+    // the world: the sphere, then the areas (board.js puts the cards above them)
+    const sphereC = document.createElement("canvas");
+    sphereC.className = "dk-world-sphere";
+    Object.assign(sphereC.style, {
+      left: `${-SPHERE / 2}px`,
+      top: `${-SPHERE / 2}px`,
+      width: `${SPHERE}px`,
+      height: `${SPHERE}px`,
+    });
+    B.layer("sphere").append(sphereC);
+    const areaEls = {};
+    const areasLayer = B.layer("areas");
+    for (const [name, a] of Object.entries(AREAS)) {
+      const el = document.createElement("section");
+      el.className = "area";
+      el.dataset.area = name;
+      Object.assign(el.style, { left: `${a.x}px`, top: `${a.y}px`, width: `${a.w}px` });
+      el.innerHTML = `<h2 class="area-label">${a.label}</h2><div class="area-cols"></div>`;
+      areasLayer.append(el);
+      areaEls[name] = el;
+    }
+    // the HUD
+    const hud = document.createElement("div");
+    hud.className = "dk-hud";
+    hud.innerHTML = `
       <canvas class="dk-ribbons"></canvas>
       <header class="dk-top">
         <div class="dk-hello"><small>K I K</small><b data-k="hello"></b><span data-k="date"></span></div>
         <div class="dk-clock"><b data-k="time"></b><span data-k="wx"></span><button class="dk-theme" title="neon or ember">◐</button></div>
       </header>
-      <div class="dk-col dk-left"></div>
-      <div class="dk-col dk-right"></div>
       <div class="dk-topic" hidden></div>
       <nav class="dk-dock">
-        ${["home", "life", "comms", "work", "you"].map((t) => `<button data-tab="${t}">${t}</button>`).join("")}
+        ${["home", "life", "comms", "work", "you"]
+          .map((t) => `<button data-area="${t}">${t}</button>`)
+          .join("")}<button data-area="all" title="the whole desk">●</button>
       </nav>`;
-    const $ = (s) => host.querySelector(s);
-    const sphereC = $(".dk-sphere");
+    host.append(hud);
+    const $ = (q) => hud.querySelector(q);
     const ribC = $(".dk-ribbons");
     const sg = sphereC.getContext("2d");
     const rg = ribC.getContext("2d");
-    const leftEl = $(".dk-left");
-    const rightEl = $(".dk-right");
     const topicEl = $(".dk-topic");
     const sph = makeSphere(0x4b494b);
     const S = {
       visible: false,
-      tab: localStorage.getItem("kik.desk.tab") || "home",
       theme: localStorage.getItem("kik.desk.theme") || "neon",
       data: null,
       state: "idle",
@@ -736,11 +775,13 @@
       levelTo: 0,
       levelAt: 0,
       t: 0,
+      res: 0,
     };
     let raf = 0;
     let last = 0;
     let poll = 0;
     let topicTimer = 0;
+    let fitted = false;
 
     function applyTheme() {
       const th = THEMES[S.theme] ?? THEMES.neon;
@@ -751,12 +792,17 @@
       host.style.setProperty("--dk-ink", `rgb(${th.ink})`);
       host.style.setProperty("--dk-a-rgb", `${th.a}`);
     }
+    /** Every area's panels, from the last reading: real data, or what is not connected. */
     function render() {
-      const out = (TABS[S.tab] ?? TABS.home)(S.data);
-      leftEl.innerHTML = out.left.join("");
-      rightEl.innerHTML = out.right.join("");
-      for (const b of host.querySelectorAll(".dk-dock button"))
-        b.classList.toggle("on", b.dataset.tab === S.tab);
+      for (const [name, el] of Object.entries(areaEls)) {
+        const out = (TABS[name] ?? TABS.home)(S.data);
+        const cols = el.querySelector(".area-cols");
+        const html = `<div class="area-col">${out.left.join("")}</div><div class="area-col">${out.right.join("")}</div>`;
+        if (cols.dataset.html !== html) {
+          cols.dataset.html = html;
+          cols.innerHTML = html;
+        }
+      }
       const w = S.data?.weather;
       $('[data-k="wx"]').textContent = w
         ? `${Math.round(w.now.temp)}° ${WMO[w.now.code] ?? ""} · ${w.place.name}`
@@ -790,6 +836,11 @@
         /* keep the last reading */
       }
       render();
+      // the first reading gives the areas their heights: frame the desk then
+      if (!fitted) {
+        fitted = true;
+        requestAnimationFrame(() => B.fit(false));
+      }
     }
     function size(c) {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -809,44 +860,88 @@
       if (S.t - S.levelAt > 0.25) S.levelTo = 0;
       S.level += (S.levelTo - S.level) * (1 - Math.exp(-14 * dt));
       const th = THEMES[S.theme] ?? THEMES.neon;
-      const [w, h, dpr] = size(sphereC);
-      sg.setTransform(dpr, 0, 0, dpr, 0, 0);
-      sg.clearRect(0, 0, w, h);
-      drawSphere(sg, sph, w, h, S.t, th, {
-        level: S.level,
-        speaking: S.state === "speaking",
-        thinking: S.state === "thinking",
-        listening: S.state === "listening",
-      });
+      // The sphere lives in the world: drawn only when on screen, at a
+      // resolution that follows the zoom, so it is sharp up close and cheap
+      // from far away.
+      const cam = B.camera();
+      const half = (SPHERE / 2) * cam.zoom;
+      const on =
+        cam.x + half > 0 && cam.x - half < cam.w && cam.y + half > 0 && cam.y - half < cam.h;
+      if (on) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const res = Math.max(0.3, Math.min(1.5, Math.round(cam.zoom * dpr * 10) / 10));
+        if (res !== S.res) {
+          S.res = res;
+          sphereC.width = Math.round(SPHERE * res);
+          sphereC.height = Math.round(SPHERE * res);
+        }
+        sg.setTransform(res, 0, 0, res, 0, 0);
+        sg.clearRect(0, 0, SPHERE, SPHERE);
+        drawSphere(
+          sg,
+          sph,
+          SPHERE,
+          SPHERE,
+          S.t,
+          th,
+          {
+            level: S.level,
+            speaking: S.state === "speaking",
+            thinking: S.state === "thinking",
+            listening: S.state === "listening",
+          },
+          { cx: SPHERE / 2, cy: SPHERE / 2, R: SPHERE * 0.3 },
+        );
+      }
       const [w2, h2, d2] = size(ribC);
       rg.setTransform(d2, 0, 0, d2, 0, 0);
       rg.clearRect(0, 0, w2, h2);
       drawRibbons(rg, w2, h2, S.t, th, S.level);
     }
 
-    host.addEventListener("click", (e) => {
+    /** Fly to an area, or to the whole desk. */
+    function go(name) {
+      for (const b of hud.querySelectorAll(".dk-dock button"))
+        b.classList.toggle("on", b.dataset.area === name);
+      if (name === "all") return B.fit(true);
+      const el = areaEls[name];
+      if (!el) return;
+      const r = B.worldRect(el);
+      // Work is its panels and Kik's cards below them
+      if (name === "work") {
+        const cards = [...document.querySelectorAll(".work-layer .frame")].map(B.worldRect);
+        const y1 = Math.max(r.y + r.h, ...cards.map((c) => c.y + c.h));
+        const x1 = Math.max(r.x + r.w, ...cards.map((c) => c.x + c.w));
+        return B.flyTo(r.x - 40, r.y - 60, x1 - r.x + 80, Math.min(y1 - r.y + 100, 2600));
+      }
+      B.flyTo(r.x - 40, r.y - 60, r.w + 80, r.h + 100);
+    }
+
+    hud.addEventListener("click", (e) => {
       const b = e.target.closest("button");
       if (!b) return;
-      if (b.dataset.tab) {
-        S.tab = b.dataset.tab;
-        localStorage.setItem("kik.desk.tab", S.tab);
-        render();
-      } else if (b.dataset.wa) {
-        b.disabled = true;
-        void window.room?.whatsapp?.(b.dataset.wa === "on").then(() => setTimeout(refresh, 1500));
-      } else if (b.classList.contains("dk-theme")) {
+      if (b.dataset.area) go(b.dataset.area);
+      else if (b.classList.contains("dk-theme")) {
         S.theme = S.theme === "neon" ? "ember" : "neon";
         localStorage.setItem("kik.desk.theme", S.theme);
         applyTheme();
+      }
+    });
+    // buttons inside the areas (WhatsApp's link) are in the world
+    areasLayer.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (b?.dataset.wa) {
+        b.disabled = true;
+        void window.room?.whatsapp?.(b.dataset.wa === "on").then(() => setTimeout(refresh, 1500));
       }
     });
     applyTheme();
 
     const api = {
       show() {
+        host.hidden = false;
         if (S.visible) return;
         S.visible = true;
-        host.hidden = false;
         clock();
         render();
         void refresh();
@@ -863,6 +958,8 @@
         cancelAnimationFrame(raf);
         clearInterval(poll);
       },
+      /** Fly to an area by name, or "all". */
+      go,
       /** Something the desk shows changed (a message, a QR, GitHub): read it again. */
       changed() {
         if (S.visible) void refresh();
@@ -875,10 +972,11 @@
         S.levelTo = clamp(Number(l) || 0, 0, 1);
         S.levelAt = S.t;
       },
-      /** A topic card over the sphere: what Kik is saying, and a figure if the line has one. */
+      /** A topic card under the header when a line carries a figure (Kik's line is the caption). */
       say(text, figure) {
         clearTimeout(topicTimer);
-        topicEl.innerHTML = `${figure ? `<div class="dk-fig">${esc(figure.figure)}<small>${esc(figure.unit ?? "")}</small><i>${esc(figure.kicker ?? "")}</i></div>` : ""}<p>${esc(text)}</p>`;
+        if (!figure) return;
+        topicEl.innerHTML = `<div class="dk-fig">${esc(figure.figure)}<small>${esc(figure.unit ?? "")}</small><i>${esc(figure.kicker ?? "")}</i></div><p>${esc(text)}</p>`;
         topicEl.hidden = false;
         topicEl.classList.remove("in");
         void topicEl.offsetWidth;

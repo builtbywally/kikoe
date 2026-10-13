@@ -1770,3 +1770,62 @@ timers run only in the real app (`persistBoard`), never in a test.
     or Wear OS through Android Studio). What does reach a paired watch today
     are the ntfy pushes (`push_topic`): reminders, questions waiting on the
     user, plan ready, work done.
+
+## The desk is home: one infinite canvas (2026-10-14)
+
+The user: "the infinite canvas that is currently in Kikoe I want to discard,
+and the desk to be an infinite canvas … THE DESK AS THE MAIN." The plan is
+`~/.claude/plans/fluttering-spinning-babbage.md`.
+
+- **One surface.** `#desk` is the page's home (`data-view="desk"` at
+  start; `showRoom()` is now an alias of `showDesk()`). Every way back
+  lands there: Escape, the control room's button, settings, and `view`
+  frames.
+- **board.js is the desk's camera**, no longer a screen.
+  - Its `.world` holds the layers, bottom to top:
+    1. `layer("sphere")`: desk.js's world canvas, 1400 px at -700,-700;
+    2. `layer("areas")`: the five `.area` frames;
+    3. the `.work-layer` at `board.WORK` (-1300, 1380), with Kik's cards
+       and their repo frames.
+  - **A card's saved x/y is relative to WORK**, so boards saved before
+    keep their arrangement.
+  - New API: `layer(name)`, `flyTo(x, y, w, h, maxK)`, `camera()`,
+    `worldRect(el)`, `WORK`.
+  - Zoom runs 0.08–2.5. `fit()` frames the whole desk (on a phone, the
+    Home area).
+- **The world** (`AREAS` in desk.js, world pixels): Life (-1240,-1760),
+  You (60,-1760), Home (-2560,-560), Comms (1380,-560), Work (-1300,860),
+  with its cards from y 1380.
+  - Each area renders `TABS[name]` in two columns, re-rendered only when
+    the HTML changed.
+  - The dock (home, life, comms, work, you, ● for all) flies the camera.
+    Work's flight includes its cards.
+- **The sphere** is drawn in world space:
+  - only when on screen;
+  - at a backing resolution of `zoom·dpr` (0.3–1.5);
+  - with `drawSphere(…, geo)` taking an explicit centre and radius.
+- **The HUD**, fixed on the screen:
+  - the greeting, clock and weather;
+  - Kik's line (`#line`), now a caption above the dock with a soft veil;
+  - the orb as a small neon status chip;
+  - the project corner;
+  - the ribbons;
+  - the topic card (only when a line carries a figure);
+  - the zoom controls.
+- **Cards on the neon theme** get glass and a neon edge (desk.css, at the
+  end).
+- **Removed:**
+  - `ambient.js`;
+  - the history strip and the agents strip (the Work area and the agents
+    card show agents);
+  - the `data-has-pins` arrangement;
+  - the dot grid and backdrop CSS;
+  - Settings' backdrop picker (only "frosted cards" stays);
+  - the "desk" title-bar button and the T key;
+  - the phone's "day" button;
+  - `-desk.png` from `--screenshot` (`out.png` is the desk now).
+- **The holo keyboard's "room" key** is now "control".
+- **Left for later:** `renderer/backdrops` (4.5 MB) and the daemon's
+  `/backdrop` and `/backdrops/` routes are unused now. Removing them means
+  touching the walkie and viewer tests. The kikoe-website and the README
+  still show the old Room.

@@ -131,6 +131,16 @@ Gaps:
 
 ## 8. The canvas as a surface
 
+**Since 2026-10-14 the canvas is the desk** (docs/HANDOVER.md, "The desk is
+home"):
+- the neuron sphere is at the world's centre, the five areas sit around it,
+  and Kik's cards are in Work;
+- the old Room view (the ember board with the line, the orb and the
+  history) is gone;
+- everything below about cards (pan, drag, grip, settle, viewports) still
+  holds; the frames are now inside the Work area.
+
+
 Works: pan and zoom, frames per repo, drag, resize by grip, settle so
 nothing overlaps, cards kept in place so frames never reload, viewports,
 stickies beside artboards, ticks and replies on pins, sticky persistence,

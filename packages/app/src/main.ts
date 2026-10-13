@@ -1588,12 +1588,6 @@ if (!app.requestSingleInstanceLock()) {
       const img4 = await roomWin?.webContents.capturePage();
       if (img4) writeFileSync(shotPath.replace(/\.png$/, "-body.png"), img4.toPNG());
       roomWin?.webContents.send("room:view", { view: "room" });
-      // the desk, with whatever the dashboard could read
-      await roomWin?.webContents.executeJavaScript(`document.getElementById("btn-desk").click()`);
-      await new Promise((r) => setTimeout(r, 5000));
-      const img5 = await roomWin?.webContents.capturePage();
-      if (img5) writeFileSync(shotPath.replace(/\.png$/, "-desk.png"), img5.toPNG());
-      roomWin?.webContents.send("room:view", { view: "room" });
       // The pill has its own window, so the Room's capture never showed it —
       // which meant the one surface that is looked at all day was the one
       // surface no screenshot could check. Transparent, so it comes out on
