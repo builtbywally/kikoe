@@ -1865,3 +1865,37 @@ of seven: the IDE plan.
   - Light mode is gone; the system is dark.
 - **brand/BRAND.md §3** describes the system; ember is the alternate and the
   mark.
+
+## The command palette and the interaction layer (2026-10-14, IDE plan step 2)
+
+- **`palette.js`:** Ctrl+K or Ctrl+Shift+P.
+  - One registry, `window.kik.actions.register({id, title, keys, group,
+    run})`, with fuzzy matching. `window.kikPalette.provider(fn)` adds
+    results (files come in step 3).
+  - Whatever matches no action is offered as "Ask Kik: …"
+    (`room.sayToKik`).
+  - `kikPalette.open("ask", "", context)` is the ask box. It replaced the
+    card's `window.prompt`.
+- **`actions.js`** registers everything the Room does: areas, views,
+  zoom, clear, yes/no, the mic modes, the theme, sounds, hands. Load it
+  after room.js; the view functions are page globals.
+- **`interact.js`:**
+  - `window.kik.feel(kind)` plays a short synthesised tone (localStorage
+    `kik.sounds`) and pulses the sphere (`kikDesk.pulse`).
+  - Right-click menus on cards (ask, zoom, keep, copy, dismiss), areas and
+    the canvas. `kik.cardActions(p)` and `kik.canvasActions()` are the
+    hooks for later steps.
+  - `kik.askAbout(pin)`.
+- **board.js:**
+  - cards snap to 16 px while dragged (hold Alt to move freely);
+  - shift-click picks cards, which then drag together;
+  - a card let go over the sphere (its centre within 430 px of the
+    world's 0,0) goes back where it was and fires `board:drop-on-kik`,
+    which asks Kik about it. The sphere glows while one is carried over
+    it.
+- **`ui.css`:** the palette, menus, the picked outline, hover lift, the
+  breathing of a speaking card, the over-Kik glow. Every colour is a
+  token.
+- **Harness gotcha:** Electron's HTTP cache served a stale room.css to the
+  scratch harness, which looked like the tokens failing. `seq.cjs` now
+  clears the cache before loading.

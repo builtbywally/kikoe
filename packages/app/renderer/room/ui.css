@@ -1,0 +1,179 @@
+/* The interaction layer (palette.js, interact.js, board.js's picking): the
+   palette, menus, picked cards, the sphere waiting for a card, and cards
+   that answer the pointer. Every colour is a token (tokens.css). */
+
+/* the command palette */
+.palette {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 14vh;
+  background: rgba(var(--ground-rgb), 0.45);
+  backdrop-filter: blur(3px);
+}
+.palette[hidden] {
+  display: none;
+}
+.pal-box {
+  width: min(640px, 92vw);
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  border-radius: var(--radius);
+  background: rgba(var(--surface-rgb), 0.96);
+  box-shadow: 0 0 40px rgba(var(--accent-rgb), 0.22), 0 24px 60px rgba(var(--shadow-rgb), 0.6);
+  overflow: hidden;
+  animation: pal-in var(--fast) var(--ease);
+}
+@keyframes pal-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+.pal-in {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.18);
+}
+.pal-mode:empty {
+  display: none;
+}
+.pal-mode {
+  font: 10px var(--mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+.pal-in input {
+  flex: 1;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--ink);
+  font: 17px var(--sans);
+}
+.pal-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 52vh;
+  overflow: auto;
+}
+.pal-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.pal-list li i {
+  font: 11px var(--mono);
+  font-style: normal;
+  color: var(--muted);
+}
+.pal-list li.on {
+  background: rgba(var(--accent-rgb), 0.16);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.pal-list li.ask span {
+  color: var(--accent);
+}
+.pal-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+  border-top: 1px solid rgba(var(--accent-rgb), 0.12);
+}
+
+/* right-click menus */
+.ctx-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  padding: 5px;
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  border-radius: 11px;
+  background: rgba(var(--surface-rgb), 0.97);
+  box-shadow: 0 16px 40px rgba(var(--shadow-rgb), 0.55), 0 0 24px rgba(var(--accent-rgb), 0.15);
+  animation: pal-in var(--fast) var(--ease);
+}
+.ctx-menu[hidden] {
+  display: none;
+}
+.ctx-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink);
+  font: 13px var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+.ctx-menu button i {
+  font: 10.5px var(--mono);
+  font-style: normal;
+  color: var(--muted);
+}
+.ctx-menu button:hover {
+  background: rgba(var(--accent-rgb), 0.16);
+}
+.ctx-menu hr {
+  border: 0;
+  border-top: 1px solid rgba(var(--accent-rgb), 0.15);
+  margin: 4px 6px;
+}
+
+/* cards answer the pointer: a lift on hover, a ring when picked */
+.desk .pin {
+  transition: box-shadow var(--fast) var(--ease), border-color var(--fast) var(--ease), translate
+    var(--fast) var(--ease);
+}
+.desk .board:not(.moving) .pin:hover {
+  translate: 0 -2px;
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 0 30px rgba(var(--accent-rgb), 0.22), 0 18px 44px rgba(var(--shadow-rgb), 0.55);
+}
+.pin.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+/* a live card breathes while its agent works */
+.pin[data-kind="session"][data-working="1"],
+.pin[data-speaking="1"] {
+  animation: card-breathe 2.6s ease-in-out infinite;
+}
+@keyframes card-breathe {
+  50% {
+    box-shadow: 0 0 42px rgba(var(--accent-rgb), 0.32), 0 12px 40px rgba(var(--shadow-rgb), 0.5);
+  }
+}
+/* a card carried over Kik: the sphere is ready to take the question */
+.board.over-kik .dk-world-sphere {
+  filter: drop-shadow(0 0 60px var(--accent)) brightness(1.4);
+}
+.board.over-kik .pin.dragging {
+  outline: 2px dashed var(--accent);
+  outline-offset: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pin {
+    animation: none !important;
+  }
+}

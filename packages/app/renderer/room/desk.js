@@ -964,6 +964,11 @@
         S.levelTo = clamp(Number(l) || 0, 0, 1);
         S.levelAt = S.t;
       },
+      /** A pulse of the sphere: something was done (interact.js). */
+      pulse(amount = 0.6) {
+        S.levelTo = Math.max(S.levelTo, clamp(amount, 0, 1));
+        S.levelAt = S.t;
+      },
       /** A topic card under the header when a line carries a figure (Kik's line is the caption). */
       say(text, figure) {
         clearTimeout(topicTimer);

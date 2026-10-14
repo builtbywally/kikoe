@@ -42,6 +42,10 @@
   const LEFT = 72;
   /** the easing every glide shares: quick to start, soft to land */
   const EASE = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+  /** cards snap to this while dragged (Alt moves freely) */
+  const GRID = 16;
+  /** a card let go this close to the sphere's centre is a question for Kik */
+  const KIK_R = 430;
   /** where Kik's cards begin on the desk: the Work area, below the sphere */
   const WORK = { x: -1300, y: 1380 };
   /** the room the desk's HUD takes: the header above, the dock and the line below */
@@ -287,6 +291,16 @@
   // --- pan and zoom -------------------------------------------------------------
 
   let dragging = null;
+  /** cards picked with shift-click: they move together */
+  const selected = new Set();
+  function select(id, on) {
+    if (on) selected.add(id);
+    else selected.delete(id);
+    els.get(id)?.classList.toggle("selected", on);
+  }
+  function clearSelection() {
+    for (const id of [...selected]) select(id, false);
+  }
   // Two fingers are a pinch: zoom about the point between them, and pan with
   // it. Tracked here because pointer events arrive one finger at a time.
   const fingers = new Map();
@@ -359,15 +373,25 @@
     const start = { x: e.clientX, y: e.clientY, panX, panY };
     if (pin && e.button === 0 && !readOnly()) {
       const id = pin.dataset.id;
+      // shift-click picks cards; the picked ones move together
+      if (e.shiftKey) {
+        select(id, !selected.has(id));
+        return;
+      }
+      if (!selected.has(id)) clearSelection();
       const pos = positions.get(id) ?? { x: 0, y: 0 };
       measure();
-      dragging = { kind: "pin", pin, id, start, from: { ...pos } };
+      const group = [...selected]
+        .filter((o) => o !== id && els.has(o))
+        .map((o) => ({ id: o, el: els.get(o), from: { ...(positions.get(o) ?? { x: 0, y: 0 }) } }));
+      dragging = { kind: "pin", pin, id, start, from: { ...pos }, group };
       pin.classList.add("dragging");
       canvas.classList.add("arranging");
       canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button === 0 || e.button === 1) {
+      if (!e.shiftKey) clearSelection();
       dragging = { kind: "pan", start };
       trail = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
       canvas.classList.add("panning");
@@ -401,26 +425,61 @@
       while (trail.length > 2 && t - trail[0].t > 80) trail.shift();
       apply();
     } else {
-      const pos = { x: dragging.from.x + dx / zoom, y: dragging.from.y + dy / zoom };
+      // to the grid, unless Alt is held
+      const snap = (v) => (e.altKey ? v : Math.round(v / GRID) * GRID);
+      const ddx = snap(dragging.from.x + dx / zoom) - dragging.from.x;
+      const ddy = snap(dragging.from.y + dy / zoom) - dragging.from.y;
+      const pos = { x: dragging.from.x + ddx, y: dragging.from.y + ddy };
       positions.set(dragging.id, pos);
       moved.add(dragging.id);
       dragging.pin.style.left = `${pos.x}px`;
       dragging.pin.style.top = `${pos.y}px`;
+      for (const g of dragging.group) {
+        const gp = { x: g.from.x + ddx, y: g.from.y + ddy };
+        positions.set(g.id, gp);
+        moved.add(g.id);
+        g.el.style.left = `${gp.x}px`;
+        g.el.style.top = `${gp.y}px`;
+      }
+      // over Kik: the sphere answers before it is let go
+      canvas.classList.toggle("over-kik", overKik(dragging.id));
+      if (dragging.group.length) layoutFrames();
       // Only the frame this card is in can change, and every size is already
       // known: no layout is forced while a card is in the hand.
-      layoutFrames(dragging.pin.dataset.repo || "");
+      else layoutFrames(dragging.pin.dataset.repo || "");
     }
   });
+  /** Is this card's centre over Kik's sphere (the world's centre)? */
+  function overKik(id) {
+    const p = positions.get(id);
+    if (!p) return false;
+    const s = sizeOf(id);
+    return Math.hypot(WORK.x + p.x + s.w / 2, WORK.y + p.y + Math.min(s.h, 300) / 2) < KIK_R;
+  }
   const endDrag = () => {
     if (dragging?.kind === "pin") {
       dragging.pin.classList.remove("dragging");
-      canvas.classList.remove("arranging");
+      canvas.classList.remove("arranging", "over-kik");
+      const id = dragging.id;
+      // Let go over Kik: the card goes back where it was, and is a question.
+      if (overKik(id)) {
+        for (const g of [{ id, el: dragging.pin, from: dragging.from }, ...dragging.group]) {
+          positions.set(g.id, { ...g.from });
+          g.el.style.left = `${g.from.x}px`;
+          g.el.style.top = `${g.from.y}px`;
+        }
+        layoutFrames();
+        window.dispatchEvent(new CustomEvent("board:drop-on-kik", { detail: { id } }));
+        dragging = null;
+        return;
+      }
       // Where you put it is part of the board now. The grip has always saved
       // a size this way; a position is the same promise.
-      const id = dragging.id;
-      const pos = positions.get(id);
-      if (pos && !String(id).startsWith("conversation") && !LIVE.has(dragging.pin.dataset.kind)) {
-        window.room.updatePin?.(id, { x: Math.round(pos.x), y: Math.round(pos.y) });
+      for (const g of [{ id, el: dragging.pin }, ...dragging.group]) {
+        const pos = positions.get(g.id);
+        if (pos && !String(g.id).startsWith("conversation") && !LIVE.has(g.el.dataset.kind)) {
+          window.room.updatePin?.(g.id, { x: Math.round(pos.x), y: Math.round(pos.y) });
+        }
       }
     }
     if (dragging?.kind === "pan" && trail.length > 1) {

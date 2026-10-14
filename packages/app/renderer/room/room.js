@@ -613,6 +613,8 @@ function pinFresh(p) {
 function byIdPin(id) {
   return pins.find((x) => x.id === id);
 }
+// the cards, for the right-click menus and the palette (interact.js)
+window.kikPins = { get: byIdPin };
 
 /** The last addresses this screen told the daemon about, so their echo is not a navigation. */
 const told = new Map();
@@ -1050,13 +1052,7 @@ function pinCard(p) {
     }
     const ask = document.createElement("button");
     ask.textContent = "ask kik";
-    ask.addEventListener("click", () => {
-      const q = window.prompt(`Ask Kik about “${p.title || p.kind}”`);
-      if (q?.trim())
-        window.room.sayToKik(
-          `About the ${p.kind} "${p.title}" on the canvas (id ${p.id}): ${q.trim()}`,
-        );
-    });
+    ask.addEventListener("click", () => window.kik?.askAbout(byIdPin(p.id) ?? p));
     const keep = document.createElement("button");
     keep.textContent = p.sticky ? "unpin" : "keep";
     keep.title = p.sticky ? "let it fade" : "keep it until removed";
@@ -1821,6 +1817,7 @@ let desk = null;
 function showDesk() {
   desk ??= window.KikDesk?.mount(document.getElementById("desk")) ?? null;
   if (!desk) return;
+  window.kikDesk = desk;
   holo?.hide();
   el.control.hidden = true;
   el.body.dataset.view = "desk";
@@ -1834,6 +1831,7 @@ async function showBody() {
     for (const src of ["vendor/three-body.js", "vendor/kik-body.js", "body.js"])
       await loadScript(src);
     holo = window.KikBody?.mount(document.getElementById("holo")) ?? null;
+    window.holoApi = holo;
     // the bar's "speak": Kik says something of its own, as the button asks
     if (holo)
       holo.onAction = (a) => {
