@@ -768,7 +768,7 @@
     const sph = makeSphere(0x4b494b);
     const S = {
       visible: false,
-      theme: localStorage.getItem("kik.desk.theme") || "neon",
+      theme: window.kikTheme?.get() ?? "neon",
       data: null,
       state: "idle",
       level: 0,
@@ -783,15 +783,11 @@
     let topicTimer = 0;
     let fitted = false;
 
-    function applyTheme() {
-      const th = THEMES[S.theme] ?? THEMES.neon;
-      host.dataset.theme = S.theme;
-      host.style.setProperty("--dk-a", `rgb(${th.a})`);
-      host.style.setProperty("--dk-b", `rgb(${th.b})`);
-      host.style.setProperty("--dk-c", `rgb(${th.c})`);
-      host.style.setProperty("--dk-ink", `rgb(${th.ink})`);
-      host.style.setProperty("--dk-a-rgb", `${th.a}`);
-    }
+    // The palette is the design system's (tokens.css, theme.js); the
+    // canvases draw with THEMES, the same colours as numbers.
+    window.addEventListener("kik:theme", (e) => {
+      S.theme = e.detail;
+    });
     /** Every area's panels, from the last reading: real data, or what is not connected. */
     function render() {
       for (const [name, el] of Object.entries(areaEls)) {
@@ -922,9 +918,7 @@
       if (!b) return;
       if (b.dataset.area) go(b.dataset.area);
       else if (b.classList.contains("dk-theme")) {
-        S.theme = S.theme === "neon" ? "ember" : "neon";
-        localStorage.setItem("kik.desk.theme", S.theme);
-        applyTheme();
+        window.kikTheme?.set(S.theme === "neon" ? "ember" : "neon");
       }
     });
     // buttons inside the areas (WhatsApp's link) are in the world
@@ -935,8 +929,6 @@
         void window.room?.whatsapp?.(b.dataset.wa === "on").then(() => setTimeout(refresh, 1500));
       }
     });
-    applyTheme();
-
     const api = {
       show() {
         host.hidden = false;

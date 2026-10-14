@@ -823,13 +823,13 @@ async function quit(): Promise<void> {
   }
 }
 
-/** Dark, light, or the system's choice. The overlaid controls follow. */
+/** The design system's palette (tokens.css): neon, or ember. The window's own controls follow. */
 function applyTheme(theme: string): void {
-  nativeTheme.themeSource = theme === "light" || theme === "dark" ? theme : "system";
-  const light = !nativeTheme.shouldUseDarkColors;
-  const overlay = light
-    ? { color: "#f5f1ec", symbolColor: "#14100e", height: 36 }
-    : { color: "#14100e", symbolColor: "#f5f1ec", height: 36 };
+  nativeTheme.themeSource = "dark";
+  const overlay =
+    theme === "ember"
+      ? { color: "#14100e", symbolColor: "#f5f1ec", height: 36 }
+      : { color: "#07040a", symbolColor: "#f6e9f1", height: 36 };
   for (const w of [roomWin]) {
     try {
       w?.setTitleBarOverlay(overlay);

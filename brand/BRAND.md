@@ -32,17 +32,27 @@ asked you something. It shows *what Kik is doing*, so it belongs where Kik
 is: the Room, the phone's talk button, the island. It is never the logo, and
 the logo never animates.
 
-## 3. Colour
+## 3. Colour: the design system
 
-| | hex | use |
+Since 2026-10-14 the app has one design system, **neon** (after K.A.R.A's
+desk). Every surface reads its tokens from
+`packages/app/renderer/room/tokens.css`. Nothing defines a colour of its
+own; a stylesheet names a token.
+
+| token | neon | use |
 |---|---|---|
-| Ink | `#14100E` | ground, text on light |
-| Paper | `#F5F1EC` | text on dark, こえ |
-| Ember | `#D2683F` | the one accent |
+| `--ground` | `#07040A` | the page behind everything |
+| `--surface-rgb` | `16, 8, 20` | cards, panels, menus (with alpha) |
+| `--ink` | `#F6E9F1` | text and lines |
+| `--muted` / `--muted-2` / `--faint` | `#A08A99` / `#6C5A67` / `#3A2B36` | secondary text, quieter, hairlines |
+| `--accent` | `#FF2E88` | the live colour: active, asked, selected |
+| `--accent-2` | `#A855F7` | its companion (the violet in the light) |
+| `--accent-3` | `#FFAA3C` | the warm third (charts, code on the rings) |
+| `--danger` | `#FF8FA3` | removed lines, errors |
 
-Ember is the only colour that is not ink or paper. Use it for one thing on a
-surface, not for a palette. On the icon it is the glow behind the word: the
-warmth the orb used to carry, kept as light rather than as a shape.
+**Ember is the alternate palette** of the same tokens: Ink `#14100E`, Paper
+`#F5F1EC`, Ember `#D2683F`. It is chosen in Settings → Look or with the
+desk's ◐ (`theme.js`). The icon and こえ keep ember, as the brand mark.
 
 **No green anywhere.** Green belongs to runnn, where it has a rule attached
 to it, and borrowing it here would break that rule in the one place it

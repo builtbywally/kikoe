@@ -13,7 +13,7 @@
   color: var(--dk-ink);
   font: 13px var(--sans, system-ui, sans-serif);
 }
-.desk[data-theme="ember"] {
+:root[data-theme="ember"] .desk {
   background: radial-gradient(ellipse at 50% 45%, #1a0d07 0%, #0c0705 55%, #050302 100%);
 }
 /* the canvas fills the desk; the HUD floats over it and lets the canvas be touched */
@@ -531,23 +531,23 @@ body[data-idle="true"] .desk .line-text {
 }
 
 /* Kik's cards on the neon desk: glass and a neon edge, the way the panels are */
-.desk[data-theme="neon"] .pin {
+:root:not([data-theme="ember"]) .desk .pin {
   background: rgba(14, 6, 16, 0.9);
   border-color: rgba(var(--dk-a-rgb), 0.3);
   color: #f3e6ef;
   box-shadow: 0 0 26px rgba(var(--dk-a-rgb), 0.12), 0 12px 40px rgba(0, 0, 0, 0.5);
 }
-.desk[data-theme="neon"] .pin-head {
+:root:not([data-theme="ember"]) .desk .pin-head {
   border-color: rgba(var(--dk-a-rgb), 0.18);
 }
-.desk[data-theme="neon"] .pin-head .title {
+:root:not([data-theme="ember"]) .desk .pin-head .title {
   color: var(--dk-a);
 }
-.desk[data-theme="neon"] .frame-label {
+:root:not([data-theme="ember"]) .desk .frame-label {
   color: var(--dk-a);
   opacity: 0.7;
 }
-.desk[data-theme="neon"] .frame:hover {
+:root:not([data-theme="ember"]) .desk .frame:hover {
   border-color: rgba(var(--dk-a-rgb), 0.18);
 }
 

@@ -43,7 +43,7 @@ export interface Settings {
   mic_device: string;
   /** the name that opens a conversation, plus the misspellings STT produces */
   wake_name: string;
-  /** system | dark | light */
+  /** the design system's palette (tokens.css): neon | ember */
   theme: string;
   /** tiny | base: the Whisper English model the ear uses */
   stt_model: string;
@@ -184,7 +184,7 @@ export const DEFAULTS: Settings = {
   mic: false,
   mic_device: "",
   wake_name: "kikoe",
-  theme: "system",
+  theme: "neon",
   stt_model: "tiny",
   hear_debug: false,
   hear_you: true,

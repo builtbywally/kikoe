@@ -219,7 +219,7 @@
     pick("narrate", s.narrate);
     pick("earcons", s.earcons || "cues");
     pick("profile", s.hook_profile);
-    pick("theme", s.theme || "system");
+    pick("theme", s.theme === "ember" ? "ember" : "neon");
     $("backdrop-blur").checked = s.backdrop_blur !== false;
     $("strict").checked = Boolean(s.tts_strict);
     $("login").checked = Boolean(info.loginItem);
@@ -632,7 +632,7 @@
     api.save({ backdrop_blur: $("backdrop-blur").checked }),
   );
   for (const r of document.querySelectorAll("input[name=theme]"))
-    r.addEventListener("change", () => api.save({ theme: r.value }));
+    r.addEventListener("change", () => window.kikTheme?.set(r.value));
   $("login").addEventListener("change", () => api.save({ start_at_login: $("login").checked }));
   $("open-logs").addEventListener("click", () => api.openLogs());
   $("open-home").addEventListener("click", () => api.openHome());

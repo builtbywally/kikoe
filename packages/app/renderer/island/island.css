@@ -9,25 +9,16 @@
  * the entire job. */
 
 :root {
-  --pill: rgba(24, 24, 21, 0.9);
-  --edge: rgba(255, 255, 255, 0.14);
-  /* Kikoe's palette: paper on ink, ember as the one accent. No green. */
-  --ink: #e9e4dd; /* transcript: paper, a shade down so the emphasis reads */
-  --ink-bright: #f5f1ec; /* waveform, emphasis: paper */
-  --ink-dim: #8b8b80; /* the resting state label */
-  --accent: #d2683f; /* working, listening, speaking — anything live: ember */
-  --done: #f5f1ec; /* finished: paper, not green */
-  --danger: #ffb4a8;
-
-  /* The usage bands. Codenotch's thresholds — half, then seven tenths — in
-     this palette rather than its traffic light: quiet while there is room,
-     amber as it tightens, ember when it is nearly gone. */
-  --track: rgba(255, 255, 255, 0.12);
-  --band-ample: #8b8b80;
-  --band-watch: #d9a441;
-  --band-critical: #d2683f;
-
-  --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  /* Kikoe's tokens (../room/tokens.css), named the way the pill uses them */
+  --pill: rgba(var(--surface-rgb), 0.9);
+  --edge: rgba(var(--ink-rgb), 0.14);
+  --ink-bright: var(--ink);
+  --ink-dim: var(--muted);
+  --done: var(--ink);
+  --track: rgba(var(--ink-rgb), 0.12);
+  --band-ample: var(--muted);
+  --band-watch: var(--accent-3);
+  --band-critical: var(--accent);
 }
 
 * {
@@ -542,13 +533,13 @@ body {
   border-radius: 50%;
   background: radial-gradient(
     circle at 36% 30%,
-    #f5f1ec 0%,
+    var(--ink) 0%,
     #edb893 18%,
-    #d2683f 48%,
+    var(--accent) 48%,
     #7a3a20 78%,
     #2a1710 100%
   );
-  box-shadow: 0 0 8px rgba(210, 104, 63, 0.35);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.35);
   filter: saturate(0.55) brightness(0.72);
   transition: filter .5s, box-shadow .5s;
 }
@@ -557,7 +548,7 @@ body {
   position: absolute;
   inset: -1px;
   border-radius: 50%;
-  border: 1px solid rgba(245, 241, 236, 0.6);
+  border: 1px solid rgba(var(--ink-rgb), 0.6);
   opacity: 0;
 }
 .island[data-state="speaking"] .orb-mini,
@@ -576,11 +567,11 @@ body {
 }
 .island[data-state="permission"] .orb-mini {
   filter: none;
-  box-shadow: 0 0 12px rgba(210, 104, 63, 0.7);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.7);
 }
 .island[data-state="permission"] .orb-mini::after {
   animation: orb-mini-ring 1.6s ease-out infinite;
-  border-color: #d2683f;
+  border-color: var(--accent);
 }
 @keyframes orb-mini-ring {
   0% {
@@ -930,14 +921,14 @@ body {
 /* light: a paper pill with ink text; ember stays */
 @media (prefers-color-scheme: light) {
   :root {
-    --pill: rgba(245, 241, 236, 0.94);
-    --edge: rgba(20, 16, 14, 0.14);
+    --pill: rgba(var(--ink-rgb), 0.94);
+    --edge: rgba(var(--ground-rgb), 0.14);
     --ink: #2a2420;
-    --ink-bright: #14100e;
+    --ink-bright: var(--ground);
     --ink-dim: #6f6a63;
-    --done: #14100e;
+    --done: var(--ground);
     --danger: #b3442a;
-    --track: rgba(20, 16, 14, 0.14);
+    --track: rgba(var(--ground-rgb), 0.14);
     --band-ample: #6f6a63;
     --band-watch: #a8761b;
     --band-critical: #b3442a;
@@ -945,7 +936,7 @@ body {
 
   .usage-card,
   .usage-tail {
-    background: rgba(245, 241, 236, 0.97);
+    background: rgba(var(--ink-rgb), 0.97);
   }
 }
 
@@ -954,7 +945,11 @@ body {
 .orb-mini:has(.orb-dots) {
   width: 20px;
   height: 20px;
-  background: radial-gradient(circle, rgba(210, 104, 63, 0.22) 0%, rgba(210, 104, 63, 0) 72%);
+  background: radial-gradient(
+    circle,
+    rgba(var(--accent-rgb), 0.22) 0%,
+    rgba(var(--accent-rgb), 0) 72%
+  );
   box-shadow: none;
   filter: none;
 }

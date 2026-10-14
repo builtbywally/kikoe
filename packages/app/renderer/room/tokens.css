@@ -1,0 +1,74 @@
+/* Kikoe's design system: the one set of tokens every surface reads (the
+   desk, its cards, the control room, settings, the body, the holo keyboard,
+   the island, the phone). Neon is the system; ember is the same tokens with
+   other values, chosen in Settings → Look or with the desk's ◐.
+
+   Names say what a colour is for, not what it looks like:
+   ground   the page behind everything
+   surface  a card, a panel, a menu
+   ink      text and lines on them
+   muted    secondary text; muted-2 quieter still; faint for hairlines
+   accent   the one live colour: what is active, asked, selected
+   accent-2 its companion (violet / sand), accent-3 the warm third
+   danger   removed lines, errors
+   Anything that needs an alpha uses the -rgb twin: rgba(var(--accent-rgb), 0.3). */
+
+:root {
+  --ground: #07040a;
+  --ground-rgb: 7, 4, 10;
+  --surface-rgb: 16, 8, 20;
+  --ink: #f6e9f1;
+  --ink-rgb: 246, 233, 241;
+  --muted: #a08a99;
+  --muted-2: #6c5a67;
+  --faint: #3a2b36;
+  --accent: #ff2e88;
+  --accent-rgb: 255, 46, 136;
+  --accent-2: #a855f7;
+  --accent-2-rgb: 168, 85, 247;
+  --accent-3: #ffaa3c;
+  --accent-3-rgb: 255, 170, 60;
+  --glow: #1a0a16;
+  --shadow-rgb: 0, 0, 0;
+  --danger: #ff8fa3;
+  --danger-bg: rgba(255, 143, 163, 0.1);
+
+  --serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --sans: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+
+  --radius: 14px;
+  --radius-lg: 26px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fast: 0.16s;
+  --slow: 0.42s;
+
+  /* the desk's names (desk.js, desk.css), the same colours */
+  --dk-a: var(--accent);
+  --dk-a-rgb: var(--accent-rgb);
+  --dk-b: var(--accent-2);
+  --dk-c: var(--accent-3);
+  --dk-ink: var(--ink);
+  color-scheme: dark;
+}
+
+/* ember: Kikoe's first palette, kept as the alternate */
+:root[data-theme="ember"] {
+  --ground: #14100e;
+  --ground-rgb: 20, 16, 14;
+  --surface-rgb: 24, 24, 21;
+  --ink: #f5f1ec;
+  --ink-rgb: 245, 241, 236;
+  --muted: #8b8b80;
+  --muted-2: #5e5e56;
+  --faint: #3a3a34;
+  --accent: #d2683f;
+  --accent-rgb: 210, 104, 63;
+  --accent-2: #f5aa6e;
+  --accent-2-rgb: 245, 170, 110;
+  --accent-3: #ffd696;
+  --accent-3-rgb: 255, 214, 150;
+  --glow: #1c1714;
+  --danger: rgba(255, 180, 168, 0.85);
+  --danger-bg: rgba(255, 180, 168, 0.08);
+}

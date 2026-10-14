@@ -6,9 +6,10 @@
   <!-- The canvas zooms itself; a browser zooming the whole page on a pinch
        outside it (the title bar, the talk button) fought it. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#14100e" />
+  <meta name="theme-color" content="#07040a" />
   <title>Kikoe</title>
   <link rel="stylesheet" href="../fonts/fonts.css" />
+  <link rel="stylesheet" href="tokens.css" />
   <link rel="stylesheet" href="room.css" />
   <link rel="stylesheet" href="settings.css" />
   <link rel="stylesheet" href="body.css" />
@@ -245,9 +246,8 @@
       <section id="spage-look" class="spage" hidden>
         <h2>Look</h2>
         <div class="rows">
-          <label class="row"><input type="radio" name="theme" value="system" /><div><b>Follow the system</b><span>Dark or light, whichever the OS is using.</span></div></label>
-          <label class="row"><input type="radio" name="theme" value="dark" /><div><b>Dark</b><span>Ink, paper text, one ember.</span></div></label>
-          <label class="row"><input type="radio" name="theme" value="light" /><div><b>Light</b><span>Paper, ink text, the same ember.</span></div></label>
+          <label class="row"><input type="radio" name="theme" value="neon" /><div><b>Neon</b><span>The desk's look: pink and violet light on black. The design system.</span></div></label>
+          <label class="row"><input type="radio" name="theme" value="ember" /><div><b>Ember</b><span>Kikoe's first palette: paper on ink, one ember.</span></div></label>
         </div>
         <h3>Cards</h3>
         <label class="check"><input type="checkbox" id="backdrop-blur" /> frosted cards</label>
@@ -265,6 +265,7 @@
     </main>
   </div>
 
+  <script src="theme.js"></script>
   <script src="vendor/thinking-orbs.js"></script>
   <script src="orbs.js"></script>
   <script src="desk.js"></script>

@@ -1829,3 +1829,39 @@ and the desk to be an infinite canvas … THE DESK AS THE MAIN." The plan is
   `/backdrop` and `/backdrops/` routes are unused now. Removing them means
   touching the walkie and viewer tests. The kikoe-website and the README
   still show the old Room.
+
+## One design system: neon, from tokens.css (2026-10-14)
+
+The user: "make sure the new design system is the one that is still there".
+The plan is `~/.claude/plans/fluttering-spinning-babbage.md`. This is step 1
+of seven: the IDE plan.
+
+- **`renderer/room/tokens.css`** is the only place a colour is defined:
+  - `--ground`, `--surface-rgb`, `--ink(-rgb)`, `--muted`, `--muted-2`,
+    `--faint`, `--accent(-rgb)`, `--accent-2`, `--accent-3`, `--danger`,
+    `--danger-bg`, `--glow`;
+  - type, radii and motion;
+  - and the desk's `--dk-*` as aliases.
+  - Neon is the default; `:root[data-theme="ember"]` is the alternate.
+- **Renamed everywhere** (room, settings, body, keys, desk and island
+  CSS):
+  - old `--ink` (which was the ground) → `--ground`;
+  - `--paper` → `--ink`;
+  - `--ember` → `--accent`;
+  - `--fg/bg/card-rgb` → `--ink/ground/surface-rgb`;
+  - `--dim(mer)` → `--muted(-2)`;
+  - `--del(-bg)` → `--danger(-bg)`;
+  - hard-coded ember hexes → tokens.
+  - **A grep for the old names outside tokens.css comes back empty: keep
+    it that way.**
+- **The island** loads `../room/tokens.css` and `../room/theme.js`. Its own
+  names (`--pill`, `--ink-dim`, the bands) are aliases now.
+- **`theme.js`** (`window.kikTheme.get/set`) is the one switch:
+  - localStorage `kik.theme`, shared by the Room and the island, and
+    the `storage` event;
+  - the `theme` setting, which is now `neon | ember` (default neon);
+  - main.ts's title-bar overlay.
+  - Settings → Look and the desk's ◐ both call it.
+  - Light mode is gone; the system is dark.
+- **brand/BRAND.md §3** describes the system; ember is the alternate and the
+  mark.

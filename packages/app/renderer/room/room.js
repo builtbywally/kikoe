@@ -896,10 +896,10 @@ function pinCard(p) {
   mark.setAttribute("stroke-linecap", "round");
   if (p.kind === "diff") {
     mark.setAttribute("d", "M12 5v14M5 12h14");
-    mark.setAttribute("stroke", "#d2683f");
+    mark.style.stroke = "var(--accent)";
   } else {
     mark.setAttribute("d", "M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7");
-    mark.setAttribute("stroke", "#8b8b80");
+    mark.style.stroke = "var(--muted)";
   }
   icon.append(mark);
   const t = document.createElement("span");
