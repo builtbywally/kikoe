@@ -1955,3 +1955,15 @@ of seven: the IDE plan.
 - Checked on 2026-10-14: ElevenLabs still answers (200 with audio), but
   the key lacks the `user_read` permission, so the remaining credit
   cannot be read with it. The user's `tts` is kokoro.
+
+## Test counts are not spoken (2026-10-14)
+
+- The user doesn't want to hear "100 of 200 passed" unless it is urgent.
+  The narrator now gives every test verdict `SEV_PROGRESS`, so only
+  verbose speaks it, green or red.
+- The daemon's "tests red for half an hour" watcher still speaks; that is
+  the urgent case.
+- The spoken-line guidance written for agents (hooks.ts) dropped "Numbers
+  plainly: eighteen passed, two failed" for "No test counts".
+- In evals: the four test fixtures run in verbose, and
+  `tests_quiet.json` holds normal mode to silence.

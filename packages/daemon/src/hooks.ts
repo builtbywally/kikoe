@@ -509,13 +509,14 @@ acknowledgement needs no line at all.
 
 ## How to say it
 
-- **Lead with the answer.** "Tests pass," then the detail, never the reverse.
+- **Lead with the answer.** "It's fixed," then the detail, never the reverse.
 - **One sentence is the default.** Two short ones at most.
 - **Under about twenty words a sentence.** No parentheses, no semicolons.
 - **Never speak code, diffs, paths, or markdown.** Say "token refresh", not a
   file path. Say "get user by id", not an identifier.
 - **Never speak a secret.**
-- **Numbers plainly.** "Eighteen passed, two failed."
+- **No test counts.** Don't say how many tests passed. Mention tests only
+  when something is still broken that they need to know about.
 - **Contractions, always.** No robot tells: no "Great question", no "I'd be
   happy to", no announcing what you're about to do.
 - **Talk to them, not about the task.** "Your build's green" beats "the build

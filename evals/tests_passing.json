@@ -1,7 +1,7 @@
 {
-  "name": "a green run is a milestone, not an alert",
-  "why": "Good news is worth one line at normal volume. It must not preempt, and it must not shout.",
-  "mode": "normal",
+  "name": "a green run is said only in verbose",
+  "why": "The user asked not to hear test counts unless it is urgent (2026-10-14). In verbose they are still one quiet line.",
+  "mode": "verbose",
   "hooks": [
     {"hook_event_name": "PostToolUse", "tool_name": "Bash",
      "tool_input": {"command": "npm test"},

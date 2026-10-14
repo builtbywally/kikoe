@@ -481,9 +481,12 @@ export class Narrator {
     if (SHELL_TOOLS.has(tool)) {
       const verdict = summarizeTestOutput(e.text);
       if (verdict) {
-        const failed = verdict.includes("fail");
+        // Counts are noise the user asked not to hear: a run mid-turn, green
+        // or red, is the agent's own business, and it says so at the end.
+        // Only verbose speaks them. Tests red for half an hour is still said,
+        // by the daemon's watcher, because that one is worth an interruption.
         return this.utter(e, "Tests: " + verdict + ".", {
-          priority: failed ? ev.SEV_ATTENTION : ev.SEV_MILESTONE,
+          priority: ev.SEV_PROGRESS,
           dedupe: "tests:" + e.session + ":" + verdict,
         });
       }

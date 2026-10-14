@@ -1,0 +1,12 @@
+{
+  "name": "test counts are not said at normal volume",
+  "why": "The user asked not to hear how many tests passed unless it is urgent (2026-10-14). A run mid-turn, green or red, is the agent's business; tests red for half an hour is the daemon watcher's to say.",
+  "mode": "normal",
+  "hooks": [
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "npm test"}, "tool_response": "Tests: 100 passed, 100 failed, 200 total"},
+    {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+     "tool_input": {"command": "npm test"}, "tool_response": "Tests: 200 passed, 200 total"}
+  ],
+  "expect": {"spoken": 0}
+}
