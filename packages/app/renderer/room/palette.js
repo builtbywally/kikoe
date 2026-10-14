@@ -8,9 +8,13 @@
 //   window.kik.actions.run(id)
 //   window.kikPalette.open(mode?, seed?)   mode: "actions" | "ask"
 //   window.kikPalette.provider(fn)          more results for a query (files, …)
+//   window.kikPalette.mode(name, { label, placeholder, items(q), keys })
+//                                            a palette of its own (quick open,
+//                                            search in files: ide.js)
 (() => {
   const actions = new Map();
   const providers = [];
+  const modes = new Map();
 
   /** Fuzzy score: every letter in order, rewarded for starts and runs. 0 is no match. */
   function score(text, q) {
@@ -69,6 +73,15 @@
     const q = input.value.trim();
     if (mode === "ask") {
       items = [{ title: q ? `Ask Kik: ${q}` : "Ask Kik…", hint: context, run: () => ask(q) }];
+    } else if (modes.has(mode)) {
+      let found = [];
+      try {
+        found = (await modes.get(mode).items(q)) ?? [];
+      } catch {
+        /* the mode's trouble is not the palette's */
+      }
+      if (input.value.trim() !== q || !modes.has(mode)) return;
+      items = found;
     } else {
       const ranked = window.kik.actions
         .list()
@@ -128,11 +141,13 @@
   function open(m = "actions", seed = "", ctx = "") {
     mode = m;
     context = ctx;
-    modeEl.textContent = m === "ask" ? "ask kik" : "";
+    const own = modes.get(m);
+    modeEl.textContent = m === "ask" ? "ask kik" : (own?.label ?? "");
     el.hidden = false;
     input.value = seed;
     input.placeholder =
-      m === "ask" ? "what do you want to ask?" : "an action, a file, or anything to ask Kik";
+      own?.placeholder ??
+      (m === "ask" ? "what do you want to ask?" : "an action, a file, or anything to ask Kik");
     sel = 0;
     window.kik.feel?.("open");
     void refresh();
@@ -166,6 +181,18 @@
         e.preventDefault();
         e.stopPropagation();
         el.hidden ? open() : close();
+        return;
+      }
+      // a mode's own key: Ctrl+P quick open, Ctrl+Shift+F search
+      for (const [name, m] of modes) {
+        if (!m.keys || !(e.ctrlKey || e.metaKey)) continue;
+        const [shift, key] = m.keys;
+        if (k === key && e.shiftKey === shift) {
+          e.preventDefault();
+          e.stopPropagation();
+          open(name);
+          return;
+        }
       }
     },
     true,
@@ -175,6 +202,7 @@
     open,
     close,
     provider: (fn) => providers.push(fn),
+    mode: (name, m) => modes.set(name, m),
     get open_() {
       return !el.hidden;
     },

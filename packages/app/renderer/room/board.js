@@ -343,7 +343,7 @@
     stopGlide();
     stopCoast();
     const pin = e.target.closest(".pin");
-    if (e.target.closest("button, a, select, input, textarea")) return;
+    if (e.target.closest("button, a, select, input, textarea, [data-nodrag]")) return;
     if (e.pointerType === "touch") {
       fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (fingers.size === 2) {
@@ -527,6 +527,8 @@
   canvas.addEventListener(
     "wheel",
     (e) => {
+      // a card that scrolls itself (a file tree, an editor) keeps the wheel
+      if (!e.ctrlKey && !e.metaKey && e.target.closest("[data-scroll]")) return;
       e.preventDefault();
       stopGlide();
       stopCoast();
@@ -671,6 +673,9 @@
     // `patch` hook), never a rebuild that reloads it and loses where the
     // user had browsed to. Every drag used to do exactly that.
     if (pin.kind === "web") return JSON.stringify([pin.kind, pin.ask, pin.answer, pin.by]);
+    // an IDE card holds a live editor or terminal: only what it is opens it anew
+    if (["files", "editor", "terminal", "git"].includes(pin.kind))
+      return JSON.stringify([pin.kind, pin.body]);
     return JSON.stringify([
       pin.kind,
       pin.title,

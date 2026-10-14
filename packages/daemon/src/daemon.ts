@@ -16,6 +16,7 @@ import {
   readFileSync,
   readdirSync,
   statSync,
+  watch as watchFs,
   writeFileSync,
 } from "node:fs";
 import http from "node:http";
@@ -60,6 +61,7 @@ import {
 } from "./config.js";
 import { Dashboard } from "./dashboard.js";
 import { ensureDesk, trustDesk } from "./desk.js";
+import { FsError, Fsx, HEAVY } from "./fsx.js";
 import { Hands } from "./hands.js";
 import { claudeDir } from "./hooks.js";
 import { Hub } from "./hub.js";
@@ -521,6 +523,9 @@ export class Daemon {
   agenda = { text: "", at: 0 };
   /** the desk's live data: the place, the day's weather and air (dashboard.ts) */
   readonly dashboard = new Dashboard(() => this.settings.place);
+  /** the IDE's files: the open project's first folder, and nothing outside it (fsx.ts) */
+  readonly fsx = new Fsx(() => this.projects.current.roots[0] ?? null);
+  private fsWatch: { root: string; close: () => void } | null = null;
   /** the life behind Kik (life.ts): her to-dos, GitHub, one inbox, the ring */
   todos!: Todos;
   inbox!: Inbox;
@@ -4876,6 +4881,134 @@ export class Daemon {
     return false;
   }
 
+  // --- the IDE's files (fsx.ts) -------------------------------------------------
+
+  private async fsRoute(
+    route: string,
+    url: URL,
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
+    try {
+      const q = (k: string) => url.searchParams.get(k) ?? "";
+      const body = req.method === "POST" ? JSON.parse((await this.body(req)) || "{}") : {};
+      this.watchProject();
+      switch (route) {
+        case "GET /fs/list":
+          return this.json(res, 200, { root: this.fsx.base(), entries: this.fsx.list(q("path")) });
+        case "GET /fs/read":
+          return this.json(res, 200, this.fsx.read(q("path")));
+        case "GET /fs/files":
+          return this.json(res, 200, { files: this.fsx.files() });
+        case "GET /fs/search":
+          return this.json(res, 200, { hits: await this.fsx.search(q("q")) });
+        case "POST /fs/write": {
+          const r = this.fsx.write(
+            String(body.path ?? ""),
+            String(body.text ?? ""),
+            Number(body.mtime) || undefined,
+          );
+          this.hub.publish("fs", { paths: [r.path], by: "you" });
+          return this.json(res, 200, r);
+        }
+        case "POST /fs/create":
+          return this.json(res, 200, this.fsx.create(String(body.path ?? ""), body.dir === true));
+        case "POST /fs/rename":
+          return this.json(
+            res,
+            200,
+            this.fsx.rename(String(body.from ?? ""), String(body.to ?? "")),
+          );
+        case "POST /fs/delete":
+          return this.json(res, 200, this.fsx.remove(String(body.path ?? "")));
+      }
+    } catch (e) {
+      const status = e instanceof FsError ? e.status : 500;
+      return this.json(res, status, { error: (e as Error).message });
+    }
+  }
+
+  /**
+   * Changes to the open project's files, told to the Room (an "fs" frame), so
+   * the files card and an open editor see what an agent wrote. One watcher,
+   * for the project in view; heavy folders are ignored.
+   */
+  private watchProject(): void {
+    let root: string;
+    try {
+      root = this.fsx.base();
+    } catch {
+      return;
+    }
+    if (this.fsWatch?.root === root) return;
+    this.fsWatch?.close();
+    let pending = new Set<string>();
+    let timer: NodeJS.Timeout | null = null;
+    try {
+      const w = watchFs(root, { recursive: true }, (_ev, file) => {
+        if (!file) return;
+        const rel = String(file).split(path.sep).join("/");
+        if (rel.split("/").some((part) => HEAVY.has(part))) return;
+        pending.add(rel);
+        timer ??= setTimeout(() => {
+          this.hub.publish("fs", { paths: [...pending].slice(0, 200) });
+          pending = new Set();
+          timer = null;
+        }, 300);
+      });
+      w.on("error", () => {});
+      this.fsWatch = { root, close: () => w.close() };
+    } catch {
+      this.fsWatch = { root, close: () => {} };
+    }
+  }
+
+  /**
+   * Open an IDE card (files, editor, terminal, git) in the project in view.
+   * One files card and one git card per project, one editor per file: asking
+   * again brings the card that is there to the front instead of a twin.
+   */
+  ideOpen(kind: string, file: string): { ok: boolean; id?: string; error?: string } {
+    if (!["files", "editor", "terminal", "git"].includes(kind))
+      return { ok: false, error: "no such card" };
+    const project = this.projects.current;
+    const repo = (project.roots[0] ? path.basename(project.roots[0]) : project.name) || "kik";
+    const there = this.board
+      .list()
+      .find(
+        (p) =>
+          p.kind === kind &&
+          p.project === project.id &&
+          (kind === "editor" ? p.body === file : kind !== "terminal"),
+      );
+    if (there) {
+      this.hub.publish("focus", { id: there.id });
+      return { ok: true, id: there.id };
+    }
+    const title =
+      kind === "editor"
+        ? path.basename(file)
+        : kind === "files"
+          ? repo
+          : kind === "git"
+            ? `git · ${repo}`
+            : "terminal";
+    const pin = this.board.add({
+      kind: kind as Pin["kind"],
+      title,
+      body: kind === "editor" ? file : kind === "files" || kind === "git" ? "." : "",
+      repo,
+      project: project.id,
+      by: "you",
+      sticky: true,
+      // an editor and a terminal want room; the tree and git a tall column
+      size: kind === "editor" || kind === "terminal" ? "wide" : "normal",
+      h: kind === "terminal" ? 420 : 640,
+    });
+    this.hub.publish("focus", { id: pin.id });
+    return { ok: true, id: pin.id };
+  }
+
   /** Mail, read by the desk from the user's Gmail. */
   async refreshMail(): Promise<void> {
     if (this.settings.agenda === false || !this.settings.agents) return;
@@ -5248,6 +5381,19 @@ export class Daemon {
         const b = JSON.parse((await this.body(req)) || "{}");
         const ok = this.keyAction(String(b.action ?? ""));
         return this.json(res, ok ? 200 : 400, { ok });
+      }
+      case "GET /fs/list":
+      case "GET /fs/read":
+      case "GET /fs/files":
+      case "GET /fs/search":
+      case "POST /fs/write":
+      case "POST /fs/create":
+      case "POST /fs/rename":
+      case "POST /fs/delete":
+        return this.fsRoute(route, url, req, res);
+      case "POST /ide/open": {
+        const b = JSON.parse((await this.body(req)) || "{}");
+        return this.json(res, 200, this.ideOpen(String(b.kind ?? ""), String(b.path ?? "")));
       }
       case "POST /inbox/seen":
         this.inbox.seen();
@@ -5623,6 +5769,7 @@ export class Daemon {
 
   async close(): Promise<void> {
     clearInterval(this.reminderTick);
+    this.fsWatch?.close();
     this.discord?.stop();
     this.whatsapp?.stop();
     // the dev servers Kik started go with it: nothing else could stop them

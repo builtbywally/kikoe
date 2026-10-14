@@ -918,6 +918,14 @@ function pinCard(p) {
   head.append(title, when);
   const body = document.createElement("div");
   body.className = "pin-body";
+  // the IDE's cards (ide.js) draw themselves and keep their own controls
+  if (window.kikIde?.kinds.has(p.kind)) {
+    card.dataset.ide = "1";
+    body.append(window.kikIde.body(p, card));
+    card.append(head, body);
+    if (p.sticky) card.dataset.sticky = "1";
+    return card;
+  }
   if (p.kind === "conversation") body.append(conversationBody());
   else if (p.kind === "session") body.append(sessionBody());
   else if (p.kind === "thinking") body.append(thinkingBody());
@@ -1882,6 +1890,10 @@ const handlers = {
   },
   focus(f) {
     if (f.id) window.board.focus(String(f.id));
+  },
+  // files changed in the project: the files card and open editors (ide.js)
+  fs(f) {
+    void window.kikIde?.onFs(f);
   },
   suggest(f) {
     suggestions = Array.isArray(f.options) ? f.options.map(String) : [];

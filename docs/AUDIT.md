@@ -266,6 +266,28 @@ Gaps:
   ntfy pushes already reach a paired watch. **later**.
 - The body is still the young VRoid sample. **when the user sends a VRM**.
 
+## 14. The IDE on the desk (added 2026-10-14, plan steps 2-3)
+
+- **Flow:**
+  - Ctrl+K opens the palette over every action; Ctrl+P opens a file;
+    Ctrl+Shift+F searches the files.
+  - "Files of this project" (palette, right-click on the canvas) puts a
+    files card in Work. Clicking a file opens an editor card (Monaco), and
+    Ctrl+S saves it.
+  - When an agent writes an open file, an untouched editor takes the new
+    text and flashes; an edited one shows "changed on disk" with reload,
+    keep mine, or compare (a side-by-side diff).
+- **Scope:** only the current project's first root folder. A project with
+  no folder answers 404 "this project has no folder".
+- **Gaps:**
+  - Editing is only right at 100% zoom: Monaco measures in screen pixels,
+    so a click on an editor seen from afar flies to it first.
+  - No git colours in the tree yet (step 5).
+  - No tabs inside an editor card: one card per file.
+  - Delete asks inside the card, not aloud.
+  - The tree refreshes only the folder that changed; renames from outside
+    show after the watcher's 300 ms batch.
+
 ## Closed since this was written (2026-09-07)
 
 - **The agent's work is on the canvas.** Diffs per edited file, run cards,

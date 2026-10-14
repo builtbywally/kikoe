@@ -15,6 +15,8 @@
     send: [440, 0.09, 0.04, 880],
     drop: [180, 0.09, 0.05],
     menu: [740, 0.04, 0.025],
+    tick: [900, 0.025, 0.02],
+    save: [600, 0.08, 0.035, 990],
     error: [220, 0.16, 0.05, 160],
   };
   function tone([f, dur, gain, to]) {
@@ -91,10 +93,15 @@
     );
   }
   window.kik.askAbout = askAbout;
+  window.kik.menu = openMenu;
 
   document.addEventListener("contextmenu", (e) => {
     const desk = e.target.closest("#desk");
-    if (!desk || e.target.closest("input, textarea, [contenteditable], .dk-hud button")) return;
+    if (
+      !desk ||
+      e.target.closest("input, textarea, [contenteditable], .dk-hud button, .monaco-editor")
+    )
+      return;
     e.preventDefault();
     const card = e.target.closest(".pin");
     const area = e.target.closest(".area");

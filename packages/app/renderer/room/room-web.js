@@ -64,6 +64,15 @@
         .then((r) => r.json())
         .catch(() => null),
     whatsapp: (on) => post("/whatsapp", { on: Boolean(on) }),
+    async api(method, path, body) {
+      const res = await fetch(`${base}${path}`, {
+        method,
+        headers: { ...headers, "content-type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, status: res.status, data };
+    },
     answerPin: (id, answer) => post(`/pins/${encodeURIComponent(id)}/answer`, { answer }),
     answerWord: (word) => post("/answer", { word }),
     removePin: (id) =>

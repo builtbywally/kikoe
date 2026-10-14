@@ -50,6 +50,17 @@ contextBridge.exposeInMainWorld("room", {
   },
   state: () => ipcRenderer.invoke("room:state"),
   dashboard: () => ipcRenderer.invoke("room:dashboard"),
+  /** Any daemon route, with the token: the IDE's files, git, cards ({ ok, status, data }). */
+  async api(method: string, path: string, body?: unknown) {
+    const { url, token } = await ready();
+    const res = await fetch(`${url}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  },
   hands: () => ipcRenderer.invoke("room:hands"),
   whatsapp: (on: boolean) => ipcRenderer.invoke("room:whatsapp", Boolean(on)),
   answerPin: (id: string, answer: string) => ipcRenderer.invoke("room:answerPin", id, answer),

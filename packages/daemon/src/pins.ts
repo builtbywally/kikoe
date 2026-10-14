@@ -25,6 +25,11 @@ export const KINDS = [
   // what an agent did, rather than what Kik made
   "run",
   "result",
+  // the IDE (the body is a path in the project, or empty): drawn by the Room
+  "files",
+  "editor",
+  "terminal",
+  "git",
 ] as const;
 export type PinKind = (typeof KINDS)[number];
 

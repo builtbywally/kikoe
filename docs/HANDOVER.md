@@ -1899,3 +1899,45 @@ of seven: the IDE plan.
 - **Harness gotcha:** Electron's HTTP cache served a stale room.css to the
   scratch harness, which looked like the tokens failing. `seq.cjs` now
   clears the cache before loading.
+
+## Files and the editor on the desk (2026-10-14, IDE plan step 3)
+
+- **Daemon, `fsx.ts`:**
+  - `/fs/list|read|files|search` (GET) and `/fs/write|create|rename|delete`
+    (POST), inside `projects.current.roots[0]` only. A path outside it is
+    a 403.
+  - A write with `mtime` is refused with 409 when the file changed since
+    it was read.
+  - Search uses `rg` when it is on PATH, otherwise a plain walk.
+    `node_modules`, `.git`, `dist` and the other heavy folders are never
+    walked.
+  - One recursive `fs.watch` on the project in view sends `fs` frames
+    (`{paths, by?}`), batched every 300 ms.
+- **`POST /ide/open {kind, path}`** makes a sticky `files`, `editor`,
+  `terminal` or `git` card in the current project, or focuses the one
+  already there (one per file for editors). `terminal` and `git` are
+  kinds already, but draw nothing yet (steps 4 and 5).
+- **Room:**
+  - `ide.js` draws the files and editor kinds (`window.kikIde`). room.js
+    hands them over in `pinCard`.
+  - board.js keys IDE cards on `[kind, body]`, so a live editor is never
+    rebuilt.
+  - `[data-nodrag]` stops a card drag; `[data-scroll]` keeps the wheel
+    inside the card.
+  - `window.room.api(method, path, body)` is in the preload and in
+    room-web.js.
+- **Monaco:** `scripts/build-monaco.mjs <dir>` (monaco-editor 0.57,
+  installed in a scratch folder) writes `vendor/monaco/` (14 MB: the
+  editor plus editor, ts, json, css and html workers).
+  - It is loaded on the first editor card, not at start.
+  - The CSP gained `worker-src 'self'` and `font-src 'self' data:`.
+    Workers load from `file://` in Electron: verified, TS diagnostics
+    come back.
+  - The theme `kik` is built from the tokens and redefined on `kik:theme`.
+- **Testing the real app:** start it from source with
+  `--remote-debugging-port=9333` and drive it with the scratchpad's
+  `tools/cdp.mjs` (evaluate and screenshot over CDP). `--screenshot`
+  shows a demo board, not the real one.
+- The palette has modes (`kikPalette.mode(name, {label, placeholder,
+  items, keys})`); ide.js adds `files` (Ctrl+P) and `search`
+  (Ctrl+Shift+F).

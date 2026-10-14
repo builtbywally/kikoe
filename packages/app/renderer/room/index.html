@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' http://127.0.0.1:* 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: https://server.arcgisonline.com; frame-src 'self' data: about: http: https:; connect-src 'self' http://127.0.0.1:*;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' http://127.0.0.1:* 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: https://server.arcgisonline.com; frame-src 'self' data: about: http: https:; connect-src 'self' http://127.0.0.1:*; worker-src 'self'; font-src 'self' data:;" />
   <!-- The canvas zooms itself; a browser zooming the whole page on a pinch
        outside it (the title bar, the talk button) fought it. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
@@ -274,6 +274,7 @@
   <script src="board.js"></script>
   <script src="palette.js"></script>
   <script src="interact.js"></script>
+  <script src="ide.js"></script>
   <script src="room.js"></script>
   <script src="actions.js"></script>
   <script src="settings.js"></script>

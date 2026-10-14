@@ -177,3 +177,198 @@
     animation: none !important;
   }
 }
+
+/* the IDE's cards (ide.js): a files tree and an editor, in the desk's tokens */
+.pin[data-ide="1"] .pin-body {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.pin[data-kind="files"],
+.pin[data-kind="editor"] {
+  max-height: none;
+}
+.pin[data-kind="files"] {
+  height: 640px;
+}
+.pin[data-kind="editor"] {
+  height: 640px;
+}
+.ide-files,
+.ide-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.ide-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.15);
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+.ide-bar button,
+.ide-banner button,
+.ide-ask button,
+.ide-diff-close {
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 7px;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--ink);
+  font: 11px var(--mono);
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.ide-bar button:hover,
+.ide-banner button:hover,
+.ide-ask button:hover {
+  background: rgba(var(--accent-rgb), 0.22);
+}
+.ide-sp {
+  flex: 1;
+}
+.ide-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ide-dirty {
+  color: var(--accent);
+}
+.ide-filter {
+  flex: 1;
+  min-width: 0;
+  background: rgba(var(--ground-rgb), 0.5);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 7px;
+  color: var(--ink);
+  font: 12px var(--mono);
+  padding: 5px 8px;
+  outline: none;
+}
+.ide-filter:focus {
+  border-color: var(--accent);
+}
+.ide-tree {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+  flex: 1;
+  font: 12.5px var(--mono);
+}
+.ide-tree li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ide-tree li:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+.ide-tree li i {
+  width: 16px;
+  font-style: normal;
+  font-size: 10px;
+  text-align: center;
+  color: var(--accent-3);
+  flex: none;
+}
+.ide-tree li.dir i {
+  color: var(--accent);
+  font-size: 13px;
+  transition: rotate var(--fast) var(--ease);
+}
+.ide-tree li.dir.open i {
+  rotate: 90deg;
+}
+.ide-tree li.dir span {
+  color: var(--ink);
+  font-weight: 600;
+}
+.ide-tree li.is-open span {
+  color: var(--accent);
+}
+.ide-tree li.ide-note {
+  color: var(--muted);
+  cursor: default;
+}
+.ide-tree li.ide-ask {
+  gap: 8px;
+  flex-wrap: wrap;
+  cursor: default;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+.ide-ask label {
+  color: var(--muted);
+}
+.ide-ask input {
+  flex: 1;
+  min-width: 120px;
+  background: rgba(var(--ground-rgb), 0.6);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--ink);
+  font: 12px var(--mono);
+  padding: 3px 6px;
+  outline: none;
+}
+.ide-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(var(--accent-3-rgb, 255, 170, 60), 0.12);
+  color: var(--accent-3);
+  font: 11.5px var(--mono);
+}
+.ide-banner[hidden] {
+  display: none;
+}
+.ide-banner span {
+  flex: 1;
+}
+.ide-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.ide-wait {
+  padding: 18px;
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+.ide-diff {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: rgba(var(--surface-rgb), 0.98);
+}
+.ide-diff-close {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 4;
+}
+.pin[data-dirty="1"] {
+  border-color: rgba(var(--accent-rgb), 0.6);
+}
+/* an agent's write landed in an open editor: a brief flash */
+.pin.ide-touched {
+  animation: ide-touched 1.2s var(--ease);
+}
+@keyframes ide-touched {
+  20% {
+    box-shadow: 0 0 50px rgba(var(--accent-3-rgb, 255, 170, 60), 0.5);
+  }
+}
+.ctx-menu {
+  z-index: 70;
+}
