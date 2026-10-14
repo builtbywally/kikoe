@@ -285,8 +285,37 @@
 
   // --- kokoro ---------------------------------------------------------------
 
+  // kokoro-en-v0_19's speakers, by number (KOKORO_VOICES in daemon/src/tts.ts)
+  const KOKORO_VOICES = [
+    "af · the blend",
+    "Bella · warm and sweet",
+    "Nicole · soft and close",
+    "Sarah · clear",
+    "Sky · bright and young",
+    "Adam · male",
+    "Michael · male",
+    "Emma · British",
+    "Isabella · British",
+    "George · British male",
+    "Lewis · British male",
+  ];
+  const kokoroVoice = $("kokoro-voice");
+  KOKORO_VOICES.forEach((name, i) => {
+    const o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = name;
+    kokoroVoice.append(o);
+  });
+  kokoroVoice.addEventListener("change", async () => {
+    await api.save({ kokoro_voice: kokoroVoice.value });
+    info = await api.get();
+    note("kokoro-status", "voice changed: press ▶ to hear it", "good");
+  });
+
   function renderKokoro() {
     const have = info.kokoro;
+    kokoroVoice.hidden = !have;
+    kokoroVoice.value = String(info.settings?.kokoro_voice ?? "1");
     $("kokoro-fetch").hidden = have;
     $("kokoro-remove").hidden = !have;
     $("kokoro-note").textContent = have

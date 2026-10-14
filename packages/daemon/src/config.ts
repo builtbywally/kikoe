@@ -25,6 +25,8 @@ export interface Settings {
   elevenlabs_voice: string;
   elevenlabs_voice_name: string;
   elevenlabs_model: string;
+  /** Kokoro's speaker number (kokoro-en-v0_19: 1 is Bella; KOKORO_VOICES in tts.ts) */
+  kokoro_voice: string;
   /** use the chosen voice and no other */
   tts_strict: boolean;
   /** attention | balanced | full */
@@ -174,6 +176,7 @@ export const DEFAULTS: Settings = {
   elevenlabs_voice: "",
   elevenlabs_voice_name: "",
   elevenlabs_model: "eleven_flash_v2_5",
+  kokoro_voice: "1",
   tts_strict: false,
   hook_profile: "balanced",
   claude_settings: "",

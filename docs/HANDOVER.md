@@ -1941,3 +1941,17 @@ of seven: the IDE plan.
 - The palette has modes (`kikPalette.mode(name, {label, placeholder,
   items, keys})`); ide.js adds `files` (Ctrl+P) and `search`
   (Ctrl+Shift+F).
+
+## Kokoro's voice is a setting (2026-10-14)
+
+- `kokoro_voice` (a speaker number, as text) picks Kokoro's voice; it
+  defaults to "1", Bella. Before this, every Kokoro line used speaker 0
+  (the "af" blend), and nothing let you choose.
+- The names are `KOKORO_VOICES` in tts.ts, mirrored in settings.js. The
+  picker sits in the Kokoro row of settings and appears once the model is
+  installed.
+- A voice hint that is not a number (an ElevenLabs id, from `voices`)
+  falls back to the rung's own voice instead of speaker 0.
+- Checked on 2026-10-14: ElevenLabs still answers (200 with audio), but
+  the key lacks the `user_read` permission, so the remaining credit
+  cannot be read with it. The user's `tts` is kokoro.

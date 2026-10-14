@@ -1110,9 +1110,15 @@ ipcMain.handle(
     }
     if ("port" in rest) await restartDaemon("port change");
     else if (
-      ["tts", "elevenlabs_voice", "elevenlabs_model", "tts_strict", "voices", "earcons"].some(
-        (k) => k in rest,
-      ) ||
+      [
+        "tts",
+        "elevenlabs_voice",
+        "elevenlabs_model",
+        "kokoro_voice",
+        "tts_strict",
+        "voices",
+        "earcons",
+      ].some((k) => k in rest) ||
       elevenKey !== undefined
     ) {
       daemon?.reconfigure(

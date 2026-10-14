@@ -95,7 +95,7 @@
         <div class="rows" id="voice-rows">
           <label class="row"><input type="radio" name="tts" value="piper" /><div><b>Piper</b><span>Bundled, local, sixty milliseconds to first sound. The default.</span></div><button class="play" data-tts="piper">▶</button></label>
           <label class="row"><input type="radio" name="tts" value="kokoro" /><div><b>Kokoro</b><span id="kokoro-note">Local, a better voice, about four hundred milliseconds. Download 320 MB.</span>
-            <div class="sub"><button id="kokoro-fetch" class="quiet">Download</button> <button id="kokoro-remove" class="quiet" hidden>Remove</button> <progress id="kokoro-progress" max="100" value="0" hidden></progress> <span id="kokoro-status" class="note"></span></div></div><button class="play" data-tts="kokoro">▶</button></label>
+            <div class="sub"><button id="kokoro-fetch" class="quiet">Download</button> <button id="kokoro-remove" class="quiet" hidden>Remove</button> <select id="kokoro-voice" aria-label="Kokoro voice"></select> <progress id="kokoro-progress" max="100" value="0" hidden></progress> <span id="kokoro-status" class="note"></span></div></div><button class="play" data-tts="kokoro">▶</button></label>
           <label class="row"><input type="radio" name="tts" value="eleven" /><div><b>ElevenLabs</b><span>Your own key, kept in the OS keychain. The best voice, about two hundred milliseconds.</span>
             <div class="sub">
               <input type="password" id="eleven-key" placeholder="API key" autocomplete="off" />

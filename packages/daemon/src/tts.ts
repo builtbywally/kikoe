@@ -88,6 +88,8 @@ abstract class SherpaRung implements Rung {
   protected abstract modelConfig(): SherpaModel | null;
   protected threads = 2;
   protected heavy = false;
+  /** the speaker a line uses when none is asked for (a number, as text) */
+  protected defaultVoice = "0";
 
   available(): boolean {
     return this.modelConfig() !== null;
@@ -148,7 +150,10 @@ abstract class SherpaRung implements Rung {
   ): Promise<SpokenResult> {
     const rate: number = tts.sampleRate;
     const speakers: number = tts.numSpeakers ?? 1;
-    const sid = Math.max(0, Math.min(speakers - 1, Number.parseInt(voice ?? "0", 10) || 0));
+    // a voice hint may be an ElevenLabs id: anything not a number is this rung's own voice
+    const asked = Number.parseInt(voice ?? "", 10);
+    const pick = Number.isNaN(asked) ? Number.parseInt(this.defaultVoice, 10) || 0 : asked;
+    const sid = Math.max(0, Math.min(speakers - 1, pick));
     const start = performance.now();
     let ttfa = -1;
     let samples = 0;
@@ -193,10 +198,29 @@ export class PiperRung extends SherpaRung {
 
 export const KOKORO_DIR = () => path.join(MODELS, "kokoro-en-v0_19");
 
+/** kokoro-en-v0_19's speakers, by number (its voices.bin order) */
+export const KOKORO_VOICES = [
+  "af · American female, the blend",
+  "Bella · American female, warm and sweet",
+  "Nicole · American female, soft and close",
+  "Sarah · American female, clear",
+  "Sky · American female, bright and young",
+  "Adam · American male",
+  "Michael · American male",
+  "Emma · British female",
+  "Isabella · British female",
+  "George · British male",
+  "Lewis · British male",
+];
+
 export class KokoroRung extends SherpaRung {
   readonly name = "kokoro";
   protected threads = 6;
   protected heavy = true;
+  constructor(voice = "1") {
+    super();
+    this.defaultVoice = voice || "1";
+  }
   protected modelConfig(): SherpaModel | null {
     const dir = KOKORO_DIR();
     const model = path.join(dir, "model.onnx"); // fp32: int8 is four times slower on CPU
@@ -452,7 +476,7 @@ export class Ladder {
       model: s.elevenlabs_model,
     });
     const piper = new PiperRung();
-    const kokoro = new KokoroRung();
+    const kokoro = new KokoroRung(s.kokoro_voice);
     const system = new SystemRung();
     for (const r of [eleven, piper, kokoro, system]) if (r.available()) this.byName.set(r.name, r);
     const order: Rung[] = [];
