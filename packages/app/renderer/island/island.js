@@ -87,6 +87,8 @@ const islandOrb = window.KikOrb?.create(document.getElementById("orb-dots"), {
   dark: true,
 });
 
+/** is the island floating over every window (it needs you)? */
+let onTop = null;
 function render(state, { label, text = "", quote = false } = {}) {
   // Any pending fallback belongs to the state we are leaving. Without this a
   // hold set for "overheard" fires 2.6s later and drops a live "speaking" back
@@ -95,6 +97,12 @@ function render(state, { label, text = "", quote = false } = {}) {
   holdTimer = null;
   current = state;
   el.island.dataset.state = state;
+  // over every window only while it needs you; behind your work otherwise
+  const needsYou = state === "permission";
+  if (needsYou !== onTop) {
+    onTop = needsYou;
+    window.island?.setAttention?.(needsYou);
+  }
   islandOrb?.set(window.KikOrb.forKik(state === "permission" ? "asking" : state));
   el.state.textContent = label;
   el.text.textContent = quote && text ? `“${text}”` : text;

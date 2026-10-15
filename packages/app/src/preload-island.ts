@@ -57,4 +57,6 @@ contextBridge.exposeInMainWorld("island", {
   setInteractive: (on: boolean) => ipcRenderer.send("island:interactive", Boolean(on)),
   openSettings: () => ipcRenderer.send("island:openSettings"),
   setHeight: (px: number) => ipcRenderer.send("island:height", px),
+  /** on top of every window while something needs the user, behind them otherwise */
+  setAttention: (on: boolean) => ipcRenderer.send("island:attention", Boolean(on)),
 });

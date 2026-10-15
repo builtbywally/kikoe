@@ -1986,3 +1986,17 @@ of seven: the IDE plan.
 - The hook command changed shape, so `isOurs` still matches it on
   `/.kikoe/hook.curlrc`. A machine needs a re-install of the hooks
   (settings, or `install()`) to get the new command.
+
+## The island is on top only when it needs you (2026-10-15)
+
+- The island window is no longer always on top. The window you work in
+  covers it.
+- island.js sends `island:attention` (preload `setAttention`) whenever
+  its state crosses into or out of `permission`: an agent asking, or a
+  plan waiting for "go ahead". On true, main.ts calls
+  `setAlwaysOnTop(true, "screen-saver")` and `moveTop()`; on false it
+  drops the always-on-top flag.
+- Verified with the Win32 topmost flag (scratchpad `tools/topmost.ps1`):
+  off at rest, on during a permission, off once answered.
+- Not attention, so behind your work: speaking, working, listening,
+  thinking.

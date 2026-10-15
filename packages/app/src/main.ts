@@ -529,7 +529,9 @@ function createIsland(): void {
     fullscreenable: false,
     skipTaskbar: true,
     focusable: false,
-    alwaysOnTop: true,
+    // in front only when it needs you (island:attention); otherwise the
+    // window you are working in covers it
+    alwaysOnTop: false,
     hasShadow: false,
     show: !smoke,
     webPreferences: {
@@ -538,7 +540,6 @@ function createIsland(): void {
       nodeIntegration: false,
     },
   });
-  island.setAlwaysOnTop(true, "screen-saver");
   island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   island.setIgnoreMouseEvents(true, { forward: true });
   island.loadFile(path.join(RENDERER, "island", "index.html"));
@@ -1024,6 +1025,15 @@ ipcMain.handle("room:setMicMode", (_e, mode: string) => {
 ipcMain.handle("room:sayToKik", (_e, text: string) =>
   daemon ? daemon.typed(String(text)) : { kind: "none", intent: "" },
 );
+// Something needs the user (a permission, a plan to approve): the island comes
+// over every window until it is answered, then goes back behind.
+ipcMain.on("island:attention", (_e, on: boolean) => {
+  if (!island || island.isDestroyed()) return;
+  if (on) {
+    island.setAlwaysOnTop(true, "screen-saver");
+    island.moveTop();
+  } else island.setAlwaysOnTop(false);
+});
 ipcMain.on("island:interactive", (_e, on: boolean) =>
   island?.setIgnoreMouseEvents(!on, on ? undefined : { forward: true }),
 );
