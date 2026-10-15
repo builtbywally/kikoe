@@ -15,6 +15,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   watch as watchFs,
   writeFileSync,
@@ -63,7 +64,7 @@ import { Dashboard } from "./dashboard.js";
 import { ensureDesk, trustDesk } from "./desk.js";
 import { FsError, Fsx, HEAVY } from "./fsx.js";
 import { Hands } from "./hands.js";
-import { claudeDir } from "./hooks.js";
+import { claudeDir, upPath } from "./hooks.js";
 import { Hub } from "./hub.js";
 import {
   type Command,
@@ -381,6 +382,8 @@ export interface DaemonOptions {
   fetchImpl?: typeof fetch;
   /** keep sticky pins in ~/.kikoe/board.json (off for smoke and screenshot runs) */
   persistBoard?: boolean;
+  /** write ~/.kikoe/daemon.up while listening, for the hooks (the app's daemon only) */
+  upMarker?: boolean;
   onSpeech?: (phase: SpeechPhase, info: SpeechInfo) => void;
   /** how long after an exchange the inner note is rewritten (tests shorten it) */
   reflectMs?: number;
@@ -614,6 +617,7 @@ export class Daemon {
       ...(opts.elevenKey ? { elevenKey: opts.elevenKey } : {}),
     });
     this.persistBoard = opts.persistBoard !== false;
+    this.upMarker = opts.upMarker === true;
     // Reminders survive a restart; one that came due while Kikoe was closed is
     // said when it opens.
     this.reminders = new Reminders(this.persistBoard ? path.join(HOME, "reminders.json") : null);
@@ -2571,6 +2575,7 @@ export class Daemon {
   // x and y and each project keeps its own file.
   private boardTimer: NodeJS.Timeout | null = null;
   private readonly persistBoard: boolean;
+  private readonly upMarker: boolean;
   private readonly dirtyBoards = new Set<string>();
   /** the single board from before projects; read once, then left alone */
   private legacyBoardFile(): string {
@@ -5692,6 +5697,14 @@ export class Daemon {
       this.server!.once("error", reject);
       this.server!.listen(port, "127.0.0.1", () => resolve());
     });
+    // the hooks knock only while this is here (hooks.ts upPath)
+    if (this.upMarker) {
+      try {
+        writeFileSync(upPath(), `${process.pid} ${port}\n`);
+      } catch {
+        /* the hooks will find it missing and stay quiet; nothing breaks */
+      }
+    }
     this.timers.push(
       setInterval(() => {
         const lines = this.narrator.tick();
@@ -5800,6 +5813,7 @@ export class Daemon {
     }
     this.board.clear();
     this.arbiter.interrupt();
+    if (this.upMarker) rmSync(upPath(), { force: true });
     await new Promise<void>((resolve) => {
       if (!this.server) return resolve();
       this.server.close(() => resolve());

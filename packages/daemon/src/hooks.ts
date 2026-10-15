@@ -76,6 +76,14 @@ export function settingsPath(scope: "user" | "project" = "user", cwd = process.c
 }
 
 export const curlrcPath = () => path.join(HOME, "hook.curlrc");
+/**
+ * Present while the app's daemon is listening. The hooks knock only when it is
+ * there, and a knock nobody answers removes it: with Kikoe off, Claude Code
+ * checks once and then stops trying, until the app starts and writes it again.
+ * (On Windows a refused connection to localhost takes about two seconds, and
+ * there are several hooks a turn.)
+ */
+export const upPath = () => path.join(HOME, "daemon.up");
 export const speakrcPath = () => path.join(HOME, "speak.curlrc");
 export const showrcPath = () => path.join(HOME, "show.curlrc");
 export const nodeHookPath = () => path.join(HOME, "hook.js");
@@ -165,6 +173,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const home = process.env.KIKOE_HOME || path.join(os.homedir(), ".kikoe");
+const up = path.join(home, "daemon.up");
+// Kikoe is off: no knock (daemon.up is the app's, see hooks.ts)
+if (!fs.existsSync(up)) { process.stdin.resume(); process.stdin.on("end", () => process.exit(0)); return; }
 let token = "";
 try { token = fs.readFileSync(path.join(home, "daemon_token.txt"), "utf8").trim(); } catch {}
 const chunks = [];
@@ -175,19 +186,30 @@ process.stdin.on("end", () => {
     headers: { "content-type": "application/json", "content-length": body.length, authorization: "Bearer " + token },
     timeout: 28000 }, (res) => { res.pipe(process.stdout); res.on("end", () => process.exit(0)); });
   req.on("timeout", () => { req.destroy(); process.exit(0); });
-  req.on("error", () => process.exit(0));
+  req.on("error", (e) => {
+    // nobody answered: stop knocking until the app is back
+    if (e && e.code === "ECONNREFUSED") { try { fs.unlinkSync(up); } catch {} }
+    process.exit(0);
+  });
   req.end(body);
 });
 `;
 }
 
 export function hookCommand(kind: "curl" | "node"): string {
-  if (kind === "curl") return `curl -K "${curlrcPath().replace(/\\/g, "/")}" --data-binary @-`;
+  if (kind === "curl") {
+    // Knock only while daemon.up says Kikoe is running; curl's 7 is "could not
+    // connect", which takes the file away so the next hook does not try.
+    const up = upPath().replace(/\\/g, "/");
+    const rc = curlrcPath().replace(/\\/g, "/");
+    return `if [ -f "${up}" ]; then curl -K "${rc}" --data-binary @-; [ $? -ne 7 ] || rm -f "${up}"; else cat >/dev/null; fi; exit 0`;
+  }
   return `node "${nodeHookPath().replace(/\\/g, "/")}"`;
 }
 
 export function speakCommand(): string {
-  return `curl -K "${speakrcPath().replace(/\\/g, "/")}" --data-raw`;
+  // with Kikoe off it does nothing, quietly, and costs no connection attempt
+  return `test -f "${upPath().replace(/\\/g, "/")}" && curl -K "${speakrcPath().replace(/\\/g, "/")}" --data-raw`;
 }
 
 export function showCommand(): string {
@@ -490,8 +512,8 @@ ${speakLine()}
 \`\`\`
 
 An ordinary Bash call. It returns in well under a second, prints nothing, and
-does not block. If it errors, kikoe isn't running: say so once in text,
-then carry on. Never retry it in a loop.
+does not block. If it exits non-zero, kikoe isn't running: say nothing about
+it, and don't call it again for the rest of the session.
 
 Call it with the Bash tool. Writing the command inside a code fence plays
 nothing; it is a tool call like any other. The text goes in double quotes;
@@ -576,8 +598,8 @@ ${speakLine()}
 \`\`\`
 
 Run it as an ordinary Bash command. It returns quickly and prints nothing. If
-it fails, kikoe isn't running: say so once in text and carry on; never retry
-in a loop.
+it exits non-zero, kikoe isn't running: don't mention it, and don't call it or
+the show command again for the rest of the session.
 
 Default to silence. Speak when a colleague would have looked up: you need
 them, something broke, you finished, they asked, or a long wait ended. Lead

@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -128,5 +129,51 @@ describe("migration", () => {
     expect(hooks.assetStatus().length).toBe(2);
     // the foreign hook that is neither ours nor legacy is untouched
     expect(JSON.stringify(JSON.parse(readFileSync(file, "utf8")))).toContain("notify.py");
+  });
+});
+
+describe("with Kikoe off, the hooks check once and stop", () => {
+  const bash = (() => {
+    try {
+      execFileSync("bash", ["-c", "exit 0"]);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  it.skipIf(!bash)(
+    "the curl hook knocks only while daemon.up is there, and a refused knock removes it",
+    () => {
+      // port 1: nothing listens, curl exits 7
+      hooks.writeCurlrcs(1, "t-test");
+      writeFileSync(hooks.upPath(), "1 1\n");
+      const run = () => {
+        const t = Date.now();
+        execFileSync("bash", ["-c", hooks.hookCommand("curl")], { input: "{}" });
+        return Date.now() - t;
+      };
+      run();
+      expect(existsSync(hooks.upPath())).toBe(false);
+      // the next hook does not try at all
+      expect(run()).toBeLessThan(1500);
+      expect(existsSync(hooks.upPath())).toBe(false);
+    },
+    20000,
+  );
+
+  it("the node hook does the same", () => {
+    const file = path.join(HOME, "hook-test.js");
+    writeFileSync(file, hooks.nodeHookSource(1));
+    writeFileSync(hooks.upPath(), "1 1\n");
+    const env = { ...process.env, KIKOE_HOME: HOME };
+    execFileSync(process.execPath, [file], { input: "{}", env });
+    expect(existsSync(hooks.upPath())).toBe(false);
+    execFileSync(process.execPath, [file], { input: "{}", env });
+    expect(existsSync(hooks.upPath())).toBe(false);
+  }, 20000);
+
+  it("the speak command is a no-op without daemon.up", () => {
+    expect(hooks.speakCommand()).toMatch(/^test -f ".*daemon\.up" && curl -K/);
   });
 });

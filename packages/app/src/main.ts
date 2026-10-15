@@ -147,6 +147,7 @@ async function startDaemon(): Promise<void> {
     anthropicKey: loadAnthropicKey(),
     openrouterKey: openrouterKeyFromFile(),
     persistBoard: !smoke && !shotPath,
+    upMarker: !smoke && !shotPath,
     roomDir: path.join(RENDERER, "room"),
   });
   await daemon.listen();

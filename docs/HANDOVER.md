@@ -1967,3 +1967,22 @@ of seven: the IDE plan.
   plainly: eighteen passed, two failed" for "No test counts".
 - In evals: the four test fixtures run in verbose, and
   `tests_quiet.json` holds normal mode to silence.
+
+## With Kikoe off, Claude Code checks once and stops (2026-10-15)
+
+- **The marker:** the app's daemon (`upMarker`, only in main.ts, never in
+  tests, smoke or screenshot runs) writes `~/.kikoe/daemon.up` when it
+  listens and removes it on close.
+- **The curl hook** is now a POSIX one-liner: if `daemon.up` is there it
+  curls, and curl's exit 7 (could not connect) removes the file. If the
+  file is missing it swallows stdin and exits 0. The Node hook does the
+  same on ECONNREFUSED.
+- So with Kikoe off (or crashed), one hook pays the cost: on Windows a
+  refused connection to localhost takes about 2 s, and a turn has several
+  hooks. Every later hook is free until the app starts again.
+- `speakCommand()` is `test -f daemon.up && curl …`. The output style and
+  skill say: if it exits non-zero, don't call it, or show, again this
+  session.
+- The hook command changed shape, so `isOurs` still matches it on
+  `/.kikoe/hook.curlrc`. A machine needs a re-install of the hooks
+  (settings, or `install()`) to get the new command.
